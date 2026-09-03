@@ -33,6 +33,15 @@ from app.schemas.shopping import (
     ShoppingListItemRead,
     AutoGenerateShoppingRequest,
 )
+from app.schemas.analytics import (
+    InventorySummaryItem,
+    ExpiringSoonItem,
+    LowStockItem,
+    InventoryValuation,
+    SpendingSummary,
+    WasteSummary,
+    ProductPriceHistory,
+)
 
 __all__ = [
     "ProductCreate",
@@ -60,4 +69,11 @@ __all__ = [
     "ShoppingListItemUpdate",
     "ShoppingListItemRead",
     "AutoGenerateShoppingRequest",
+    "InventorySummaryItem",
+    "ExpiringSoonItem",
+    "LowStockItem",
+    "InventoryValuation",
+    "SpendingSummary",
+    "WasteSummary",
+    "ProductPriceHistory",
 ]
