@@ -90,12 +90,12 @@ Provision is the native backend service powering the Provision iOS food inventor
 - `GET /events` — Audit log of all inventory movements
 
 ### Grocery Intake Sessions (`/api/v1/grocery-sessions`)
-- `GET /` — List grocery sessions
-- `POST /` — Start session (`DRAFT`)
-- `GET /{id}` — View session and scanned batches
-- `POST /{id}/add-item` — Add item during scan flow
-- `POST /{id}/commit` — Finalize intake session (`COMPLETED`) and compute totals
-- `DELETE /{id}` — Cancel session
+- `GET /` — List grocery sessions (status filter)
+- `POST /` — Start session (`DRAFT` status; creates zero inventory batches/events)
+- `GET /{id}` — View session and linked batches
+- `PATCH /{id}` — Edit session metadata (store name, notes, purchase date)
+- `POST /{id}/commit` — Finalize intake session (`COMPLETED`), validate products/locations, ingest all batches and `PURCHASED` events, and compute total
+- `DELETE /{id}` — Cancel session (`CANCELLED` status; leaves inventory untouched)
 
 ### Shopping List (`/api/v1/shopping-list`)
 - `GET /` — List items (unbought first)

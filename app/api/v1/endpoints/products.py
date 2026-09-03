@@ -170,6 +170,16 @@ def delete_product(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Product not found",
         )
+
+    batch_count = db.scalar(
+        select(func.count(InventoryBatch.id)).where(InventoryBatch.product_id == product_id)
+    ) or 0
+    if batch_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot delete product with ID {product_id}: it has {batch_count} associated inventory batch(es). Deletion blocked to preserve inventory history.",
+        )
+
     db.delete(product)
     db.commit()
     return None

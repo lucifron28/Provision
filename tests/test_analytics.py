@@ -1,5 +1,5 @@
 from datetime import date, timedelta
-
+from decimal import Decimal
 
 def test_analytics_endpoints(client):
     # 1. Setup products and locations
@@ -72,7 +72,7 @@ def test_analytics_endpoints(client):
     val_res = client.get("/api/v1/analytics/valuation")
     assert val_res.status_code == 200
     val_data = val_res.json()
-    assert val_data["total_value"] == 490.0
+    assert Decimal(str(val_data["total_value"])) == Decimal("490.00")
     assert val_data["total_active_batches"] == 2
 
     # Test Price History: "How have prices changed over time?"
@@ -80,9 +80,9 @@ def test_analytics_endpoints(client):
     assert price_res.status_code == 200
     price_data = price_res.json()
     assert len(price_data["price_points"]) == 2
-    prices = [pt["unit_price"] for pt in price_data["price_points"]]
-    assert 40.0 in prices
-    assert 45.0 in prices
+    prices = [Decimal(str(pt["unit_price"])) for pt in price_data["price_points"]]
+    assert Decimal("40.00") in prices
+    assert Decimal("45.00") in prices
 
     # Test Waste Tracking: discard b2 (2 cans @ 45)
     client.post(
@@ -94,4 +94,4 @@ def test_analytics_endpoints(client):
     waste_data = waste_res.json()
     assert waste_data["total_waste_events"] == 1
     assert waste_data["total_quantity_wasted"] == 2.0
-    assert waste_data["total_financial_loss"] == 90.0  # 2 cans * 45.0 = 90.0
+    assert Decimal(str(waste_data["total_financial_loss"])) == Decimal("90.00")  # 2 cans * 45.0 = 90.00

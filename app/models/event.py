@@ -22,10 +22,10 @@ class InventoryEvent(Base):
     __tablename__ = "inventory_events"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    batch_id: Mapped[int] = mapped_column(ForeignKey("inventory_batches.id", ondelete="CASCADE"), nullable=False, index=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("inventory_batches.id", ondelete="RESTRICT"), nullable=False, index=True)
     event_type: Mapped[EventType] = mapped_column(SQLEnum(EventType, name="event_type_enum"), nullable=False, index=True)
 
-    # Quantity changed (positive value indicating amount consumed/discarded/adjusted)
+    # Quantity changed (signed delta for ADJUSTMENT, positive amount for others)
     quantity: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now(), nullable=False, index=True)
 

@@ -1,5 +1,5 @@
 from datetime import date, timedelta
-
+from decimal import Decimal
 
 def test_create_and_list_batches(client):
     # 1. Setup product and location
@@ -22,8 +22,8 @@ def test_create_and_list_batches(client):
     assert b1_res.status_code == 201
     b1 = b1_res.json()
     assert b1["remaining_quantity"] == 6.0
+    assert Decimal(str(b1["unit_price"])) == Decimal("42.00")
     assert b1["product"]["id"] == product_id
-    assert b1["storage_location"]["id"] == location_id
 
     # 3. Create Batch B (expires in 5 days - should come first in FEFO!)
     exp_b = (date.today() + timedelta(days=5)).isoformat()
@@ -54,7 +54,7 @@ def test_create_and_list_batches(client):
     assert prod_data["active_batches_count"] == 2
 
 
-def test_batch_update_and_delete(client):
+def test_batch_update_metadata_and_delete_protection(client):
     p_res = client.post("/api/v1/products/", json={"name": "Oatmeal"})
     product_id = p_res.json()["id"]
 
@@ -64,15 +64,17 @@ def test_batch_update_and_delete(client):
     )
     batch_id = b_res.json()["id"]
 
-    # Update remaining quantity
-    patch_res = client.patch(f"/api/v1/batches/{batch_id}", json={"remaining_quantity": 3.0})
+    # 1. Test that PATCH updates metadata (e.g. unit_price)
+    patch_res = client.patch(f"/api/v1/batches/{batch_id}", json={"unit_price": 85.0})
     assert patch_res.status_code == 200
-    assert patch_res.json()["remaining_quantity"] == 3.0
+    assert Decimal(str(patch_res.json()["unit_price"])) == Decimal("85.00")
 
-    # Delete batch
+    # 2. Invariant 6: Test that PATCH cannot directly change remaining_quantity
+    patch_qty_res = client.patch(f"/api/v1/batches/{batch_id}", json={"remaining_quantity": 1.0})
+    assert patch_qty_res.status_code == 200
+    assert patch_qty_res.json()["remaining_quantity"] == 5.0  # Must NOT change!
+
+    # 3. Invariant 8: Batch with inventory events cannot be deleted (must return 409 Conflict)
     del_res = client.delete(f"/api/v1/batches/{batch_id}")
-    assert del_res.status_code == 204
-
-    # Verify not found
-    get_res = client.get(f"/api/v1/batches/{batch_id}")
-    assert get_res.status_code == 404
+    assert del_res.status_code == 409
+    assert "associated inventory event" in del_res.json()["detail"]

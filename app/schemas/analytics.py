@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from decimal import Decimal
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
@@ -35,7 +36,7 @@ class LowStockItem(BaseModel):
 
 
 class InventoryValuation(BaseModel):
-    total_value: float
+    total_value: Decimal
     total_active_batches: int
     total_active_products: int
 
@@ -44,14 +45,12 @@ class SpendingItem(BaseModel):
     session_id: Optional[int] = None
     store_name: Optional[str] = None
     purchase_date: datetime
-    amount: float
-
+    amount: Decimal
 
 class SpendingSummary(BaseModel):
-    total_spent: float
+    total_spent: Decimal
     sessions_count: int
     recent_transactions: List[SpendingItem] = []
-
 
 class WasteItem(BaseModel):
     event_id: int
@@ -60,23 +59,20 @@ class WasteItem(BaseModel):
     quantity: float
     unit: Optional[str] = None
     occurred_at: datetime
-    estimated_cost_wasted: Optional[float] = None
+    estimated_cost_wasted: Optional[Decimal] = None
     reason: Optional[str] = None
-
 
 class WasteSummary(BaseModel):
     total_waste_events: int
     total_quantity_wasted: float
-    total_financial_loss: float
+    total_financial_loss: Decimal
     wasted_items: List[WasteItem] = []
-
 
 class PriceHistoryPoint(BaseModel):
     batch_id: int
     purchased_at: datetime
-    unit_price: float
+    unit_price: Decimal
     store_name: Optional[str] = None
-
 
 class ProductPriceHistory(BaseModel):
     product_id: int

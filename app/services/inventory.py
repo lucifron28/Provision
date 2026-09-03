@@ -149,7 +149,7 @@ class InventoryService:
         event = InventoryEvent(
             batch_id=batch.id,
             event_type=EventType.ADJUSTMENT,
-            quantity=abs(delta),
+            quantity=delta,
             occurred_at=datetime.now(timezone.utc),
             reason=f"{req.reason} (adjustment from {old_qty} to {new_qty}, delta: {delta:+.2f})",
             notes=req.notes,

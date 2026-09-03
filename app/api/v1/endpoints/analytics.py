@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+from decimal import Decimal
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
@@ -175,8 +176,12 @@ def get_inventory_valuation(db: Session = Depends(get_db)):
         InventoryBatch.unit_price.is_not(None),
     )
     batches = db.scalars(stmt).all()
+    total_value = sum(
+        (b.unit_price * Decimal(str(b.remaining_quantity)))
+        for b in batches
+        if b.unit_price is not None
+    ) if batches else Decimal("0.00")
 
-    total_value = sum(float(b.remaining_quantity) * float(b.unit_price) for b in batches)
     active_batch_count = db.scalar(
         select(func.count(InventoryBatch.id)).where(InventoryBatch.remaining_quantity > 0)
     ) or 0
@@ -185,11 +190,10 @@ def get_inventory_valuation(db: Session = Depends(get_db)):
     ) or 0
 
     return InventoryValuation(
-        total_value=round(total_value, 2),
+        total_value=total_value.quantize(Decimal("0.01")),
         total_active_batches=active_batch_count,
         total_active_products=active_prod_count,
     )
-
 
 @router.get("/spending", response_model=SpendingSummary)
 def get_spending_summary(db: Session = Depends(get_db)):
@@ -203,10 +207,10 @@ def get_spending_summary(db: Session = Depends(get_db)):
         .order_by(GrocerySession.purchase_date.desc())
     ).all()
 
-    total_spent = 0.0
+    total_spent = Decimal("0.00")
     transactions = []
     for s in sessions:
-        amt = float(s.total_amount) if s.total_amount else 0.0
+        amt = s.total_amount if s.total_amount is not None else Decimal("0.00")
         total_spent += amt
         transactions.append(
             SpendingItem(
@@ -218,11 +222,10 @@ def get_spending_summary(db: Session = Depends(get_db)):
         )
 
     return SpendingSummary(
-        total_spent=round(total_spent, 2),
+        total_spent=total_spent.quantize(Decimal("0.01")),
         sessions_count=len(sessions),
         recent_transactions=transactions,
     )
-
 
 @router.get("/waste", response_model=WasteSummary)
 def get_waste_summary(db: Session = Depends(get_db)):
@@ -239,16 +242,15 @@ def get_waste_summary(db: Session = Depends(get_db)):
         .order_by(InventoryEvent.occurred_at.desc())
     )
     events = db.scalars(stmt).all()
-
     total_qty = 0.0
-    total_loss = 0.0
+    total_loss = Decimal("0.00")
     items = []
 
     for ev in events:
         qty = float(ev.quantity)
         total_qty += qty
-        unit_price = float(ev.batch.unit_price) if ev.batch.unit_price else None
-        loss = (qty * unit_price) if unit_price is not None else None
+        unit_price = ev.batch.unit_price
+        loss = (Decimal(str(qty)) * unit_price) if unit_price is not None else None
         if loss is not None:
             total_loss += loss
 
@@ -260,7 +262,7 @@ def get_waste_summary(db: Session = Depends(get_db)):
                 quantity=qty,
                 unit=ev.batch.product.unit,
                 occurred_at=ev.occurred_at,
-                estimated_cost_wasted=round(loss, 2) if loss is not None else None,
+                estimated_cost_wasted=loss.quantize(Decimal("0.01")) if loss is not None else None,
                 reason=ev.reason,
             )
         )
@@ -268,10 +270,9 @@ def get_waste_summary(db: Session = Depends(get_db)):
     return WasteSummary(
         total_waste_events=len(events),
         total_quantity_wasted=round(total_qty, 2),
-        total_financial_loss=round(total_loss, 2),
+        total_financial_loss=total_loss.quantize(Decimal("0.01")),
         wasted_items=items,
     )
-
 
 @router.get("/price-history/{product_id}", response_model=ProductPriceHistory)
 def get_product_price_history(
@@ -304,7 +305,7 @@ def get_product_price_history(
         PriceHistoryPoint(
             batch_id=b.id,
             purchased_at=b.purchased_at,
-            unit_price=float(b.unit_price),
+            unit_price=b.unit_price,
             store_name=b.grocery_session.store_name if b.grocery_session else None,
         )
         for b in batches

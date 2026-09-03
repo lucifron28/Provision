@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 from app.schemas.product import ProductRead
@@ -12,7 +13,7 @@ class InventoryBatchBase(BaseModel):
     purchased_at: Optional[datetime] = Field(None, description="Purchase date and time")
     expiration_date: Optional[date] = Field(None, description="Expiration date (YYYY-MM-DD)")
     original_quantity: float = Field(..., gt=0, description="Original purchase quantity")
-    unit_price: Optional[float] = Field(None, ge=0, description="Cost per unit at purchase")
+    unit_price: Optional[Decimal] = Field(None, ge=Decimal("0.00"), description="Cost per unit at purchase")
 
 
 class InventoryBatchCreate(InventoryBatchBase):
@@ -22,8 +23,7 @@ class InventoryBatchCreate(InventoryBatchBase):
 class InventoryBatchUpdate(BaseModel):
     storage_location_id: Optional[int] = None
     expiration_date: Optional[date] = None
-    unit_price: Optional[float] = Field(None, ge=0)
-    remaining_quantity: Optional[float] = Field(None, ge=0)
+    unit_price: Optional[Decimal] = Field(None, ge=Decimal("0.00"))
 
 
 class InventoryBatchRead(InventoryBatchBase):

@@ -35,5 +35,4 @@ class Product(Base, TimestampMixin):
     batches: Mapped[List["InventoryBatch"]] = relationship(
         "InventoryBatch",
         back_populates="product",
-        cascade="all, delete-orphan",
     )

@@ -2,7 +2,7 @@ from datetime import date, datetime, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import select, nulls_last
+from sqlalchemy import select, nulls_last, func
 
 from app.core.database import get_db
 from app.models.batch import InventoryBatch
@@ -202,6 +202,16 @@ def delete_batch(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Inventory batch with ID {batch_id} not found",
         )
+
+    event_count = db.scalar(
+        select(func.count(InventoryEvent.id)).where(InventoryEvent.batch_id == batch_id)
+    ) or 0
+    if event_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot delete inventory batch with ID {batch_id}: it has {event_count} associated inventory event(s). Deletion blocked to preserve inventory history.",
+        )
+
     db.delete(batch)
     db.commit()
     return None

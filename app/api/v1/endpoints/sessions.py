@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
@@ -15,10 +16,8 @@ from app.schemas.session import (
     GrocerySessionUpdate,
     GrocerySessionRead,
     GrocerySessionWithBatches,
-    SessionItemInput,
     CommitSessionRequest,
 )
-from app.schemas.batch import InventoryBatchRead
 
 router = APIRouter()
 
@@ -91,6 +90,11 @@ def update_grocery_session(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Grocery session with ID {session_id} not found",
         )
+    if session.status != GrocerySessionStatus.DRAFT:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot edit session in '{session.status}' status",
+        )
 
     update_data = session_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -101,67 +105,6 @@ def update_grocery_session(
     return session
 
 
-@router.post("/{session_id}/add-item", response_model=InventoryBatchRead, status_code=status.HTTP_201_CREATED)
-def add_item_to_session(
-    session_id: int,
-    item_in: SessionItemInput,
-    db: Session = Depends(get_db),
-):
-    session = db.get(GrocerySession, session_id)
-    if not session:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Grocery session with ID {session_id} not found",
-        )
-    if session.status != GrocerySessionStatus.DRAFT:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot add items to session in status '{session.status}'",
-        )
-
-    product = db.get(Product, item_in.product_id)
-    if not product:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Product with ID {item_in.product_id} not found",
-        )
-
-    if item_in.storage_location_id:
-        location = db.get(StorageLocation, item_in.storage_location_id)
-        if not location:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Storage location with ID {item_in.storage_location_id} not found",
-            )
-
-    purchased_at = session.purchase_date or datetime.now(timezone.utc)
-    batch = InventoryBatch(
-        product_id=item_in.product_id,
-        storage_location_id=item_in.storage_location_id,
-        grocery_session_id=session.id,
-        purchased_at=purchased_at,
-        expiration_date=item_in.expiration_date,
-        original_quantity=item_in.quantity,
-        remaining_quantity=item_in.quantity,
-        unit_price=item_in.unit_price,
-    )
-    db.add(batch)
-    db.flush()
-
-    # Log initial purchase event
-    event = InventoryEvent(
-        batch_id=batch.id,
-        event_type=EventType.PURCHASED,
-        quantity=batch.original_quantity,
-        occurred_at=purchased_at,
-        reason=f"Intake from {session.store_name} (Session #{session.id})",
-    )
-    db.add(event)
-    db.commit()
-    db.refresh(batch)
-    return batch
-
-
 @router.post("/{session_id}/commit", response_model=GrocerySessionWithBatches)
 def commit_grocery_session(
     session_id: int,
@@ -169,65 +112,79 @@ def commit_grocery_session(
     db: Session = Depends(get_db),
 ):
     session = _get_session_with_batches(db, session_id)
+    if session.status == GrocerySessionStatus.COMPLETED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot commit an already completed session",
+        )
+    if session.status == GrocerySessionStatus.CANCELLED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot commit a cancelled session",
+        )
     if session.status != GrocerySessionStatus.DRAFT:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Session #{session_id} is already {session.status}",
+            detail=f"Cannot commit session in status '{session.status}'",
         )
 
     purchased_at = session.purchase_date or datetime.now(timezone.utc)
+    items_to_create = req.items or []
 
-    # Ingest any extra items passed directly at commit time
-    if req.items:
-        for item in req.items:
-            product = db.get(Product, item.product_id)
-            if not product:
+    # Validate all referenced products and storage locations upfront
+    for item in items_to_create:
+        product = db.get(Product, item.product_id)
+        if not product:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Product with ID {item.product_id} not found",
+            )
+        if item.storage_location_id:
+            location = db.get(StorageLocation, item.storage_location_id)
+            if not location:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Product with ID {item.product_id} not found",
+                    detail=f"Storage location with ID {item.storage_location_id} not found",
                 )
-            if item.storage_location_id:
-                location = db.get(StorageLocation, item.storage_location_id)
-                if not location:
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail=f"Storage location with ID {item.storage_location_id} not found",
-                    )
 
-            batch = InventoryBatch(
-                product_id=item.product_id,
-                storage_location_id=item.storage_location_id,
-                grocery_session_id=session.id,
-                purchased_at=purchased_at,
-                expiration_date=item.expiration_date,
-                original_quantity=item.quantity,
-                remaining_quantity=item.quantity,
-                unit_price=item.unit_price,
-            )
-            db.add(batch)
-            db.flush()
+    # Ingest validated items as inventory batches and initial PURCHASED events
+    created_batches: List[InventoryBatch] = []
+    for item in items_to_create:
+        batch = InventoryBatch(
+            product_id=item.product_id,
+            storage_location_id=item.storage_location_id,
+            grocery_session_id=session.id,
+            purchased_at=purchased_at,
+            expiration_date=item.expiration_date,
+            original_quantity=item.quantity,
+            remaining_quantity=item.quantity,
+            unit_price=item.unit_price,
+        )
+        db.add(batch)
+        db.flush()
 
-            event = InventoryEvent(
-                batch_id=batch.id,
-                event_type=EventType.PURCHASED,
-                quantity=batch.original_quantity,
-                occurred_at=purchased_at,
-                reason=f"Intake from {session.store_name} (Session #{session.id})",
-            )
-            db.add(event)
+        event = InventoryEvent(
+            batch_id=batch.id,
+            event_type=EventType.PURCHASED,
+            quantity=batch.original_quantity,
+            occurred_at=purchased_at,
+            reason=f"Intake from {session.store_name} (Session #{session.id})",
+        )
+        db.add(event)
+        created_batches.append(batch)
 
     session.status = GrocerySessionStatus.COMPLETED
 
     if req.total_amount is not None:
         session.total_amount = req.total_amount
     elif session.total_amount is None:
-        # Calculate sum of items if available
+        # Calculate sum of items if available using Decimal
         computed_total = sum(
-            (float(b.unit_price) * float(b.original_quantity))
-            for b in session.batches
+            (b.unit_price * Decimal(str(b.original_quantity)))
+            for b in created_batches
             if b.unit_price is not None
         )
-        if computed_total > 0:
+        if computed_total > Decimal("0.00"):
             session.total_amount = computed_total
 
     if req.notes:
@@ -248,6 +205,17 @@ def cancel_grocery_session(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Grocery session with ID {session_id} not found",
         )
+    if session.status == GrocerySessionStatus.COMPLETED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot cancel an already completed session",
+        )
+    if session.status == GrocerySessionStatus.CANCELLED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Session is already cancelled",
+        )
+
     session.status = GrocerySessionStatus.CANCELLED
     db.commit()
     db.refresh(session)

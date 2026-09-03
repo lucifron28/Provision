@@ -16,7 +16,7 @@ class InventoryBatch(Base, TimestampMixin):
     __tablename__ = "inventory_batches"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="RESTRICT"), nullable=False, index=True)
     storage_location_id: Mapped[Optional[int]] = mapped_column(ForeignKey("storage_locations.id", ondelete="SET NULL"), nullable=True, index=True)
     grocery_session_id: Mapped[Optional[int]] = mapped_column(ForeignKey("grocery_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
 
@@ -28,10 +28,10 @@ class InventoryBatch(Base, TimestampMixin):
     remaining_quantity: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, index=True)
 
     # Unit price at time of purchase, e.g. 42.50
-    unit_price: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
+    unit_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
 
     # Relationships
     product: Mapped["Product"] = relationship("Product", back_populates="batches")
     storage_location: Mapped[Optional["StorageLocation"]] = relationship("StorageLocation", back_populates="batches")
     grocery_session: Mapped[Optional["GrocerySession"]] = relationship("GrocerySession", back_populates="batches")
-    events: Mapped[List["InventoryEvent"]] = relationship("InventoryEvent", back_populates="batch", cascade="all, delete-orphan")
+    events: Mapped[List["InventoryEvent"]] = relationship("InventoryEvent", back_populates="batch")
