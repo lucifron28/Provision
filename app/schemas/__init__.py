@@ -17,6 +17,15 @@ from app.schemas.batch import (
     InventoryBatchRead,
     InventoryBatchWithDetails,
 )
+from app.schemas.session import (
+    GrocerySessionCreate,
+    GrocerySessionUpdate,
+    GrocerySessionRead,
+    GrocerySessionWithBatches,
+    SessionItemInput,
+    CommitSessionRequest,
+    GrocerySessionStatus,
+)
 
 __all__ = [
     "ProductCreate",
@@ -32,4 +41,11 @@ __all__ = [
     "InventoryBatchUpdate",
     "InventoryBatchRead",
     "InventoryBatchWithDetails",
+    "GrocerySessionCreate",
+    "GrocerySessionUpdate",
+    "GrocerySessionRead",
+    "GrocerySessionWithBatches",
+    "SessionItemInput",
+    "CommitSessionRequest",
+    "GrocerySessionStatus",
 ]
