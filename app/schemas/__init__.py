@@ -10,6 +10,13 @@ from app.schemas.location import (
     StorageLocationUpdate,
     StorageLocationRead,
 )
+from app.schemas.batch import (
+    InventoryBatchBase,
+    InventoryBatchCreate,
+    InventoryBatchUpdate,
+    InventoryBatchRead,
+    InventoryBatchWithDetails,
+)
 
 __all__ = [
     "ProductCreate",
@@ -20,4 +27,9 @@ __all__ = [
     "StorageLocationCreate",
     "StorageLocationUpdate",
     "StorageLocationRead",
+    "InventoryBatchBase",
+    "InventoryBatchCreate",
+    "InventoryBatchUpdate",
+    "InventoryBatchRead",
+    "InventoryBatchWithDetails",
 ]
