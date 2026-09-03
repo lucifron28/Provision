@@ -26,6 +26,13 @@ from app.schemas.session import (
     CommitSessionRequest,
     GrocerySessionStatus,
 )
+from app.schemas.shopping import (
+    ShoppingListItemBase,
+    ShoppingListItemCreate,
+    ShoppingListItemUpdate,
+    ShoppingListItemRead,
+    AutoGenerateShoppingRequest,
+)
 
 __all__ = [
     "ProductCreate",
@@ -48,4 +55,9 @@ __all__ = [
     "SessionItemInput",
     "CommitSessionRequest",
     "GrocerySessionStatus",
+    "ShoppingListItemBase",
+    "ShoppingListItemCreate",
+    "ShoppingListItemUpdate",
+    "ShoppingListItemRead",
+    "AutoGenerateShoppingRequest",
 ]
