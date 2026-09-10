@@ -392,7 +392,9 @@ public struct HomeView: View {
                 
                 Button(role: .destructive) {
                     showingProfileSheet = false
-                    authVM.logout()
+                    Task {
+                        await authVM.logout()
+                    }
                 } label: {
                     HStack {
                         Image(systemName: "rectangle.portrait.and.arrow.right")

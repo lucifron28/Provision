@@ -34,16 +34,20 @@ From the repository root:
 # 1. Enter backend directory
 cd backend
 
-# 2. Sync dependencies
+# 2. Configure local environment variables
+cp .env.example .env
+# Set your local JWT_SECRET_KEY in .env
+
+# 3. Sync dependencies
 uv sync
 
-# 3. Apply database migrations
+# 4. Apply database migrations
 uv run alembic upgrade head
 
-# 4. Run automated test suite
+# 5. Run automated test suite
 uv run pytest
 
-# 5. Start local development server
+# 6. Start local development server
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 

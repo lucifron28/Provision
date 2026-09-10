@@ -1,3 +1,5 @@
+import os
+os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-pytest-only-never-use-in-production")
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event

@@ -23,10 +23,10 @@ Provision is the native backend service powering the Provision iOS food inventor
 - **Runtime:** Python 3.13+ (managed via `uv`)
 - **Web Framework:** FastAPI + Pydantic v2
 - **ORM:** SQLAlchemy 2.0 (`Mapped`, `mapped_column`, `DeclarativeBase`)
-- **Database:** PostgreSQL (with automatic SQLite fallback for zero-config local development and testing)
+- **Database:** SQLite
+- **Authentication:** JWT access tokens (HS256) + Argon2 password hashing (`pwdlib[argon2]`)
 - **Migrations:** Alembic
 - **Testing:** Pytest + HTTPX (`TestClient`)
-
 ---
 
 ## 3. Database Schema & Entities
@@ -149,13 +149,17 @@ Commit conventions:
 # Navigate to backend directory
 cd backend
 
-# 1. Sync dependencies
+# 1. Configure environment variables
+cp .env.example .env
+# Set your local JWT_SECRET_KEY in .env
+
+# 2. Sync dependencies
 uv sync
 
-# 2. Run database migrations
+# 3. Run database migrations
 uv run alembic upgrade head
 
-# 3. Start local server
+# 4. Start local server
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 

@@ -43,10 +43,16 @@ public struct ContentView: View {
                 }
             case .signedIn:
                 mainAppTabView
+                    .onAppear {
+                        showingRegister = false
+                    }
             }
         }
         .task {
             await authVM.checkExistingSession()
+        }
+        .onChange(of: authVM.authState) { _, _ in
+            showingRegister = false
         }
     }
     

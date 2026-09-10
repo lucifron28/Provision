@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     VERSION: str = "0.1.0"
     API_V1_STR: str = "/api/v1"
     DATABASE_URL: str = "sqlite:///./provision.db"
-    JWT_SECRET_KEY: str = "provision-midterm-insecure-dev-secret-key-change-in-prod"
+    JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
 

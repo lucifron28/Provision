@@ -95,12 +95,10 @@ public class AuthViewModel: ObservableObject {
         }
     }
     
-    /// Clears the Keychain token and returns the app to the signedOut state.
-    public func logout() {
+    /// Clears the Keychain token, clears in-memory APIClient token, and returns app to signedOut.
+    public func logout() async {
         keychain.deleteAccessToken()
-        Task {
-            await client.setAccessToken(nil)
-        }
+        await client.setAccessToken(nil)
         self.currentUser = nil
         self.authState = .signedOut
     }

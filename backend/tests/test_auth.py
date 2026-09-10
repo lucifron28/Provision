@@ -123,3 +123,41 @@ def test_protected_pantry_endpoint_fails_without_token(unauthed_client):
 def test_protected_pantry_endpoint_succeeds_with_token(unauthed_client, auth_headers):
     response = unauthed_client.get("/api/v1/products/", headers=auth_headers)
     assert response.status_code == 200
+
+
+def test_protected_shopping_delete_fails_without_token(unauthed_client, auth_headers):
+    # Create item with auth
+    create_resp = unauthed_client.post(
+        "/api/v1/shopping-list/",
+        headers=auth_headers,
+        json={"name": "Test Item", "quantity": 1.0},
+    )
+    assert create_resp.status_code == 201
+    item_id = create_resp.json()["id"]
+    
+    # DELETE without token should fail with 401
+    del_resp = unauthed_client.delete(f"/api/v1/shopping-list/{item_id}")
+    assert del_resp.status_code == 401
+    
+    # DELETE with token should succeed with 204
+    del_auth_resp = unauthed_client.delete(f"/api/v1/shopping-list/{item_id}", headers=auth_headers)
+    assert del_auth_resp.status_code == 204
+
+
+def test_protected_shopping_clear_completed_fails_without_token(unauthed_client, auth_headers):
+    # Create bought item with auth
+    create_resp = unauthed_client.post(
+        "/api/v1/shopping-list/",
+        headers=auth_headers,
+        json={"name": "Bought Item", "quantity": 1.0},
+    )
+    item_id = create_resp.json()["id"]
+    unauthed_client.post(f"/api/v1/shopping-list/{item_id}/toggle", headers=auth_headers)
+    
+    # Clear without token should fail with 401
+    clear_resp = unauthed_client.delete("/api/v1/shopping-list/completed/clear")
+    assert clear_resp.status_code == 401
+    
+    # Clear with token should succeed with 200
+    clear_auth_resp = unauthed_client.delete("/api/v1/shopping-list/completed/clear", headers=auth_headers)
+    assert clear_auth_resp.status_code == 200

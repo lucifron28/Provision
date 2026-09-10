@@ -107,6 +107,34 @@ public actor APIClient {
         }
     }
     
+    private func executeVoid(_ request: URLRequest) async throws {
+        var req = request
+        if let token = accessToken, !token.isEmpty {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: req)
+        } catch {
+            throw APIError.networkError(error)
+        }
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse(-1, "Not an HTTP response")
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            if let errorObj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let detail = errorObj["detail"] as? String {
+                throw APIError.serverMessage(detail)
+            }
+            let rawString = String(data: data, encoding: .utf8)
+            throw APIError.invalidResponse(httpResponse.statusCode, rawString)
+        }
+    }
+    
     // MARK: - Authentication
     
     public func register(request: RegisterRequest) async throws -> User {
@@ -261,20 +289,14 @@ public actor APIClient {
         let url = baseURL.appendingPathComponent("shopping-list/\(id)")
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
-        let (_, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
-            throw APIError.invalidResponse(-1, "Failed to delete shopping item")
-        }
+        try await executeVoid(request)
     }
     
     public func clearCompletedShoppingItems() async throws {
         let url = baseURL.appendingPathComponent("shopping-list/completed/clear")
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
-        let (_, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
-            throw APIError.invalidResponse(-1, "Failed to clear completed items")
-        }
+        try await executeVoid(request)
     }
     
     public func generateShoppingSuggestions(threshold: Double = 1.0) async throws -> [ShoppingItem] {
