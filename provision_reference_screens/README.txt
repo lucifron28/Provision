@@ -1,0 +1,27 @@
+Provision reference screens extracted from the uploaded Stitch design archive.
+These are NOT the exact 23 final Figma Prototype / Full App renders.
+The Figma connector in this chat exposes those final renders only as temporary inline image URLs, which cannot be fetched into the file sandbox for zipping.
+
+Included PNGs: 22
+01. stitch_smart_pantry_ios_design_direction/session_review/screen.png
+02. stitch_smart_pantry_ios_design_direction/expiration_ocr/screen.png
+03. stitch_smart_pantry_ios_design_direction/rapid_scanner/screen.png
+04. stitch_smart_pantry_ios_design_direction/receipt_matching/screen.png
+05. stitch_smart_pantry_ios_design_direction/success_state/screen.png
+06. stitch_smart_pantry_ios_design_direction/home_the_warm_kitchen/screen.png
+07. stitch_smart_pantry_ios_design_direction/home_modern_utility/screen.png
+08. stitch_smart_pantry_ios_design_direction/home_the_precision_tool/screen.png
+09. stitch_smart_pantry_ios_design_direction/inventory_overview/screen.png
+10. stitch_smart_pantry_ios_design_direction/search_filter/screen.png
+11. stitch_smart_pantry_ios_design_direction/storage_pantry_shelf_a/screen.png
+12. stitch_smart_pantry_ios_design_direction/batch_detail_rcpt_0994/screen.png
+13. stitch_smart_pantry_ios_design_direction/log_consumption/screen.png
+14. stitch_smart_pantry_ios_design_direction/product_century_tuna/screen.png
+15. stitch_smart_pantry_ios_design_direction/movement_history/screen.png
+16. stitch_smart_pantry_ios_design_direction/empty_inventory/screen.png
+17. stitch_smart_pantry_ios_design_direction/inventory_bulk_view/screen.png
+18. stitch_smart_pantry_ios_design_direction/home_refined/screen.png
+19. stitch_smart_pantry_ios_design_direction/rapid_scanner_refined/screen.png
+20. stitch_smart_pantry_ios_design_direction/inventory_refined/screen.png
+21. stitch_smart_pantry_ios_design_direction/session_review_refined/screen.png
+22. stitch_smart_pantry_ios_design_direction/receipt_review_refined/screen.png
