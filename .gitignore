@@ -1,31 +1,33 @@
-# Python-generated files
+# OS files
+.DS_Store
+
+# Xcode & Apple development
+xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcuserdatad/
+*.xcuserstate
+DerivedData/
+build/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*~
+
+# Python & environments
 __pycache__/
 *.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
-
-# Virtual environments
-.venv
-
-# Environment variables and local secrets
-.env
-.env.*
-!.env.example
-
-# Databases
+.venv/
+.pytest_cache/
+.coverage
 *.db
 *.sqlite
 *.sqlite3
-
-# Testing and coverage
-.pytest_cache/
-.coverage
-htmlcov/
-
-# IDE and editor files
-.vscode/
-.idea/
-*.swp
-
+.env
+.env.*
+!.env.example

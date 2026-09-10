@@ -146,6 +146,9 @@ Commit conventions:
 ### Installation & Run
 
 ```bash
+# Navigate to backend directory
+cd backend
+
 # 1. Sync dependencies
 uv sync
 
