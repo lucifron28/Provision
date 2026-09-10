@@ -29,13 +29,21 @@ public enum APIError: LocalizedError {
 public actor APIClient {
     public static let shared = APIClient()
     
-    // Default development host pointing to local FastAPI server
+    public static func defaultBaseURL() -> URL {
+        #if targetEnvironment(simulator)
+        return URL(string: "http://127.0.0.1:8000/api/v1")!
+        #else
+        // Physical iPhone: connect over local Wi-Fi to development Mac
+        return URL(string: "http://172.22.67.167:8000/api/v1")!
+        #endif
+    }
+    
     public var baseURL: URL
     private let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
     
-    public init(baseURL: URL = URL(string: "http://127.0.0.1:8000/api/v1")!) {
+    public init(baseURL: URL = APIClient.defaultBaseURL()) {
         self.baseURL = baseURL
         
         let config = URLSessionConfiguration.default
@@ -45,6 +53,10 @@ public actor APIClient {
         
         self.decoder = JSONDecoder()
         self.encoder = JSONEncoder()
+    }
+    
+    public func setBaseURL(_ url: URL) {
+        self.baseURL = url
     }
     
     // MARK: - Generic Request Helper
