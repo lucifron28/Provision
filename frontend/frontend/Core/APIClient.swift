@@ -26,24 +26,31 @@ public enum APIError: LocalizedError {
     }
 }
 
-public actor APIClient {
-    public static let shared = APIClient()
+public enum APIEnvironment {
+    /// Configurable local LAN host for physical iPhone testing.
+    /// Change this to your development Mac's local IP (e.g. "192.168.1.100") when testing on a physical device.
+    public static var localDeviceHost: String = "127.0.0.1"
+    public static var port: Int = 8000
+    public static var apiVersionPath: String = "api/v1"
     
-    public static func defaultBaseURL() -> URL {
+    public static var defaultBaseURL: URL {
         #if targetEnvironment(simulator)
-        return URL(string: "http://127.0.0.1:8000/api/v1")!
+        return URL(string: "http://127.0.0.1:\(port)/\(apiVersionPath)")!
         #else
-        // Physical iPhone: connect over local Wi-Fi to development Mac
-        return URL(string: "http://172.22.67.167:8000/api/v1")!
+        return URL(string: "http://\(localDeviceHost):\(port)/\(apiVersionPath)")!
         #endif
     }
+}
+
+public actor APIClient {
+    public static let shared = APIClient()
     
     public var baseURL: URL
     private let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
     
-    public init(baseURL: URL = APIClient.defaultBaseURL()) {
+    public init(baseURL: URL = APIEnvironment.defaultBaseURL) {
         self.baseURL = baseURL
         
         let config = URLSessionConfiguration.default
@@ -265,7 +272,7 @@ public actor APIClient {
     }
     
     public func fetchValuation() async throws -> InventoryValuation {
-        let url = baseURL.appendingPathComponent("analytics/inventory-valuation")
+        let url = baseURL.appendingPathComponent("analytics/valuation")
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         return try await execute(request)

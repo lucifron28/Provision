@@ -23,6 +23,10 @@ public struct ProductDetailView: View {
         self.product = product
     }
     
+    private var currentProduct: Product {
+        viewModel.selectedProduct ?? product
+    }
+    
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -38,7 +42,7 @@ public struct ProductDetailView: View {
             .padding(16)
         }
         .background(ProvisionTheme.background.ignoresSafeArea())
-        .navigationTitle(product.barcode != nil ? "SKU: \(product.barcode!)" : "Product Detail")
+        .navigationTitle(currentProduct.barcode != nil ? "SKU: \(currentProduct.barcode!)" : "Product Detail")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await viewModel.selectProduct(product)
@@ -60,7 +64,7 @@ public struct ProductDetailView: View {
             }
         } message: {
             if let batch = selectedBatchForDiscard {
-                Text("Are you sure you want to discard \(formatQuantity(batch.remaining_quantity)) \(product.unit ?? "units") expiring \(batch.displayExpiration)? This will log a waste event.")
+                Text("Are you sure you want to discard \(formatQuantity(batch.remaining_quantity)) \(currentProduct.unit ?? "units") expiring \(batch.displayExpiration)? This will log a waste event.")
             } else {
                 Text("Are you sure you want to discard this batch?")
             }
@@ -82,11 +86,11 @@ public struct ProductDetailView: View {
             }
             
             VStack(alignment: .leading, spacing: 6) {
-                Text(product.name)
+                Text(currentProduct.name)
                     .font(.system(size: 22, weight: .bold, design: .serif))
                     .foregroundStyle(ProvisionTheme.textPrimary)
                 
-                Text(product.subtitle)
+                Text(currentProduct.subtitle)
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(ProvisionTheme.textSecondary)
                 
@@ -96,9 +100,9 @@ public struct ProductDetailView: View {
                         .foregroundStyle(ProvisionTheme.textTertiary)
                         .tracking(0.6)
                     
-                    Text("\(product.displayStock) \(product.displayUnit.uppercased())")
+                    Text("\(currentProduct.displayStock) \(currentProduct.displayUnit.uppercased())")
                         .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(product.isOutOfStock ? ProvisionTheme.redAlert : ProvisionTheme.provisionGreen)
+                        .foregroundStyle(currentProduct.isOutOfStock ? ProvisionTheme.redAlert : ProvisionTheme.provisionGreen)
                 }
                 .padding(.top, 4)
             }
@@ -128,7 +132,7 @@ public struct ProductDetailView: View {
                 .foregroundStyle(ProvisionTheme.provisionGreen)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
-            .disabled(product.isOutOfStock)
+            .disabled(currentProduct.isOutOfStock)
             
             // Discard Button
             Button {
@@ -247,7 +251,7 @@ public struct ProductDetailView: View {
                 
                 Spacer()
                 
-                Text("\(formatQuantity(batch.remaining_quantity)) \(product.unit ?? "units")")
+                Text("\(formatQuantity(batch.remaining_quantity)) \(currentProduct.unit ?? "units")")
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(ProvisionTheme.textPrimary)
             }
@@ -335,7 +339,7 @@ public struct ProductDetailView: View {
         NavigationStack {
             VStack(spacing: 24) {
                 VStack(spacing: 8) {
-                    Text("Consume \(product.name)")
+                    Text("Consume \(currentProduct.name)")
                         .font(.system(size: 20, weight: .bold, design: .serif))
                     Text("Units will automatically be deducted First Expired First Out (FEFO)")
                         .font(.system(size: 13))
@@ -345,11 +349,11 @@ public struct ProductDetailView: View {
                 .padding(.top, 16)
                 
                 VStack(spacing: 12) {
-                    Text("\(formatQuantity(consumeQuantity)) \(product.unit ?? "units")")
+                    Text("\(formatQuantity(consumeQuantity)) \(currentProduct.unit ?? "units")")
                         .font(.system(size: 40, weight: .bold, design: .serif))
                         .foregroundStyle(ProvisionTheme.provisionGreen)
                     
-                    Stepper("", value: $consumeQuantity, in: 0.5...max(product.total_remaining_quantity ?? 10, 1.0), step: 0.5)
+                    Stepper("", value: $consumeQuantity, in: 0.5...max(currentProduct.total_remaining_quantity ?? 10, 1.0), step: 0.5)
                         .labelsHidden()
                 }
                 .padding(20)
@@ -370,7 +374,7 @@ public struct ProductDetailView: View {
                 Button {
                     Task {
                         let success = await viewModel.consumeProduct(
-                            productId: product.id,
+                            productId: currentProduct.id,
                             quantity: consumeQuantity,
                             reason: consumeReason
                         )
@@ -407,7 +411,7 @@ public struct ProductDetailView: View {
                     .padding(.top, 16)
                 
                 VStack(spacing: 12) {
-                    Text("\(formatQuantity(adjustQuantity)) \(product.unit ?? "units")")
+                    Text("\(formatQuantity(adjustQuantity)) \(currentProduct.unit ?? "units")")
                         .font(.system(size: 36, weight: .bold, design: .serif))
                         .foregroundStyle(ProvisionTheme.textPrimary)
                     

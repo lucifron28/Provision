@@ -39,7 +39,7 @@ public struct ScanView: View {
                 .padding(.vertical, 12)
             }
             .background(ProvisionTheme.background.ignoresSafeArea())
-            .navigationTitle("Intake Scanner")
+            .navigationTitle("Intake Scanner (Prototype)")
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showingAddManualSheet) {
                 manualEntrySheet
@@ -156,10 +156,10 @@ public struct ScanView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Intake Review")
+                    Text("Intake Review (Simulation)")
                         .font(.system(size: 18, weight: .bold, design: .serif))
                         .foregroundStyle(ProvisionTheme.textPrimary)
-                    Text("\(viewModel.scannedItems.count) items ready to commit")
+                    Text("\(viewModel.scannedItems.count) items ready to simulate intake")
                         .font(.system(size: 12))
                         .foregroundStyle(ProvisionTheme.textSecondary)
                 }
@@ -207,7 +207,7 @@ public struct ScanView: View {
                                 .tint(.white)
                         } else {
                             Image(systemName: "checkmark.circle.fill")
-                            Text("Commit to Inventory")
+                            Text("Simulate Intake (Midterm Prototype)")
                                 .font(.system(size: 16, weight: .bold))
                         }
                     }

@@ -96,7 +96,7 @@ public class ScanViewModel: ObservableObject {
         // Simulating intake batch registration via API
         do {
             try await Task.sleep(nanoseconds: 500_000_000)
-            self.toastMessage = "Successfully intake committed \(scannedItems.count) items into inventory"
+            self.toastMessage = "Simulated intake of \(scannedItems.count) items (Midterm Prototype)"
             self.scannedItems.removeAll()
         } catch {
             self.errorMessage = "Failed to commit session: \(error.localizedDescription)"

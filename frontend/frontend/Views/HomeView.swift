@@ -71,7 +71,7 @@ public struct HomeView: View {
                 Text("Good Morning,")
                     .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(ProvisionTheme.textSecondary)
-                Text("Smart Pantry")
+                Text("Provision")
                     .font(.system(size: 22, weight: .bold, design: .serif))
                     .foregroundStyle(ProvisionTheme.provisionGreen)
             }
@@ -111,8 +111,7 @@ public struct HomeView: View {
                     .foregroundStyle(ProvisionTheme.textSecondary)
                     .tracking(0.8)
                 
-                let val = viewModel.valuation.total_value > 0 ? viewModel.valuation.total_value : 12850
-                Text("₱\(formatCurrency(val))")
+                Text("₱\(formatCurrency(viewModel.valuation.total_value))")
                     .font(.system(size: 32, weight: .bold, design: .serif))
                     .foregroundStyle(ProvisionTheme.textPrimary)
             }
@@ -126,8 +125,7 @@ public struct HomeView: View {
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(ProvisionTheme.textSecondary)
                     
-                    let spend = viewModel.spending.total_spent > 0 ? viewModel.spending.total_spent : 8420
-                    Text("₱\(formatCurrency(spend))")
+                    Text("₱\(formatCurrency(viewModel.spending.total_spent))")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(ProvisionTheme.textPrimary)
                 }
@@ -173,11 +171,27 @@ public struct HomeView: View {
             }
             
             if viewModel.expiringSoonItems.isEmpty {
-                // Placeholder preview cards matching reference screen
                 HStack(spacing: 12) {
-                    expiringCardPreview(name: "Milk", detail: "Whole, 1L", days: 1, isUrgent: true, icon: "drop.fill")
-                    expiringCardPreview(name: "Yogurt", detail: "Greek, Plain", days: 2, isUrgent: false, icon: "cup.and.saucer.fill")
+                    ZStack {
+                        Circle()
+                            .fill(ProvisionTheme.provisionGreenLight)
+                            .frame(width: 36, height: 36)
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("No Items Expiring Soon")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+                        Text("All inventory batches are within safe shelf life.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                    }
+                    Spacer()
                 }
+                .padding(14)
+                .provisionCard()
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
@@ -248,42 +262,6 @@ public struct HomeView: View {
         .provisionCard()
     }
     
-    private func expiringCardPreview(name: String, detail: String, days: Int, isUrgent: Bool, icon: String) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                ZStack {
-                    Circle()
-                        .fill(isUrgent ? ProvisionTheme.redLight : ProvisionTheme.amberLight)
-                        .frame(width: 36, height: 36)
-                    Image(systemName: icon)
-                        .font(.system(size: 15))
-                        .foregroundStyle(isUrgent ? ProvisionTheme.redAlert : ProvisionTheme.amberWarning)
-                }
-                
-                Spacer()
-                
-                Text("\(days) \(days == 1 ? "day" : "days")")
-                    .font(.system(size: 10, weight: .bold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(isUrgent ? ProvisionTheme.redLight : ProvisionTheme.amberLight)
-                    .foregroundStyle(isUrgent ? ProvisionTheme.redAlert : ProvisionTheme.amberWarning)
-                    .clipShape(Capsule())
-            }
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(name)
-                    .font(.system(size: 16, weight: .bold, design: .serif))
-                    .foregroundStyle(ProvisionTheme.textPrimary)
-                Text(detail)
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(ProvisionTheme.textSecondary)
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .provisionCard()
-    }
     
     private var restockNeededSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -292,11 +270,26 @@ public struct HomeView: View {
                 .foregroundStyle(ProvisionTheme.textPrimary)
             
             if viewModel.lowStockItems.isEmpty {
-                // Static demo preview matching reference screens
-                VStack(spacing: 10) {
-                    restockRowPreview(name: "Eggs", detail: "Only 2 left", icon: "oval.fill")
-                    restockRowPreview(name: "Jasmine Rice", detail: "In Stock (1 kg)", icon: "leaf.fill")
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(ProvisionTheme.provisionGreenLight)
+                            .frame(width: 40, height: 40)
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Pantry Well Stocked")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+                        Text("No items are currently below low-stock threshold.")
+                            .font(.system(size: 13))
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                    }
+                    Spacer()
                 }
+                .padding(12)
+                .provisionCard()
             } else {
                 VStack(spacing: 10) {
                     ForEach(viewModel.lowStockItems) { item in
@@ -341,41 +334,6 @@ public struct HomeView: View {
         }
     }
     
-    private func restockRowPreview(name: String, detail: String, icon: String) -> some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(ProvisionTheme.surfaceSecondary)
-                    .frame(width: 40, height: 40)
-                Image(systemName: icon)
-                    .foregroundStyle(ProvisionTheme.provisionGreen)
-            }
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(name)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(ProvisionTheme.textPrimary)
-                Text(detail)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(detail.contains("Only") ? ProvisionTheme.redAlert : ProvisionTheme.textSecondary)
-            }
-            
-            Spacer()
-            
-            Button {
-                onNavigateToShopping()
-            } label: {
-                Image(systemName: "cart")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(ProvisionTheme.textPrimary)
-                    .padding(8)
-                    .background(ProvisionTheme.surfaceSecondary)
-                    .clipShape(Circle())
-            }
-        }
-        .padding(12)
-        .provisionCard()
-    }
     
     private func toastView(message: String, isError: Bool) -> some View {
         Text(message)

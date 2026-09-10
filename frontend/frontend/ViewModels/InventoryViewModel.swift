@@ -63,11 +63,12 @@ public class InventoryViewModel: ObservableObject {
     }
     
     public func selectProduct(_ product: Product) async {
-        self.selectedProduct = product
+        let current = products.first(where: { $0.id == product.id }) ?? product
+        self.selectedProduct = current
         self.isDetailLoading = true
         
         do {
-            let batches = try await client.fetchBatches(productId: product.id, activeOnly: true)
+            let batches = try await client.fetchBatches(productId: current.id, activeOnly: true)
             // Sort FEFO (Earliest expiration first)
             self.productBatches = batches.sorted {
                 ($0.expiration_date ?? "9999-12-31") < ($1.expiration_date ?? "9999-12-31")
@@ -86,8 +87,8 @@ public class InventoryViewModel: ObservableObject {
             
             // Refresh product and batches
             await loadData()
-            if let sel = selectedProduct, sel.id == productId {
-                await selectProduct(sel)
+            if let updated = products.first(where: { $0.id == productId }) {
+                await selectProduct(updated)
             }
             return true
         } catch {
@@ -102,8 +103,8 @@ public class InventoryViewModel: ObservableObject {
             self.toastMessage = "Batch discarded"
             
             await loadData()
-            if let sel = selectedProduct {
-                await selectProduct(sel)
+            if let sel = selectedProduct, let updated = products.first(where: { $0.id == sel.id }) {
+                await selectProduct(updated)
             }
             return true
         } catch {
@@ -118,8 +119,8 @@ public class InventoryViewModel: ObservableObject {
             self.toastMessage = "Batch adjusted to \(newQuantity)"
             
             await loadData()
-            if let sel = selectedProduct {
-                await selectProduct(sel)
+            if let sel = selectedProduct, let updated = products.first(where: { $0.id == sel.id }) {
+                await selectProduct(updated)
             }
             return true
         } catch {

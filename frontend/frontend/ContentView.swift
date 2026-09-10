@@ -20,53 +20,43 @@ public struct ContentView: View {
     
     public var body: some View {
         TabView(selection: $selectedTab) {
-            HomeView(
-                viewModel: homeVM,
-                onNavigateToInventory: {
-                    selectedTab = 1
-                },
-                onNavigateToShopping: {
-                    selectedTab = 3
-                }
-            )
-            .tabItem {
-                Label("Home", systemImage: "house.fill")
-            }
-            .tag(0)
-            
-            InventoryView(viewModel: inventoryVM)
-                .tabItem {
-                    Label("Inventory", systemImage: "shippingbox.fill")
-                }
-                .tag(1)
-            
-            ScanView(
-                viewModel: scanVM,
-                onSessionCommitted: {
-                    Task {
-                        await inventoryVM.loadData()
-                        await homeVM.loadDashboard()
+            Tab("Home", systemImage: "house.fill", value: 0) {
+                HomeView(
+                    viewModel: homeVM,
+                    onNavigateToInventory: {
+                        selectedTab = 1
+                    },
+                    onNavigateToShopping: {
+                        selectedTab = 3
                     }
-                    selectedTab = 1
-                }
-            )
-            .tabItem {
-                Label("Scan", systemImage: "barcode.viewfinder")
+                )
             }
-            .tag(2)
             
-            ShoppingListView(viewModel: shoppingVM)
-                .tabItem {
-                    Label("Shopping", systemImage: "cart.fill")
-                }
-                .badge(shoppingVM.pendingCount > 0 ? "\(shoppingVM.pendingCount)" : nil)
-                .tag(3)
+            Tab("Inventory", systemImage: "shippingbox.fill", value: 1) {
+                InventoryView(viewModel: inventoryVM)
+            }
             
-            AnalyticsView(viewModel: analyticsVM)
-                .tabItem {
-                    Label("Analytics", systemImage: "chart.bar.fill")
-                }
-                .tag(4)
+            Tab("Scan", systemImage: "barcode.viewfinder", value: 2) {
+                ScanView(
+                    viewModel: scanVM,
+                    onSessionCommitted: {
+                        Task {
+                            await inventoryVM.loadData()
+                            await homeVM.loadDashboard()
+                        }
+                        selectedTab = 1
+                    }
+                )
+            }
+            
+            Tab("Shopping", systemImage: "cart.fill", value: 3) {
+                ShoppingListView(viewModel: shoppingVM)
+            }
+            .badge(shoppingVM.pendingCount)
+            
+            Tab("Analytics", systemImage: "chart.bar.fill", value: 4) {
+                AnalyticsView(viewModel: analyticsVM)
+            }
         }
         .tint(ProvisionTheme.provisionGreen)
     }

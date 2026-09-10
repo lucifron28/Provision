@@ -52,8 +52,7 @@ public struct AnalyticsView: View {
                     .foregroundStyle(ProvisionTheme.provisionGreen)
             }
             
-            let val = viewModel.valuation.total_value > 0 ? viewModel.valuation.total_value : 12850
-            Text("₱\(formatCurrency(val))")
+            Text("₱\(formatCurrency(viewModel.valuation.total_value))")
                 .font(.system(size: 32, weight: .bold, design: .serif))
                 .foregroundStyle(ProvisionTheme.textPrimary)
             
@@ -64,8 +63,7 @@ public struct AnalyticsView: View {
                     Text("ACTIVE BATCHES")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(ProvisionTheme.textTertiary)
-                    let batches = viewModel.valuation.total_active_batches > 0 ? viewModel.valuation.total_active_batches : 24
-                    Text("\(batches)")
+                    Text("\(viewModel.valuation.total_active_batches)")
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(ProvisionTheme.textPrimary)
                 }
@@ -76,8 +74,7 @@ public struct AnalyticsView: View {
                     Text("CATALOG PRODUCTS")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(ProvisionTheme.textTertiary)
-                    let prods = viewModel.valuation.total_active_products > 0 ? viewModel.valuation.total_active_products : 18
-                    Text("\(prods)")
+                    Text("\(viewModel.valuation.total_active_products)")
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(ProvisionTheme.textPrimary)
                 }
@@ -99,8 +96,7 @@ public struct AnalyticsView: View {
                     .foregroundStyle(ProvisionTheme.provisionGreen)
             }
             
-            let spend = viewModel.spending.total_spent > 0 ? viewModel.spending.total_spent : 8420
-            Text("₱\(formatCurrency(spend))")
+            Text("₱\(formatCurrency(viewModel.spending.total_spent))")
                 .font(.system(size: 28, weight: .bold, design: .serif))
                 .foregroundStyle(ProvisionTheme.textPrimary)
             
@@ -108,8 +104,7 @@ public struct AnalyticsView: View {
                 Image(systemName: "checkmark.seal.fill")
                     .font(.system(size: 12))
                     .foregroundStyle(ProvisionTheme.provisionGreen)
-                let sess = viewModel.spending.sessions_count > 0 ? viewModel.spending.sessions_count : 4
-                Text("Across \(sess) intake grocery sessions")
+                Text("Across \(viewModel.spending.sessions_count) intake grocery sessions")
                     .font(.system(size: 13))
                     .foregroundStyle(ProvisionTheme.textSecondary)
             }
@@ -131,8 +126,7 @@ public struct AnalyticsView: View {
             }
             
             HStack(alignment: .firstTextBaseline) {
-                let loss = viewModel.waste.total_financial_loss > 0 ? viewModel.waste.total_financial_loss : 185
-                Text("₱\(formatCurrency(loss))")
+                Text("₱\(formatCurrency(viewModel.waste.total_financial_loss))")
                     .font(.system(size: 28, weight: .bold, design: .serif))
                     .foregroundStyle(ProvisionTheme.redAlert)
                 
@@ -146,8 +140,7 @@ public struct AnalyticsView: View {
                     Text("ITEMS WASTED")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(ProvisionTheme.textTertiary)
-                    let items = viewModel.waste.total_quantity_wasted > 0 ? viewModel.waste.total_quantity_wasted : 2
-                    Text(String(format: "%.0f units", items))
+                    Text(String(format: "%.0f units", viewModel.waste.total_quantity_wasted))
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(ProvisionTheme.textPrimary)
                 }
@@ -158,8 +151,7 @@ public struct AnalyticsView: View {
                     Text("WASTE LOGS")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(ProvisionTheme.textTertiary)
-                    let events = viewModel.waste.total_waste_events > 0 ? viewModel.waste.total_waste_events : 1
-                    Text("\(events) logged")
+                    Text("\(viewModel.waste.total_waste_events) logged")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(ProvisionTheme.textPrimary)
                 }
