@@ -5,6 +5,7 @@ from app.models.batch import InventoryBatch
 from app.models.event import InventoryEvent, EventType
 from app.models.session import GrocerySession, GrocerySessionStatus
 from app.models.shopping import ShoppingListItem
+from app.models.user import User
 
 __all__ = [
     "Base",
@@ -18,4 +19,5 @@ __all__ = [
     "GrocerySession",
     "GrocerySessionStatus",
     "ShoppingListItem",
+    "User",
 ]

@@ -42,6 +42,12 @@ from app.schemas.analytics import (
     WasteSummary,
     ProductPriceHistory,
 )
+from app.schemas.auth import (
+    UserCreate,
+    UserRead,
+    LoginRequest,
+    TokenResponse,
+)
 
 __all__ = [
     "ProductCreate",
@@ -76,4 +82,8 @@ __all__ = [
     "SpendingSummary",
     "WasteSummary",
     "ProductPriceHistory",
+    "UserCreate",
+    "UserRead",
+    "LoginRequest",
+    "TokenResponse",
 ]
