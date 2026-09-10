@@ -1,6 +1,15 @@
 # Provision
 
-Smart household food inventory and pantry management system powering automated batch tracking, First Expired First Out (FEFO) consumption logic, and household decision intelligence.
+Smart household food inventory and pantry management system.
+
+---
+
+## Tech Stack
+
+- **Frontend:** Swift + native SwiftUI (Deployment Target: iOS 26.5+)
+- **Backend:** FastAPI + SQLAlchemy 2.0 + SQLite
+- **Authentication:** JWT access tokens (HS256) + Argon2 password hashing (`pwdlib[argon2]`)
+- **Token Storage:** Native iOS Keychain Services (`Security` framework)
 
 ---
 
@@ -8,16 +17,16 @@ Smart household food inventory and pantry management system powering automated b
 
 ```text
 Provision/
-├── backend/                      # FastAPI + SQLAlchemy 2.0 REST API (PostgreSQL / SQLite fallback)
+├── backend/                      # FastAPI + SQLite REST API
 ├── frontend/                     # Native SwiftUI iOS application (Xcode project)
-└── provision_reference_screens/  # Extracted Stitch/Figma UI reference screens
+└── provision_reference_screens/  # Design and reference exports
 ```
 
 ---
 
 ## Getting Started
 
-### Backend Setup & Execution
+### Backend Execution
 
 From the repository root:
 
@@ -28,10 +37,13 @@ cd backend
 # 2. Sync dependencies
 uv sync
 
-# 3. Run automated tests
+# 3. Apply database migrations
+uv run alembic upgrade head
+
+# 4. Run automated test suite
 uv run pytest
 
-# 4. Start local development server (defaults to http://127.0.0.1:8000)
+# 5. Start local development server
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
@@ -39,7 +51,7 @@ uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ---
 
-### Frontend Setup & Execution
+### Frontend Execution
 
 Open the iOS project in Xcode:
 
@@ -47,16 +59,33 @@ Open the iOS project in Xcode:
 open frontend/frontend.xcodeproj
 ```
 
-- **Deployment Target:** iOS 26.5+ (Swift 6 / SwiftUI)
-- **Architecture:** MVVM with reactive `ObservableObject` ViewModels and native async/await networking.
-- **Simulator Execution:** Defaults to `http://127.0.0.1:8000/api/v1`.
-- **Physical Device Execution:** Set your development Mac's local LAN IP in `APIEnvironment.localDeviceHost` (`Core/APIClient.swift`). Local HTTP communication is permitted via `NSAllowsLocalNetworking`.
+- **Deployment Target:** iOS 26.5+
+- **Frontend:** Native SwiftUI
+- **Simulator Development:** Connects by default to `http://127.0.0.1:8000/api/v1`.
+- **Physical Device Testing:** Set your development Mac's LAN IP in `APIEnvironment.localDeviceHost` (`frontend/Core/APIClient.swift`). Local HTTP traffic is permitted via `NSAllowsLocalNetworking`.
 
 ---
 
-## Project Status
+## Important Domain Limitation
 
-This repository is currently at **approximately 50% completion for the iOS Development midterm project**:
-- Complete backend domain model, FEFO consumption engine, analytics, and 21 passing pytest tests.
-- Complete frontend core UI architecture: 5-tab pantry navigation (`Home`, `Inventory`, `Scan`, `Shopping`, `Analytics`), product detail, and FEFO batch consumption flows.
-- **Midterm Scope Note:** Camera-based `AVFoundation` barcode capture, receipt OCR, and `VisionKit` text recognition are intentionally simulated prototypes at this stage and reserved for the final project.
+> **Notice:** Provision currently authenticates access to a single shared household pantry. Per-user and multi-household data isolation is reserved for future development.
+
+---
+
+## Midterm Project Status (~50% Complete)
+
+This project is intentionally at **approximately 50% completion** for the iOS Development midterm milestone:
+
+### Implemented (Midterm Scope):
+- User registration, login, and `/auth/me` verification with Argon2 password hashing.
+- JWT access tokens stored in native iOS Keychain with automatic session restoration.
+- Protected household pantry API: Catalog, Storage Locations, Inventory Batches, FEFO Consumption, Discard, Physical Count Adjustments, Shopping List, and Household Analytics.
+- Native SwiftUI 5-tab app shell (`Home`, `Inventory`, `Scan`, `Shopping`, `Analytics`), user profile/logout sheet, and Product Detail with FEFO batch inspection.
+- Prototype Scan UI simulation.
+
+### Reserved for Final Project:
+- Real camera and `AVFoundation` barcode scanning pipeline.
+- `VisionKit` OCR for receipt intake and package expiration date extraction.
+- Automatic inventory commit from live intake scanning.
+- Offline-first local database caching (SwiftData / Core Data).
+- Background expiration alert notifications.
