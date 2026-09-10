@@ -2,7 +2,6 @@ import SwiftUI
 
 public struct ScanView: View {
     @ObservedObject var viewModel: ScanViewModel
-    var onSessionCommitted: () -> Void
     
     @State private var scanMode: Int = 0 // 0: Rapid Barcode, 1: Receipt Review
     @State private var showingAddManualSheet: Bool = false
@@ -10,9 +9,8 @@ public struct ScanView: View {
     @State private var manualBarcode: String = ""
     @State private var manualBrand: String = ""
     
-    public init(viewModel: ScanViewModel, onSessionCommitted: @escaping () -> Void = {}) {
+    public init(viewModel: ScanViewModel) {
         self.viewModel = viewModel
-        self.onSessionCommitted = onSessionCommitted
     }
     
     public var body: some View {
@@ -198,7 +196,6 @@ public struct ScanView: View {
                 Button {
                     Task {
                         await viewModel.commitIntakeSession()
-                        onSessionCommitted()
                     }
                 } label: {
                     HStack {

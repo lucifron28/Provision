@@ -46,10 +46,10 @@ public actor APIClient {
     public static let shared = APIClient()
     
     public var baseURL: URL
+    public var accessToken: String? = nil
     private let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
-    
     public init(baseURL: URL = APIEnvironment.defaultBaseURL) {
         self.baseURL = baseURL
         
@@ -66,13 +66,22 @@ public actor APIClient {
         self.baseURL = url
     }
     
+    public func setAccessToken(_ token: String?) {
+        self.accessToken = token
+    }
+    
     // MARK: - Generic Request Helper
     
     private func execute<T: Decodable>(_ request: URLRequest) async throws -> T {
+        var req = request
+        if let token = accessToken, !token.isEmpty {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await session.data(for: req)
         } catch {
             throw APIError.networkError(error)
         }
@@ -96,6 +105,33 @@ public actor APIClient {
         } catch {
             throw APIError.decodingError(error)
         }
+    }
+    
+    // MARK: - Authentication
+    
+    public func register(request: RegisterRequest) async throws -> User {
+        let url = baseURL.appendingPathComponent("auth/register")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try encoder.encode(request)
+        return try await execute(req)
+    }
+    
+    public func login(request: LoginRequest) async throws -> AuthToken {
+        let url = baseURL.appendingPathComponent("auth/login")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try encoder.encode(request)
+        return try await execute(req)
+    }
+    
+    public func fetchCurrentUser() async throws -> User {
+        let url = baseURL.appendingPathComponent("auth/me")
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        return try await execute(req)
     }
     
     // MARK: - Products

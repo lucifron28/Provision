@@ -2,15 +2,20 @@ import SwiftUI
 
 public struct HomeView: View {
     @ObservedObject var viewModel: HomeViewModel
+    @ObservedObject var authVM: AuthViewModel
     var onNavigateToInventory: () -> Void
     var onNavigateToShopping: () -> Void
     
+    @State private var showingProfileSheet: Bool = false
+    
     public init(
         viewModel: HomeViewModel,
+        authVM: AuthViewModel,
         onNavigateToInventory: @escaping () -> Void = {},
         onNavigateToShopping: @escaping () -> Void = {}
     ) {
         self.viewModel = viewModel
+        self.authVM = authVM
         self.onNavigateToInventory = onNavigateToInventory
         self.onNavigateToShopping = onNavigateToShopping
     }
@@ -48,6 +53,9 @@ public struct HomeView: View {
                     toastView(message: err, isError: true)
                 }
             }
+            .sheet(isPresented: $showingProfileSheet) {
+                profileSheet
+            }
         }
     }
     
@@ -79,7 +87,7 @@ public struct HomeView: View {
             Spacer()
             
             Button {
-                // Settings or notifications action
+                showingProfileSheet = true
             } label: {
                 Image(systemName: "gearshape")
                     .font(.system(size: 18, weight: .medium))
@@ -334,6 +342,83 @@ public struct HomeView: View {
         }
     }
     
+    
+    private var profileSheet: some View {
+        NavigationStack {
+            VStack(spacing: 24) {
+                VStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(ProvisionTheme.provisionGreenLight)
+                            .frame(width: 72, height: 72)
+                        Image(systemName: "person.crop.circle.fill")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 64, height: 64)
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                    }
+                    
+                    VStack(spacing: 4) {
+                        Text(authVM.currentUser?.displayNameOrEmail ?? "Household Member")
+                            .font(.system(size: 20, weight: .bold, design: .serif))
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+                        
+                        Text(authVM.currentUser?.email ?? "user@provision.local")
+                            .font(.system(size: 14))
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                    }
+                }
+                .padding(.top, 24)
+                
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("HOUSEHOLD PANTRY")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                        .tracking(0.6)
+                    
+                    HStack {
+                        Text("Pantry Access")
+                            .font(.system(size: 15))
+                        Spacer()
+                        Text("Shared Household")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                    }
+                    .padding(14)
+                    .provisionCard()
+                }
+                
+                Spacer()
+                
+                Button(role: .destructive) {
+                    showingProfileSheet = false
+                    authVM.logout()
+                } label: {
+                    HStack {
+                        Image(systemName: "rectangle.portrait.and.arrow.right")
+                        Text("Log Out")
+                            .font(.system(size: 16, weight: .semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(ProvisionTheme.redLight)
+                    .foregroundStyle(ProvisionTheme.redAlert)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .padding(.bottom, 16)
+            }
+            .padding(.horizontal, 20)
+            .background(ProvisionTheme.background.ignoresSafeArea())
+            .navigationTitle("Provision")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { showingProfileSheet = false }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
     
     private func toastView(message: String, isError: Bool) -> some View {
         Text(message)
