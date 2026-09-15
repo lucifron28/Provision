@@ -19,10 +19,9 @@ public struct AddInventoryView: View {
     @State private var newProductBrand: String = ""
     @State private var newProductCategory: String = ""
     @State private var newProductBarcode: String = ""
-    @State private var newProductPackageSizeStr: String = ""
     
     // Batch Details
-    @State private var quantityText: String = "1"
+    @State private var amountText: String = "1"
     @State private var trackExpiration: Bool = false
     @State private var expirationDate: Date = Date()
     @State private var purchaseDate: Date = Date()
@@ -43,6 +42,17 @@ public struct AddInventoryView: View {
         }
     }
     
+    private var currentUnit: String {
+        if isRestockMode || mode == .existing {
+            if let pid = selectedProductId, let prod = viewModel.products.first(where: { $0.id == pid }) {
+                return prod.displayUnit
+            }
+            return "pcs"
+        } else {
+            return newProductUnit
+        }
+    }
+    
     public var body: some View {
         NavigationStack {
             Form {
@@ -59,14 +69,23 @@ public struct AddInventoryView: View {
                                 Text(prod.name)
                                     .font(.system(size: 17, weight: .bold, design: .serif))
                                     .foregroundStyle(ProvisionTheme.textPrimary)
-                                Text(prod.subtitle)
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(ProvisionTheme.textSecondary)
+                                if let brand = prod.brand, !brand.isEmpty {
+                                    Text(brand)
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(ProvisionTheme.textSecondary)
+                                }
                             }
                             .padding(.vertical, 2)
                         } else {
                             Text("Selected Product")
                                 .font(.system(size: 15, weight: .medium))
+                        }
+                        
+                        HStack {
+                            Text("Unit")
+                            Spacer()
+                            Text(currentUnit)
+                                .foregroundStyle(ProvisionTheme.textSecondary)
                         }
                     }
                 } else {
@@ -84,25 +103,40 @@ public struct AddInventoryView: View {
                                     Text("\(p.name) \(p.brand != nil ? "(\(p.brand!))" : "")").tag(Int?.some(p.id))
                                 }
                             }
+                            
+                            if selectedProductId != nil {
+                                HStack {
+                                    Text("Unit")
+                                    Spacer()
+                                    Text(currentUnit)
+                                        .foregroundStyle(ProvisionTheme.textSecondary)
+                                }
+                            }
                         } else {
                             TextField("Product Name (Required)", text: $newProductName)
-                            TextField("Unit (e.g. pcs, cans, kg)", text: $newProductUnit)
+                            
+                            Picker("Unit", selection: $newProductUnit) {
+                                ForEach(ProductUnits.allUnits, id: \.self) { u in
+                                    Text(u).tag(u)
+                                }
+                            }
+                            
                             TextField("Brand (Optional)", text: $newProductBrand)
                             TextField("Category (Optional)", text: $newProductCategory)
                             TextField("Barcode (Optional)", text: $newProductBarcode)
-                            TextField("Package Size (Optional)", text: $newProductPackageSizeStr)
-                                .keyboardType(.decimalPad)
                         }
                     }
                 }
                 
                 Section("Stock Information") {
                     HStack {
-                        Text("Quantity")
+                        Text("Amount")
                         Spacer()
-                        TextField("e.g. 2.5", text: $quantityText)
-                            .keyboardType(.decimalPad)
+                        TextField(ProductUnits.isMeasured(currentUnit) ? "e.g. 1.5" : "e.g. 1", text: $amountText)
+                            .keyboardType(ProductUnits.isMeasured(currentUnit) ? .decimalPad : .numberPad)
                             .multilineTextAlignment(.trailing)
+                        Text(currentUnit)
+                            .foregroundStyle(ProvisionTheme.textSecondary)
                     }
                     
                     Toggle("Track Expiration", isOn: $trackExpiration)
@@ -164,13 +198,13 @@ public struct AddInventoryView: View {
     }
     
     private var isFormValid: Bool {
-        let parsedQty = Double(quantityText.replacingOccurrences(of: ",", with: "."))
+        let parsedQty = Double(amountText.replacingOccurrences(of: ",", with: "."))
         guard let qty = parsedQty, qty > 0 else { return false }
         
         if isRestockMode || mode == .existing {
             return selectedProductId != nil
         } else {
-            return !newProductName.trimmingCharacters(in: .whitespaces).isEmpty
+            return !newProductName.trimmingCharacters(in: .whitespaces).isEmpty && !newProductUnit.trimmingCharacters(in: .whitespaces).isEmpty
         }
     }
     
@@ -189,9 +223,14 @@ public struct AddInventoryView: View {
     
     private func submit() {
         errorMessage = nil
-        let parsedQty = Double(quantityText.replacingOccurrences(of: ",", with: "."))
+        let parsedQty = Double(amountText.replacingOccurrences(of: ",", with: "."))
         guard let qty = parsedQty, qty > 0 else {
-            errorMessage = "Please enter a valid quantity greater than zero."
+            errorMessage = "Please enter a valid amount greater than zero."
+            return
+        }
+        
+        if ProductUnits.isCount(currentUnit) && floor(qty) != qty {
+            errorMessage = "Enter a whole number for this unit."
             return
         }
         
@@ -211,14 +250,13 @@ public struct AddInventoryView: View {
         Task {
             var newProduct: ProductCreate? = nil
             if !isRestockMode && mode == .new {
-                let pSize = Double(newProductPackageSizeStr.replacingOccurrences(of: ",", with: "."))
                 newProduct = ProductCreate(
                     name: newProductName.trimmingCharacters(in: .whitespaces),
                     brand: newProductBrand.isEmpty ? nil : newProductBrand,
                     barcode: newProductBarcode.isEmpty ? nil : newProductBarcode,
                     category: newProductCategory.isEmpty ? nil : newProductCategory,
-                    package_size: pSize,
-                    unit: newProductUnit.isEmpty ? nil : newProductUnit
+                    package_size: nil,
+                    unit: newProductUnit
                 )
             }
             

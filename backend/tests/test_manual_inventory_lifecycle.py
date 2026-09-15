@@ -176,3 +176,51 @@ def test_decimal_quantity_lifecycle(client: TestClient):
     b_check = client.get(f"/api/v1/batches/{batch_id}")
     assert b_check.status_code == 200
     assert b_check.json()["remaining_quantity"] == 2.0
+
+
+def test_stock_amount_semantics(client: TestClient):
+    # Amount 5 -> original_quantity 5.0, unit kg
+    prod_res = client.post("/api/v1/products/", json={
+        "name": "Jasmine Rice",
+        "unit": "kg"
+    })
+    assert prod_res.status_code == 201
+    prod_id = prod_res.json()["id"]
+    assert prod_res.json()["unit"] == "kg"
+
+    # Batch A: 5 kg
+    b1_res = client.post("/api/v1/batches/", json={
+        "product_id": prod_id,
+        "original_quantity": 5.0
+    })
+    assert b1_res.status_code == 201
+    assert b1_res.json()["original_quantity"] == 5.0
+    assert b1_res.json()["remaining_quantity"] == 5.0
+
+    p_check = client.get(f"/api/v1/products/{prod_id}")
+    assert p_check.json()["total_remaining_quantity"] == 5.0
+
+    # Restock Batch B: 2.5 kg
+    b2_res = client.post("/api/v1/batches/", json={
+        "product_id": prod_id,
+        "original_quantity": 2.5
+    })
+    assert b2_res.status_code == 201
+    assert b2_res.json()["original_quantity"] == 2.5
+
+    p_check2 = client.get(f"/api/v1/products/{prod_id}")
+    assert p_check2.json()["total_remaining_quantity"] == 7.5
+    assert p_check2.json()["active_batches_count"] == 2
+
+    # Consume 0.75 kg
+    con_res = client.post("/api/v1/inventory/consume", json={
+        "product_id": prod_id,
+        "quantity": 0.75,
+        "reason": "Lunch"
+    })
+    assert con_res.status_code == 200
+    assert con_res.json()["total_consumed"] == 0.75
+
+    p_check3 = client.get(f"/api/v1/products/{prod_id}")
+    assert p_check3.json()["total_remaining_quantity"] == 6.75
+

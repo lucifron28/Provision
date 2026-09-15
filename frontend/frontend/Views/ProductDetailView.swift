@@ -12,12 +12,14 @@ public struct ProductDetailView: View {
     @State private var showingAddStockSheet: Bool = false
     @State private var editingBatch: InventoryBatch? = nil
     
-    @State private var consumeQuantity: Double = 1.0
+    @State private var consumeAmountText: String = "1"
     @State private var consumeReason: String = "Household consumption"
+    @State private var consumeErrorMessage: String? = nil
     
     @State private var adjustBatchId: Int = 0
-    @State private var adjustQuantity: Double = 1.0
+    @State private var adjustAmountText: String = "1"
     @State private var adjustReason: String = "Physical inventory count"
+    @State private var adjustErrorMessage: String? = nil
     
     @State private var selectedBatchForDiscard: InventoryBatch? = nil
     
@@ -73,7 +75,7 @@ public struct ProductDetailView: View {
             }
         } message: {
             if let batch = selectedBatchForDiscard {
-                Text("Are you sure you want to discard \(formatQuantity(batch.remaining_quantity)) \(currentProduct.unit ?? "units") expiring \(batch.displayExpiration)? This will log a waste event.")
+                Text("Are you sure you want to discard \(formatQuantity(batch.remaining_quantity)) \(currentProduct.displayUnit) expiring \(batch.displayExpiration)? This will log a waste event.")
             } else {
                 Text("Are you sure you want to discard this batch?")
             }
@@ -139,7 +141,8 @@ public struct ProductDetailView: View {
         HStack(spacing: 10) {
             // Consume Button
             Button {
-                consumeQuantity = 1.0
+                consumeAmountText = "1"
+                consumeErrorMessage = nil
                 showingConsumeSheet = true
             } label: {
                 VStack(spacing: 6) {
@@ -182,7 +185,8 @@ public struct ProductDetailView: View {
             Button {
                 if let earliest = viewModel.productBatches.first {
                     adjustBatchId = earliest.id
-                    adjustQuantity = earliest.remaining_quantity
+                    adjustAmountText = formatQuantity(earliest.remaining_quantity)
+                    adjustErrorMessage = nil
                     showingAdjustSheet = true
                 }
             } label: {
@@ -273,7 +277,7 @@ public struct ProductDetailView: View {
                 
                 Spacer()
                 
-                Text("\(formatQuantity(batch.remaining_quantity)) \(currentProduct.unit ?? "units")")
+                Text("\(formatQuantity(batch.remaining_quantity)) \(currentProduct.displayUnit)")
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(ProvisionTheme.textPrimary)
                 
@@ -286,7 +290,8 @@ public struct ProductDetailView: View {
                     
                     Button {
                         adjustBatchId = batch.id
-                        adjustQuantity = batch.remaining_quantity
+                        adjustAmountText = formatQuantity(batch.remaining_quantity)
+                        adjustErrorMessage = nil
                         showingAdjustSheet = true
                     } label: {
                         Label("Adjust Quantity", systemImage: "slider.horizontal.3")
@@ -353,7 +358,7 @@ public struct ProductDetailView: View {
             
             Spacer()
             
-            Text("\(formatQuantity(batch.remaining_quantity))")
+            Text("\(formatQuantity(batch.remaining_quantity)) \(currentProduct.displayUnit)")
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(ProvisionTheme.textPrimary)
             
@@ -373,7 +378,8 @@ public struct ProductDetailView: View {
                 
                 Button {
                     adjustBatchId = batch.id
-                    adjustQuantity = batch.remaining_quantity
+                    adjustAmountText = formatQuantity(batch.remaining_quantity)
+                    adjustErrorMessage = nil
                     showingAdjustSheet = true
                 } label: {
                     Label("Adjust Quantity", systemImage: "slider.horizontal.3")
@@ -404,13 +410,44 @@ public struct ProductDetailView: View {
                 }
                 .padding(.top, 16)
                 
+                if let err = consumeErrorMessage {
+                    Text(err)
+                        .font(.system(size: 13))
+                        .foregroundStyle(ProvisionTheme.redAlert)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
+                
                 VStack(spacing: 12) {
-                    Text("\(formatQuantity(consumeQuantity)) \(currentProduct.unit ?? "units")")
-                        .font(.system(size: 40, weight: .bold, design: .serif))
-                        .foregroundStyle(ProvisionTheme.provisionGreen)
+                    HStack {
+                        Text("Amount")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                        Spacer()
+                        TextField("0", text: $consumeAmountText)
+                            .keyboardType(ProductUnits.isMeasured(currentProduct.unit) ? .decimalPad : .numberPad)
+                            .font(.system(size: 36, weight: .bold, design: .serif))
+                            .multilineTextAlignment(.trailing)
+                        Text(currentProduct.displayUnit)
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                    }
                     
-                    Stepper("", value: $consumeQuantity, in: 0.5...max(currentProduct.total_remaining_quantity ?? 10, 1.0), step: 0.5)
+                    if ProductUnits.isCount(currentProduct.unit) {
+                        Stepper("", onIncrement: {
+                            let cur = Int(Double(consumeAmountText.replacingOccurrences(of: ",", with: ".")) ?? 0)
+                            let maxVal = Int(currentProduct.total_remaining_quantity ?? 1000)
+                            if cur < maxVal {
+                                consumeAmountText = "\(cur + 1)"
+                            }
+                        }, onDecrement: {
+                            let cur = Int(Double(consumeAmountText.replacingOccurrences(of: ",", with: ".")) ?? 1)
+                            if cur > 1 {
+                                consumeAmountText = "\(cur - 1)"
+                            }
+                        })
                         .labelsHidden()
+                    }
                 }
                 .padding(20)
                 .frame(maxWidth: .infinity)
@@ -428,14 +465,32 @@ public struct ProductDetailView: View {
                 Spacer()
                 
                 Button {
+                    consumeErrorMessage = nil
+                    let parsed = Double(consumeAmountText.replacingOccurrences(of: ",", with: "."))
+                    guard let amount = parsed, amount > 0 else {
+                        consumeErrorMessage = "Please enter a valid amount."
+                        return
+                    }
+                    let maxAvailable = currentProduct.total_remaining_quantity ?? 0
+                    guard amount <= maxAvailable else {
+                        consumeErrorMessage = "Cannot consume more than available stock (\(formatQuantity(maxAvailable)) \(currentProduct.displayUnit))."
+                        return
+                    }
+                    if ProductUnits.isCount(currentProduct.unit) && floor(amount) != amount {
+                        consumeErrorMessage = "Enter a whole number for this unit."
+                        return
+                    }
+                    
                     Task {
                         let success = await viewModel.consumeProduct(
                             productId: currentProduct.id,
-                            quantity: consumeQuantity,
+                            quantity: amount,
                             reason: consumeReason
                         )
                         if success {
                             showingConsumeSheet = false
+                        } else {
+                            consumeErrorMessage = viewModel.errorMessage
                         }
                     }
                 } label: {
@@ -466,13 +521,41 @@ public struct ProductDetailView: View {
                     .font(.system(size: 20, weight: .bold, design: .serif))
                     .padding(.top, 16)
                 
+                if let err = adjustErrorMessage {
+                    Text(err)
+                        .font(.system(size: 13))
+                        .foregroundStyle(ProvisionTheme.redAlert)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
+                
                 VStack(spacing: 12) {
-                    Text("\(formatQuantity(adjustQuantity)) \(currentProduct.unit ?? "units")")
-                        .font(.system(size: 36, weight: .bold, design: .serif))
-                        .foregroundStyle(ProvisionTheme.textPrimary)
+                    HStack {
+                        Text("Amount")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                        Spacer()
+                        TextField("0", text: $adjustAmountText)
+                            .keyboardType(ProductUnits.isMeasured(currentProduct.unit) ? .decimalPad : .numberPad)
+                            .font(.system(size: 36, weight: .bold, design: .serif))
+                            .multilineTextAlignment(.trailing)
+                        Text(currentProduct.displayUnit)
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+                    }
                     
-                    Stepper("", value: $adjustQuantity, in: 0...100, step: 1.0)
+                    if ProductUnits.isCount(currentProduct.unit) {
+                        Stepper("", onIncrement: {
+                            let cur = Int(Double(adjustAmountText.replacingOccurrences(of: ",", with: ".")) ?? 0)
+                            adjustAmountText = "\(cur + 1)"
+                        }, onDecrement: {
+                            let cur = Int(Double(adjustAmountText.replacingOccurrences(of: ",", with: ".")) ?? 1)
+                            if cur > 0 {
+                                adjustAmountText = "\(cur - 1)"
+                            }
+                        })
                         .labelsHidden()
+                    }
                 }
                 .padding()
                 .frame(maxWidth: .infinity)
@@ -484,14 +567,27 @@ public struct ProductDetailView: View {
                 Spacer()
                 
                 Button {
+                    adjustErrorMessage = nil
+                    let parsed = Double(adjustAmountText.replacingOccurrences(of: ",", with: "."))
+                    guard let newAmount = parsed, newAmount >= 0 else {
+                        adjustErrorMessage = "Please enter a valid amount."
+                        return
+                    }
+                    if ProductUnits.isCount(currentProduct.unit) && floor(newAmount) != newAmount {
+                        adjustErrorMessage = "Enter a whole number for this unit."
+                        return
+                    }
+                    
                     Task {
                         let success = await viewModel.adjustBatch(
                             batchId: adjustBatchId,
-                            newQuantity: adjustQuantity,
+                            newQuantity: newAmount,
                             reason: adjustReason
                         )
                         if success {
                             showingAdjustSheet = false
+                        } else {
+                            adjustErrorMessage = viewModel.errorMessage
                         }
                     }
                 } label: {
@@ -516,10 +612,6 @@ public struct ProductDetailView: View {
     }
     
     private func formatQuantity(_ qty: Double) -> String {
-        if qty.truncatingRemainder(dividingBy: 1) == 0 {
-            return "\(Int(qty))"
-        } else {
-            return String(format: "%.1f", qty)
-        }
+        ProductUnits.formatAmount(qty)
     }
 }
