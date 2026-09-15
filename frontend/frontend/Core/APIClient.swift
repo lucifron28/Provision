@@ -235,23 +235,12 @@ public actor APIClient {
         return try await execute(request)
     }
     
-    public func updateBatchMetadata(batchId: Int, updates: [String: Any?]) async throws -> InventoryBatch {
+    public func updateBatchMetadata(batchId: Int, updates: [String: Any]) async throws -> InventoryBatch {
         let url = baseURL.appendingPathComponent("batches/\(batchId)")
         var request = URLRequest(url: url)
         request.httpMethod = "PATCH"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        // Convert Any? to NSNull for JSONSerialization
-        var sanitized: [String: Any] = [:]
-        for (key, value) in updates {
-            if let val = value {
-                sanitized[key] = val
-            } else {
-                sanitized[key] = NSNull()
-            }
-        }
-        
-        request.httpBody = try JSONSerialization.data(withJSONObject: sanitized)
+        request.httpBody = try JSONSerialization.data(withJSONObject: updates)
         return try await execute(request)
     }
     

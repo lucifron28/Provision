@@ -108,32 +108,46 @@ public struct EditBatchView: View {
         do {
             locations = try await APIClient.shared.fetchLocations()
         } catch {
-            print("Failed to fetch locations: \(error)")
+            errorMessage = "Could not load storage locations."
         }
         isLoadingLocations = false
     }
     
     private func submit() {
+        let trimmedPrice = unitPriceStr.trimmingCharacters(in: .whitespaces)
+        var parsedPrice: Double? = nil
+        if !trimmedPrice.isEmpty {
+            guard let p = Double(trimmedPrice.replacingOccurrences(of: ",", with: ".")), p >= 0 else {
+                errorMessage = "Enter a valid price."
+                return
+            }
+            parsedPrice = p
+        }
+        
         isSubmitting = true
         errorMessage = nil
         
         Task {
-            var updates: [String: Any?] = [:]
+            var updates: [String: Any] = [:]
             
             if trackExpiration {
                 let formatter = DateFormatter()
                 formatter.dateFormat = "yyyy-MM-dd"
                 updates["expiration_date"] = formatter.string(from: expirationDate)
             } else {
-                updates["expiration_date"] = nil // This will map to NSNull in APIClient
+                updates["expiration_date"] = NSNull()
             }
             
-            updates["storage_location_id"] = selectedLocationId
+            if let locationId = selectedLocationId {
+                updates["storage_location_id"] = locationId
+            } else {
+                updates["storage_location_id"] = NSNull()
+            }
             
-            if unitPriceStr.trimmingCharacters(in: .whitespaces).isEmpty {
-                updates["unit_price"] = nil
-            } else if let price = Double(unitPriceStr.replacingOccurrences(of: ",", with: ".")) {
+            if let price = parsedPrice {
                 updates["unit_price"] = price
+            } else {
+                updates["unit_price"] = NSNull()
             }
             
             let success = await viewModel.updateBatchMetadata(batchId: batch.id, updates: updates)

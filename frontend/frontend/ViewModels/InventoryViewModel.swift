@@ -170,7 +170,7 @@ public class InventoryViewModel: ObservableObject {
         return await createManualInventory(product: nil, productId: productId, batch: batch)
     }
     
-    public func updateBatchMetadata(batchId: Int, updates: [String: Any?]) async -> Bool {
+    public func updateBatchMetadata(batchId: Int, updates: [String: Any]) async -> Bool {
         do {
             _ = try await client.updateBatchMetadata(batchId: batchId, updates: updates)
             self.toastMessage = "Batch updated successfully"

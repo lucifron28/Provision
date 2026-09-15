@@ -276,6 +276,34 @@ public struct ProductDetailView: View {
                 Text("\(formatQuantity(batch.remaining_quantity)) \(currentProduct.unit ?? "units")")
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(ProvisionTheme.textPrimary)
+                
+                Menu {
+                    Button {
+                        editingBatch = batch
+                    } label: {
+                        Label("Edit Batch", systemImage: "pencil")
+                    }
+                    
+                    Button {
+                        adjustBatchId = batch.id
+                        adjustQuantity = batch.remaining_quantity
+                        showingAdjustSheet = true
+                    } label: {
+                        Label("Adjust Quantity", systemImage: "slider.horizontal.3")
+                    }
+                    
+                    Button(role: .destructive) {
+                        selectedBatchForDiscard = batch
+                        showingDiscardAlert = true
+                    } label: {
+                        Label("Discard Batch", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 14))
+                        .padding(4)
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                }
             }
             
             Divider()

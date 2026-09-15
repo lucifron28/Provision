@@ -1,6 +1,8 @@
 import SwiftUI
 
 public struct InventoryView: View {
+    @ObservedObject var viewModel: InventoryViewModel
+
     @State private var showingFilterSheet: Bool = false
     @State private var showingAddSheet: Bool = false
     

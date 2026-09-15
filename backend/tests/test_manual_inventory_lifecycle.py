@@ -4,13 +4,15 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 def test_manual_inventory_lifecycle(client: TestClient, db: Session):
-    # 1. Create product
+    # 1. Create product (omitted source defaults to USER_CONFIRMED)
     prod_res = client.post("/api/v1/products/", json={
         "name": "Milk",
         "unit": "bottles"
     })
     assert prod_res.status_code == 201
-    prod_id = prod_res.json()["id"]
+    prod_data = prod_res.json()
+    assert prod_data["source"] == "USER_CONFIRMED"
+    prod_id = prod_data["id"]
 
     # --- Scenario: Batch creation with expiration ---
     tomorrow = (date.today() + timedelta(days=1)).isoformat()
@@ -59,21 +61,21 @@ def test_manual_inventory_lifecycle(client: TestClient, db: Session):
     batch_ids2 = [item["batch_id"] for item in exp_res2.json()]
     assert b1_id not in batch_ids2
 
-    # --- Scenario: update expiration date ---
+    # --- Scenario: update and clear expiration date ---
     upd_res = client.patch(f"/api/v1/batches/{b2_id}", json={
         "expiration_date": tomorrow
     })
     assert upd_res.status_code == 200
     assert upd_res.json()["expiration_date"] == tomorrow
 
-    # --- Scenario: clear expiration date if supported ---
+    # Clear expiration date -> null
     upd2_res = client.patch(f"/api/v1/batches/{b2_id}", json={
         "expiration_date": None
     })
     assert upd2_res.status_code == 200
     assert upd2_res.json()["expiration_date"] is None
 
-    # --- Scenario: update storage location ---
+    # --- Scenario: update and clear storage location ---
     loc_res = client.post("/api/v1/locations/", json={"name": "Fridge"})
     loc_id = loc_res.json()["id"]
     
@@ -82,6 +84,28 @@ def test_manual_inventory_lifecycle(client: TestClient, db: Session):
     })
     assert upd3_res.status_code == 200
     assert upd3_res.json()["storage_location"]["name"] == "Fridge"
+
+    # Clear storage_location_id -> null
+    clear_loc_res = client.patch(f"/api/v1/batches/{b2_id}", json={
+        "storage_location_id": None
+    })
+    assert clear_loc_res.status_code == 200
+    assert clear_loc_res.json()["storage_location_id"] is None
+    assert clear_loc_res.json()["storage_location"] is None
+
+    # --- Scenario: update and clear unit price ---
+    upd_price_res = client.patch(f"/api/v1/batches/{b2_id}", json={
+        "unit_price": "45.50"
+    })
+    assert upd_price_res.status_code == 200
+    assert float(upd_price_res.json()["unit_price"]) == 45.50
+
+    # Clear unit_price -> null
+    clear_price_res = client.patch(f"/api/v1/batches/{b2_id}", json={
+        "unit_price": None
+    })
+    assert clear_price_res.status_code == 200
+    assert clear_price_res.json()["unit_price"] is None
 
     # --- Scenario: quantity adjustment still creates event ---
     adj_res = client.post(f"/api/v1/inventory/batches/{b2_id}/adjust", json={
@@ -120,3 +144,35 @@ def test_manual_inventory_lifecycle(client: TestClient, db: Session):
     exp_res4 = client.get("/api/v1/analytics/expiring-soon")
     batch_ids4 = [item["batch_id"] for item in exp_res4.json()]
     assert b3_id not in batch_ids4
+
+
+def test_decimal_quantity_lifecycle(client: TestClient):
+    # PATCH 11: Create batch with original_quantity = 2.5, consume 0.5, expect remaining_quantity = 2.0
+    prod_res = client.post("/api/v1/products/", json={
+        "name": "Rice",
+        "unit": "kg"
+    })
+    assert prod_res.status_code == 201
+    prod_data = prod_res.json()
+    assert prod_data["source"] == "USER_CONFIRMED"
+    prod_id = prod_data["id"]
+
+    batch_res = client.post("/api/v1/batches/", json={
+        "product_id": prod_id,
+        "original_quantity": 2.5
+    })
+    assert batch_res.status_code == 201
+    batch_id = batch_res.json()["id"]
+    assert batch_res.json()["remaining_quantity"] == 2.5
+
+    con_res = client.post("/api/v1/inventory/consume", json={
+        "product_id": prod_id,
+        "quantity": 0.5,
+        "reason": "Cooked dinner"
+    })
+    assert con_res.status_code == 200
+    assert con_res.json()["total_consumed"] == 0.5
+
+    b_check = client.get(f"/api/v1/batches/{batch_id}")
+    assert b_check.status_code == 200
+    assert b_check.json()["remaining_quantity"] == 2.0
