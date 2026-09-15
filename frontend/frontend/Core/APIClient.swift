@@ -183,6 +183,15 @@ public actor APIClient {
         return try await execute(request)
     }
     
+    public func createProduct(_ product: ProductCreate) async throws -> Product {
+        let url = baseURL.appendingPathComponent("products/")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(product)
+        return try await execute(request)
+    }
+    
     public func fetchProduct(id: Int) async throws -> Product {
         let url = baseURL.appendingPathComponent("products/\(id)")
         var request = URLRequest(url: url)
@@ -214,6 +223,35 @@ public actor APIClient {
         
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        return try await execute(request)
+    }
+    
+    public func createBatch(_ batch: InventoryBatchCreate) async throws -> InventoryBatch {
+        let url = baseURL.appendingPathComponent("batches/")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(batch)
+        return try await execute(request)
+    }
+    
+    public func updateBatchMetadata(batchId: Int, updates: [String: Any?]) async throws -> InventoryBatch {
+        let url = baseURL.appendingPathComponent("batches/\(batchId)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Convert Any? to NSNull for JSONSerialization
+        var sanitized: [String: Any] = [:]
+        for (key, value) in updates {
+            if let val = value {
+                sanitized[key] = val
+            } else {
+                sanitized[key] = NSNull()
+            }
+        }
+        
+        request.httpBody = try JSONSerialization.data(withJSONObject: sanitized)
         return try await execute(request)
     }
     

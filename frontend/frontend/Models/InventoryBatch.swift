@@ -164,3 +164,38 @@ public struct InventoryBatch: Codable, Identifiable, Hashable, Sendable {
         }
     }
 }
+
+public struct InventoryBatchCreate: Codable, Sendable {
+    public var product_id: Int
+    public var storage_location_id: Int?
+    public var purchased_at: String?
+    public var expiration_date: String?
+    public var original_quantity: Double
+    public var unit_price: Double?
+    
+    public init(product_id: Int, storage_location_id: Int? = nil, purchased_at: String? = nil, expiration_date: String? = nil, original_quantity: Double, unit_price: Double? = nil) {
+        self.product_id = product_id
+        self.storage_location_id = storage_location_id
+        self.purchased_at = purchased_at
+        self.expiration_date = expiration_date
+        self.original_quantity = original_quantity
+        self.unit_price = unit_price
+    }
+}
+
+public struct InventoryBatchUpdate: Codable, Sendable {
+    // using Property Wrappers or just optional logic to handle null vs omitted? 
+    // Wait, standard Codable drops nils from JSON but the backend uses Pydantic's `exclude_unset=True`. 
+    // Swift's default JSONEncoder encodes nils as 'null' if we write a custom encoder or we don't.
+    // Let's use propertywrapper or a custom encoder if we want null. 
+    // But Pydantic accepts `None` for optional fields to unset them.
+    public var storage_location_id: Int?
+    public var expiration_date: String?
+    public var unit_price: Double?
+    
+    public init(storage_location_id: Int? = nil, expiration_date: String? = nil, unit_price: Double? = nil) {
+        self.storage_location_id = storage_location_id
+        self.expiration_date = expiration_date
+        self.unit_price = unit_price
+    }
+}

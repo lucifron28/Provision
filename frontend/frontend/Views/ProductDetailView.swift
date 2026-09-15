@@ -9,6 +9,9 @@ public struct ProductDetailView: View {
     @State private var showingAdjustSheet: Bool = false
     @State private var showingDiscardAlert: Bool = false
     
+    @State private var showingAddStockSheet: Bool = false
+    @State private var editingBatch: InventoryBatch? = nil
+    
     @State private var consumeQuantity: Double = 1.0
     @State private var consumeReason: String = "Household consumption"
     
@@ -49,6 +52,12 @@ public struct ProductDetailView: View {
         }
         .sheet(isPresented: $showingConsumeSheet) {
             consumeSheet
+        }
+        .sheet(isPresented: $showingAddStockSheet) {
+            AddInventoryView(viewModel: viewModel, initialProductId: currentProduct.id)
+        }
+        .sheet(item: $editingBatch) { batch in
+            EditBatchView(viewModel: viewModel, batch: batch)
         }
         .sheet(isPresented: $showingAdjustSheet) {
             adjustSheet
@@ -103,6 +112,19 @@ public struct ProductDetailView: View {
                     Text("\(currentProduct.displayStock) \(currentProduct.displayUnit.uppercased())")
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(currentProduct.isOutOfStock ? ProvisionTheme.redAlert : ProvisionTheme.provisionGreen)
+                }
+                .padding(.top, 4)
+                
+                Button {
+                    showingAddStockSheet = true
+                } label: {
+                    Text("+ ADD STOCK")
+                        .font(.system(size: 11, weight: .bold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(ProvisionTheme.provisionGreen)
+                        .foregroundStyle(.white)
+                        .clipShape(Capsule())
                 }
                 .padding(.top, 4)
             }
@@ -313,6 +335,12 @@ public struct ProductDetailView: View {
                     showingDiscardAlert = true
                 } label: {
                     Label("Discard Batch", systemImage: "trash")
+                }
+                
+                Button {
+                    editingBatch = batch
+                } label: {
+                    Label("Edit Batch", systemImage: "pencil")
                 }
                 
                 Button {

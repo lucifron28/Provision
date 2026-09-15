@@ -1,8 +1,9 @@
 import SwiftUI
 
 public struct InventoryView: View {
-    @ObservedObject var viewModel: InventoryViewModel
     @State private var showingFilterSheet: Bool = false
+    @State private var showingAddSheet: Bool = false
+    
     
     public init(viewModel: InventoryViewModel) {
         self.viewModel = viewModel
@@ -36,11 +37,20 @@ public struct InventoryView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        Task { await viewModel.loadData() }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                    HStack(spacing: 16) {
+                        Button {
+                            showingAddSheet = true
+                        } label: {
+                            Image(systemName: "plus")
+                                .foregroundStyle(ProvisionTheme.provisionGreen)
+                        }
+                        
+                        Button {
+                            Task { await viewModel.loadData() }
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .foregroundStyle(ProvisionTheme.provisionGreen)
+                        }
                     }
                 }
             }
@@ -48,6 +58,9 @@ public struct InventoryView: View {
                 if viewModel.products.isEmpty {
                     await viewModel.loadData()
                 }
+            }
+            .sheet(isPresented: $showingAddSheet) {
+                AddInventoryView(viewModel: viewModel)
             }
         }
     }

@@ -128,4 +128,61 @@ public class InventoryViewModel: ObservableObject {
             return false
         }
     }
+    
+    public func createManualInventory(product: ProductCreate?, productId: Int?, batch: InventoryBatchCreate) async -> Bool {
+        do {
+            var targetProductId = productId
+            
+            // 1. Create product if new
+            if let p = product {
+                let createdProduct = try await client.createProduct(p)
+                targetProductId = createdProduct.id
+            }
+            
+            guard let pid = targetProductId else {
+                self.errorMessage = "Product ID is missing."
+                return false
+            }
+            
+            // 2. Create batch
+            var finalBatch = batch
+            finalBatch.product_id = pid
+            
+            _ = try await client.createBatch(finalBatch)
+            self.toastMessage = "Inventory added successfully"
+            
+            await loadData()
+            
+            // If we are looking at this product, refresh it
+            if let sel = selectedProduct, sel.id == pid {
+                if let updated = products.first(where: { $0.id == pid }) {
+                    await selectProduct(updated)
+                }
+            }
+            return true
+        } catch {
+            self.errorMessage = error.localizedDescription
+            return false
+        }
+    }
+    
+    public func restockProduct(productId: Int, batch: InventoryBatchCreate) async -> Bool {
+        return await createManualInventory(product: nil, productId: productId, batch: batch)
+    }
+    
+    public func updateBatchMetadata(batchId: Int, updates: [String: Any?]) async -> Bool {
+        do {
+            _ = try await client.updateBatchMetadata(batchId: batchId, updates: updates)
+            self.toastMessage = "Batch updated successfully"
+            
+            await loadData()
+            if let sel = selectedProduct, let updated = products.first(where: { $0.id == sel.id }) {
+                await selectProduct(updated)
+            }
+            return true
+        } catch {
+            self.errorMessage = error.localizedDescription
+            return false
+        }
+    }
 }

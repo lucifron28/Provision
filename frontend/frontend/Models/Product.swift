@@ -86,3 +86,25 @@ public struct Product: Codable, Identifiable, Hashable, Sendable {
         return stock > 0 && stock <= 2
     }
 }
+
+public struct ProductCreate: Codable, Sendable {
+    public var name: String
+    public var brand: String?
+    public var barcode: String?
+    public var category: String?
+    public var package_size: Double?
+    public var unit: String?
+    public var image_url: String?
+    public var source: String?
+    
+    public init(name: String, brand: String? = nil, barcode: String? = nil, category: String? = nil, package_size: Double? = nil, unit: String? = nil, image_url: String? = nil, source: String? = "manual") {
+        self.name = name
+        self.brand = brand
+        self.barcode = barcode
+        self.category = category
+        self.package_size = package_size
+        self.unit = unit
+        self.image_url = image_url
+        self.source = source
+    }
+}
