@@ -199,6 +199,15 @@ public actor APIClient {
         return try await execute(request)
     }
     
+    public func updateProduct(id: Int, update: ProductUpdate) async throws -> Product {
+        let url = baseURL.appendingPathComponent("products/\(id)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(update)
+        return try await execute(request)
+    }
+    
     // MARK: - Storage Locations
     
     public func fetchLocations() async throws -> [StorageLocation] {

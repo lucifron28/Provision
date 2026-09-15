@@ -104,6 +104,10 @@ public enum ProductUnits {
         return countUnits.contains(unit) || !measuredUnits.contains(unit)
     }
     
+    public static func isValid(_ unit: String?) -> Bool {
+        guard let unit = unit?.trimmingCharacters(in: .whitespaces), !unit.isEmpty else { return false }
+        return allUnits.contains(unit)
+    }
     public static func formatAmount(_ qty: Double) -> String {
         if qty.truncatingRemainder(dividingBy: 1) == 0 {
             return "\(Int(qty))"
@@ -133,5 +137,21 @@ public struct ProductCreate: Codable, Sendable {
         self.package_size = package_size
         self.unit = unit
         self.image_url = image_url
+    }
+}
+
+public struct ProductUpdate: Codable, Sendable {
+    public var name: String?
+    public var brand: String?
+    public var barcode: String?
+    public var category: String?
+    public var unit: String?
+    
+    public init(name: String? = nil, brand: String? = nil, barcode: String? = nil, category: String? = nil, unit: String? = nil) {
+        self.name = name
+        self.brand = brand
+        self.barcode = barcode
+        self.category = category
+        self.unit = unit
     }
 }

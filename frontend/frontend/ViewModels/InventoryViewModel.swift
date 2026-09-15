@@ -129,6 +129,20 @@ public class InventoryViewModel: ObservableObject {
         }
     }
     
+    public func updateProductMetadata(productId: Int, update: ProductUpdate) async -> Bool {
+        do {
+            let updated = try await client.updateProduct(id: productId, update: update)
+            self.toastMessage = "Product updated successfully"
+            
+            await loadData()
+            await selectProduct(updated)
+            return true
+        } catch {
+            self.errorMessage = error.localizedDescription
+            return false
+        }
+    }
+    
     public func createManualInventory(product: ProductCreate?, productId: Int?, batch: InventoryBatchCreate) async -> Bool {
         do {
             var targetProductId = productId

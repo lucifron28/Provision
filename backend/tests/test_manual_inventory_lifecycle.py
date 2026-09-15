@@ -224,3 +224,57 @@ def test_stock_amount_semantics(client: TestClient):
     p_check3 = client.get(f"/api/v1/products/{prod_id}")
     assert p_check3.json()["total_remaining_quantity"] == 6.75
 
+
+def test_product_unit_update_preserves_batches_and_history(client: TestClient):
+    # 1. Create product with initial legacy unit
+    prod_res = client.post("/api/v1/products/", json={
+        "name": "Legacy Rice",
+        "unit": "5kg"
+    })
+    assert prod_res.status_code == 201
+    prod_id = prod_res.json()["id"]
+
+    # 2. Create batch
+    b_res = client.post("/api/v1/batches/", json={
+        "product_id": prod_id,
+        "original_quantity": 1.0
+    })
+    assert b_res.status_code == 201
+    batch_id = b_res.json()["id"]
+
+    # 3. PATCH product unit: "5kg" -> "kg"
+    patch_res = client.patch(f"/api/v1/products/{prod_id}", json={
+        "unit": "kg"
+    })
+    assert patch_res.status_code == 200
+    patched = patch_res.json()
+    assert patched["id"] == prod_id
+    assert patched["unit"] == "kg"
+    assert patched["total_remaining_quantity"] == 1.0
+
+    # 4. Verify batch is still associated and quantity unchanged
+    batch_check = client.get(f"/api/v1/batches/{batch_id}")
+    assert batch_check.status_code == 200
+    assert batch_check.json()["product_id"] == prod_id
+    assert batch_check.json()["remaining_quantity"] == 1.0
+
+    # 5. Verify events are preserved
+    events_res = client.get(f"/api/v1/inventory/events?batch_id={batch_id}")
+    assert events_res.status_code == 200
+    assert len(events_res.json()) >= 1
+    assert any(e["event_type"] == "PURCHASED" for e in events_res.json())
+
+    # 6. Adjust batch quantity: 1.0 -> 5.0
+    adj_res = client.post(f"/api/v1/inventory/batches/{batch_id}/adjust", json={
+        "new_remaining_quantity": 5.0,
+        "reason": "Corrected physical amount"
+    })
+    assert adj_res.status_code == 200
+    assert adj_res.json()["remaining_quantity"] == 5.0
+
+    # 7. Verify product total stock is now 5.0 kg
+    final_prod = client.get(f"/api/v1/products/{prod_id}")
+    assert final_prod.json()["total_remaining_quantity"] == 5.0
+    assert final_prod.json()["unit"] == "kg"
+
+

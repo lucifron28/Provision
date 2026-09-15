@@ -10,6 +10,7 @@ public struct ProductDetailView: View {
     @State private var showingDiscardAlert: Bool = false
     
     @State private var showingAddStockSheet: Bool = false
+    @State private var showingEditProductSheet: Bool = false
     @State private var editingBatch: InventoryBatch? = nil
     
     @State private var consumeAmountText: String = "1"
@@ -32,11 +33,20 @@ public struct ProductDetailView: View {
         viewModel.selectedProduct ?? product
     }
     
+    private var isUnitValid: Bool {
+        ProductUnits.isValid(currentProduct.unit)
+    }
+    
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 // Top Product Summary Card
                 productSummaryHeader
+                
+                // Warning on Invalid Legacy Unit
+                if !isUnitValid {
+                    invalidUnitWarningCard
+                }
                 
                 // Big Action Buttons (Consume, Discard, Adjust)
                 actionButtonsRow
@@ -57,6 +67,9 @@ public struct ProductDetailView: View {
         }
         .sheet(isPresented: $showingAddStockSheet) {
             AddInventoryView(viewModel: viewModel, initialProductId: currentProduct.id)
+        }
+        .sheet(isPresented: $showingEditProductSheet) {
+            EditProductView(viewModel: viewModel, product: currentProduct)
         }
         .sheet(item: $editingBatch) { batch in
             EditBatchView(viewModel: viewModel, batch: batch)
@@ -83,6 +96,37 @@ public struct ProductDetailView: View {
     }
     
     // MARK: - Subviews
+    
+    private var invalidUnitWarningCard: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 18))
+                .foregroundStyle(ProvisionTheme.amberWarning)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Invalid stock unit: \"\(currentProduct.displayUnit)\"")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+                Text("Edit product to correct it before adding stock or consuming.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(ProvisionTheme.textSecondary)
+            }
+            
+            Spacer()
+            
+            Button("Edit") {
+                showingEditProductSheet = true
+            }
+            .font(.system(size: 12, weight: .bold))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(ProvisionTheme.amberWarning)
+            .foregroundStyle(.white)
+            .clipShape(Capsule())
+        }
+        .padding(14)
+        .provisionCard(borderColor: ProvisionTheme.amberWarning.opacity(0.6))
+    }
     
     private var productSummaryHeader: some View {
         HStack(alignment: .top, spacing: 16) {
@@ -117,16 +161,34 @@ public struct ProductDetailView: View {
                 }
                 .padding(.top, 4)
                 
-                Button {
-                    showingAddStockSheet = true
-                } label: {
-                    Text("+ ADD STOCK")
-                        .font(.system(size: 11, weight: .bold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(ProvisionTheme.provisionGreen)
-                        .foregroundStyle(.white)
-                        .clipShape(Capsule())
+                HStack(spacing: 8) {
+                    Button {
+                        showingAddStockSheet = true
+                    } label: {
+                        Text("+ ADD STOCK")
+                            .font(.system(size: 11, weight: .bold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(isUnitValid ? ProvisionTheme.provisionGreen : ProvisionTheme.textTertiary)
+                            .foregroundStyle(.white)
+                            .clipShape(Capsule())
+                    }
+                    .disabled(!isUnitValid)
+                    
+                    Menu {
+                        Button {
+                            showingEditProductSheet = true
+                        } label: {
+                            Label("Edit Product", systemImage: "pencil")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 13, weight: .bold))
+                            .padding(6)
+                            .background(ProvisionTheme.surfaceSecondary)
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                            .clipShape(Circle())
+                    }
                 }
                 .padding(.top, 4)
             }
@@ -153,11 +215,11 @@ public struct ProductDetailView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(ProvisionTheme.provisionGreenLight)
-                .foregroundStyle(ProvisionTheme.provisionGreen)
+                .background(currentProduct.isOutOfStock || !isUnitValid ? ProvisionTheme.surfaceSecondary : ProvisionTheme.provisionGreenLight)
+                .foregroundStyle(currentProduct.isOutOfStock || !isUnitValid ? ProvisionTheme.textTertiary : ProvisionTheme.provisionGreen)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
-            .disabled(currentProduct.isOutOfStock)
+            .disabled(currentProduct.isOutOfStock || !isUnitValid)
             
             // Discard Button
             Button {
@@ -433,7 +495,7 @@ public struct ProductDetailView: View {
                             .foregroundStyle(ProvisionTheme.provisionGreen)
                     }
                     
-                    if ProductUnits.isCount(currentProduct.unit) {
+                    if ProductUnits.isValid(currentProduct.unit) && ProductUnits.isCount(currentProduct.unit) {
                         Stepper("", onIncrement: {
                             let cur = Int(Double(consumeAmountText.replacingOccurrences(of: ",", with: ".")) ?? 0)
                             let maxVal = Int(currentProduct.total_remaining_quantity ?? 1000)
@@ -476,7 +538,7 @@ public struct ProductDetailView: View {
                         consumeErrorMessage = "Cannot consume more than available stock (\(formatQuantity(maxAvailable)) \(currentProduct.displayUnit))."
                         return
                     }
-                    if ProductUnits.isCount(currentProduct.unit) && floor(amount) != amount {
+                    if ProductUnits.isValid(currentProduct.unit) && ProductUnits.isCount(currentProduct.unit) && floor(amount) != amount {
                         consumeErrorMessage = "Enter a whole number for this unit."
                         return
                     }
@@ -544,7 +606,7 @@ public struct ProductDetailView: View {
                             .foregroundStyle(ProvisionTheme.textPrimary)
                     }
                     
-                    if ProductUnits.isCount(currentProduct.unit) {
+                    if ProductUnits.isValid(currentProduct.unit) && ProductUnits.isCount(currentProduct.unit) {
                         Stepper("", onIncrement: {
                             let cur = Int(Double(adjustAmountText.replacingOccurrences(of: ",", with: ".")) ?? 0)
                             adjustAmountText = "\(cur + 1)"
@@ -573,7 +635,7 @@ public struct ProductDetailView: View {
                         adjustErrorMessage = "Please enter a valid amount."
                         return
                     }
-                    if ProductUnits.isCount(currentProduct.unit) && floor(newAmount) != newAmount {
+                    if ProductUnits.isValid(currentProduct.unit) && ProductUnits.isCount(currentProduct.unit) && floor(newAmount) != newAmount {
                         adjustErrorMessage = "Enter a whole number for this unit."
                         return
                     }
