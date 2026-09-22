@@ -14,12 +14,15 @@ public class AnalyticsViewModel: ObservableObject {
     @Published public var errorMessage: String? = nil
     
     private let client: APIClient
+    public var isPreview: Bool
     
-    public init(client: APIClient = .shared) {
+    public init(client: APIClient = .shared, isPreview: Bool = false) {
         self.client = client
+        self.isPreview = isPreview
     }
     
     public func loadAnalytics() async {
+        if isPreview { return }
         isLoading = true
         errorMessage = nil
         

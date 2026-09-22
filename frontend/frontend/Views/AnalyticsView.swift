@@ -199,3 +199,7 @@ public struct AnalyticsView: View {
         return formatter.string(from: NSNumber(value: value)) ?? "\(Int(value))"
     }
 }
+
+#Preview("Analytics & Insights") {
+    AnalyticsView(viewModel: PreviewData.makeAnalyticsViewModel())
+}

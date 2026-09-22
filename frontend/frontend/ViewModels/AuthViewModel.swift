@@ -17,14 +17,17 @@ public class AuthViewModel: ObservableObject {
     
     private let client: APIClient
     private let keychain: KeychainStore
+    public var isPreview: Bool
     
-    public init(client: APIClient = .shared, keychain: KeychainStore = .shared) {
+    public init(client: APIClient = .shared, keychain: KeychainStore = .shared, isPreview: Bool = false) {
         self.client = client
         self.keychain = keychain
+        self.isPreview = isPreview
     }
     
     /// Restores session on app launch by verifying Keychain token against /auth/me.
     public func checkExistingSession() async {
+        if isPreview { return }
         guard let token = keychain.readAccessToken(), !token.isEmpty else {
             self.currentUser = nil
             self.authState = .signedOut
@@ -97,6 +100,11 @@ public class AuthViewModel: ObservableObject {
     
     /// Clears the Keychain token, clears in-memory APIClient token, and returns app to signedOut.
     public func logout() async {
+        if isPreview {
+            self.currentUser = nil
+            self.authState = .signedOut
+            return
+        }
         keychain.deleteAccessToken()
         await client.setAccessToken(nil)
         self.currentUser = nil

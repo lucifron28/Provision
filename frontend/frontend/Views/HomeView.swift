@@ -442,3 +442,10 @@ public struct HomeView: View {
         return formatter.string(from: NSNumber(value: value)) ?? "\(Int(value))"
     }
 }
+
+#Preview("Home - Philippine Pantry") {
+    HomeView(
+        viewModel: PreviewData.makeHomeViewModel(),
+        authVM: PreviewData.makeAuthViewModel()
+    )
+}

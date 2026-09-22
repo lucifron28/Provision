@@ -206,3 +206,7 @@ public struct ShoppingListView: View {
         }
     }
 }
+
+#Preview("Shopping List - Philippine Household") {
+    ShoppingListView(viewModel: PreviewData.makeShoppingViewModel())
+}

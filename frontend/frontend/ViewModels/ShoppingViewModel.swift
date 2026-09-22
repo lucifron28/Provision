@@ -23,9 +23,11 @@ public class ShoppingViewModel: ObservableObject {
     @Published public var toastMessage: String? = nil
     
     private let client: APIClient
+    public var isPreview: Bool
     
-    public init(client: APIClient = .shared) {
+    public init(client: APIClient = .shared, isPreview: Bool = false) {
         self.client = client
+        self.isPreview = isPreview
     }
     
     public var filteredItems: [ShoppingItem] {
@@ -44,9 +46,9 @@ public class ShoppingViewModel: ObservableObject {
     }
     
     public func loadItems() async {
+        if isPreview { return }
         isLoading = true
         errorMessage = nil
-        
         do {
             self.items = try await client.fetchShoppingList()
         } catch {
@@ -60,6 +62,23 @@ public class ShoppingViewModel: ObservableObject {
         let name = newItemName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
         
+        if isPreview {
+            let mockItem = ShoppingItem(
+                id: (items.map { $0.id }.max() ?? 0) + 1,
+                name: name,
+                product_id: nil,
+                quantity: newItemQuantity,
+                unit: "pcs",
+                is_bought: false,
+                notes: nil
+            )
+            self.items.insert(mockItem, at: 0)
+            self.newItemName = ""
+            self.newItemQuantity = 1.0
+            self.toastMessage = "Added \(name) to list"
+            return
+        }
+
         let createItem = ShoppingItemCreate(
             name: name,
             quantity: newItemQuantity,
@@ -76,8 +95,13 @@ public class ShoppingViewModel: ObservableObject {
             self.errorMessage = "Failed to add item: \(error.localizedDescription)"
         }
     }
-    
     public func toggleItem(_ item: ShoppingItem) async {
+        if isPreview {
+            if let idx = items.firstIndex(where: { $0.id == item.id }) {
+                items[idx].is_bought.toggle()
+            }
+            return
+        }
         // Optimistic UI update
         if let idx = items.firstIndex(where: { $0.id == item.id }) {
             items[idx].is_bought.toggle()
@@ -98,9 +122,13 @@ public class ShoppingViewModel: ObservableObject {
     }
     
     public func deleteItem(_ item: ShoppingItem) async {
+        if isPreview {
+            items.removeAll { $0.id == item.id }
+            self.toastMessage = "Item deleted"
+            return
+        }
         let original = items
         items.removeAll { $0.id == item.id }
-        
         do {
             try await client.deleteShoppingItem(id: item.id)
             self.toastMessage = "Item deleted"
@@ -111,6 +139,11 @@ public class ShoppingViewModel: ObservableObject {
     }
     
     public func clearCompleted() async {
+        if isPreview {
+            items.removeAll { $0.is_bought }
+            self.toastMessage = "Completed items cleared"
+            return
+        }
         do {
             try await client.clearCompletedShoppingItems()
             self.items.removeAll { $0.is_bought }
@@ -121,6 +154,10 @@ public class ShoppingViewModel: ObservableObject {
     }
     
     public func autoGenerateSuggestions() async {
+        if isPreview {
+            self.toastMessage = "Generated 2 low-stock suggestions"
+            return
+        }
         isGenerating = true
         errorMessage = nil
         

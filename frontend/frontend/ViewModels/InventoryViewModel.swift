@@ -21,9 +21,11 @@ public class InventoryViewModel: ObservableObject {
     @Published public var toastMessage: String? = nil
     
     private let client: APIClient
+    public var isPreview: Bool
     
-    public init(client: APIClient = .shared) {
+    public init(client: APIClient = .shared, isPreview: Bool = false) {
         self.client = client
+        self.isPreview = isPreview
     }
     
     public var categories: [String] {
@@ -45,9 +47,9 @@ public class InventoryViewModel: ObservableObject {
     }
     
     public func loadData() async {
+        if isPreview { return }
         isLoading = true
         errorMessage = nil
-        
         do {
             async let prodsTask = client.fetchProducts()
             async let locsTask = client.fetchLocations()
@@ -65,8 +67,8 @@ public class InventoryViewModel: ObservableObject {
     public func selectProduct(_ product: Product) async {
         let current = products.first(where: { $0.id == product.id }) ?? product
         self.selectedProduct = current
+        if isPreview { return }
         self.isDetailLoading = true
-        
         do {
             let batches = try await client.fetchBatches(productId: current.id, activeOnly: true)
             // Sort FEFO (Earliest expiration first)
@@ -81,6 +83,10 @@ public class InventoryViewModel: ObservableObject {
     }
     
     public func consumeProduct(productId: Int, quantity: Double, reason: String? = "Household consumption") async -> Bool {
+        if isPreview {
+            self.toastMessage = "Successfully consumed \(String(format: "%.1f", quantity)) units"
+            return true
+        }
         do {
             let res = try await client.consumeProduct(productId: productId, quantity: quantity, reason: reason)
             self.toastMessage = "Successfully consumed \(String(format: "%.1f", res.total_consumed)) units"
@@ -98,6 +104,11 @@ public class InventoryViewModel: ObservableObject {
     }
     
     public func discardBatch(batchId: Int, reason: String? = "Spoiled / Expired") async -> Bool {
+        if isPreview {
+            self.toastMessage = "Batch discarded"
+            self.productBatches.removeAll { $0.id == batchId }
+            return true
+        }
         do {
             _ = try await client.discardBatch(batchId: batchId, reason: reason)
             self.toastMessage = "Batch discarded"
@@ -114,6 +125,13 @@ public class InventoryViewModel: ObservableObject {
     }
     
     public func adjustBatch(batchId: Int, newQuantity: Double, reason: String = "Physical count adjustment") async -> Bool {
+        if isPreview {
+            self.toastMessage = "Batch adjusted to \(newQuantity)"
+            if let idx = self.productBatches.firstIndex(where: { $0.id == batchId }) {
+                self.productBatches[idx].remaining_quantity = newQuantity
+            }
+            return true
+        }
         do {
             _ = try await client.adjustBatch(batchId: batchId, newQuantity: newQuantity, reason: reason)
             self.toastMessage = "Batch adjusted to \(newQuantity)"
@@ -130,6 +148,23 @@ public class InventoryViewModel: ObservableObject {
     }
     
     public func updateProductMetadata(productId: Int, update: ProductUpdate) async -> Bool {
+        if isPreview {
+            if var sel = selectedProduct, sel.id == productId {
+                if let n = update.name { sel.name = n }
+                if let b = update.brand { sel.brand = b }
+                if let c = update.category { sel.category = c }
+                if let u = update.unit { sel.unit = u }
+                self.selectedProduct = sel
+            }
+            if let idx = products.firstIndex(where: { $0.id == productId }) {
+                if let n = update.name { products[idx].name = n }
+                if let b = update.brand { products[idx].brand = b }
+                if let c = update.category { products[idx].category = c }
+                if let u = update.unit { products[idx].unit = u }
+            }
+            self.toastMessage = "Product updated successfully"
+            return true
+        }
         do {
             let updated = try await client.updateProduct(id: productId, update: update)
             self.toastMessage = "Product updated successfully"
@@ -144,6 +179,10 @@ public class InventoryViewModel: ObservableObject {
     }
     
     public func createManualInventory(product: ProductCreate?, productId: Int?, batch: InventoryBatchCreate) async -> Bool {
+        if isPreview {
+            self.toastMessage = "Inventory added successfully"
+            return true
+        }
         do {
             var targetProductId = productId
             
@@ -185,6 +224,10 @@ public class InventoryViewModel: ObservableObject {
     }
     
     public func updateBatchMetadata(batchId: Int, updates: [String: Any]) async -> Bool {
+        if isPreview {
+            self.toastMessage = "Batch updated successfully"
+            return true
+        }
         do {
             _ = try await client.updateBatchMetadata(batchId: batchId, updates: updates)
             self.toastMessage = "Batch updated successfully"

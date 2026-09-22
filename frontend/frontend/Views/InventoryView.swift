@@ -250,3 +250,7 @@ public struct InventoryView: View {
         }
     }
 }
+
+#Preview("Inventory - Philippine Catalog") {
+    InventoryView(viewModel: PreviewData.makeInventoryViewModel())
+}

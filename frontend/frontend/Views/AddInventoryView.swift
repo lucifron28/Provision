@@ -209,6 +209,14 @@ public struct AddInventoryView: View {
     }
     
     private func fetchLocations() async {
+        if !viewModel.locations.isEmpty {
+            self.locations = viewModel.locations
+            if let first = locations.first, selectedLocationId == nil {
+                selectedLocationId = first.id
+            }
+            return
+        }
+        if viewModel.isPreview { return }
         isLoadingLocations = true
         do {
             locations = try await APIClient.shared.fetchLocations()

@@ -104,6 +104,11 @@ public struct EditBatchView: View {
     }
     
     private func fetchLocations() async {
+        if !viewModel.locations.isEmpty {
+            self.locations = viewModel.locations
+            return
+        }
+        if viewModel.isPreview { return }
         isLoadingLocations = true
         do {
             locations = try await APIClient.shared.fetchLocations()

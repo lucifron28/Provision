@@ -14,12 +14,15 @@ public class HomeViewModel: ObservableObject {
     @Published public var alertMessage: String? = nil
     
     private let client: APIClient
+    public var isPreview: Bool
     
-    public init(client: APIClient = .shared) {
+    public init(client: APIClient = .shared, isPreview: Bool = false) {
         self.client = client
+        self.isPreview = isPreview
     }
     
     public func loadDashboard() async {
+        if isPreview { return }
         isLoading = true
         errorMessage = nil
         
@@ -43,6 +46,10 @@ public class HomeViewModel: ObservableObject {
     }
     
     public func addLowStockToShoppingList(_ item: LowStockItem) async {
+        if isPreview {
+            self.alertMessage = "Added \(item.product_name) to Shopping List"
+            return
+        }
         do {
             let createItem = ShoppingItemCreate(
                 name: item.product_name,
@@ -59,6 +66,11 @@ public class HomeViewModel: ObservableObject {
     }
     
     public func quickConsumeExpiringItem(_ item: ExpiringSoonItem, quantity: Double = 1.0) async {
+        if isPreview {
+            self.alertMessage = "Consumed \(item.product_name)"
+            self.expiringSoonItems.removeAll { $0.batch_id == item.batch_id }
+            return
+        }
         do {
             _ = try await client.consumeProduct(
                 productId: item.product_id,

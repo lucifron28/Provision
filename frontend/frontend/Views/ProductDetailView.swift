@@ -677,3 +677,24 @@ public struct ProductDetailView: View {
         ProductUnits.formatAmount(qty)
     }
 }
+
+#Preview("Product Detail - Century Tuna (FEFO)") {
+    NavigationStack {
+        ProductDetailView(
+            viewModel: PreviewData.makeInventoryViewModel(selectedProduct: PreviewData.centuryTuna),
+            product: PreviewData.centuryTuna
+        )
+    }
+}
+
+#Preview("Product Detail - Magnolia Fresh Milk") {
+    NavigationStack {
+        ProductDetailView(
+            viewModel: PreviewData.makeInventoryViewModel(
+                selectedProduct: PreviewData.magnoliaMilk,
+                batches: [PreviewData.magnoliaMilkBatch]
+            ),
+            product: PreviewData.magnoliaMilk
+        )
+    }
+}
