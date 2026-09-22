@@ -1,7 +1,9 @@
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from typing import List
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func, nulls_last
+
+from app.core.time import household_today
 
 from app.models.product import Product
 from app.models.batch import InventoryBatch
@@ -111,7 +113,7 @@ class InventoryService:
             raise ValueError(f"Inventory batch {batch_id} has no remaining quantity to discard")
 
         # Determine if event should be marked EXPIRED or DISCARDED
-        today = date.today()
+        today = household_today()
         event_type = EventType.DISCARDED
         if batch.expiration_date and batch.expiration_date < today:
             event_type = EventType.EXPIRED

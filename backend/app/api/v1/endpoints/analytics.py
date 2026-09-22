@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select, func, or_
 
 from app.core.database import get_db
+from app.core.time import household_today
 from app.models.product import Product
 from app.models.batch import InventoryBatch
 from app.models.location import StorageLocation
@@ -86,7 +87,7 @@ def get_expiring_soon(
     Which items should I use first? What is expiring soon?
     Returns active batches expiring within the specified number of days.
     """
-    today = date.today()
+    today = household_today()
     max_date = today + timedelta(days=days)
 
     stmt = (

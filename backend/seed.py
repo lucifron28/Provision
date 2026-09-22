@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal, engine
 from app.core.security import hash_password
+from app.core.time import household_today
 from app.models.base import Base
 from app.models.product import Product, ProductSource
 from app.models.location import StorageLocation
@@ -98,7 +99,7 @@ def seed_database(reset: bool = True, db: Optional[Session] = None) -> Dict[str,
         # 4. Grocery Sessions
         print("\n[4/7] Seeding grocery intake sessions...")
         now = datetime.now(timezone.utc)
-        today = now.date()
+        today = household_today()
 
         sessions_data = [
             (
