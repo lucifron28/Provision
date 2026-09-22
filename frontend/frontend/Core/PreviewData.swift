@@ -698,4 +698,9 @@ public enum PreviewData {
         vm.items = shoppingItems
         return vm
     }
+
+    @MainActor
+    public static func makeScanViewModel() -> ScanViewModel {
+        ScanViewModel(isPreview: true)
+    }
 }

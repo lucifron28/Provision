@@ -28,14 +28,40 @@ public class ScanViewModel: ObservableObject {
     @Published public var toastMessage: String? = nil
     @Published public var errorMessage: String? = nil
     @Published public var lastScannedBarcode: String = ""
+    public var isPreview: Bool
     
+    public let scannerManager: BarcodeScannerManager
     private let client: APIClient
     
-    public init(client: APIClient = .shared) {
+    public init(client: APIClient = .shared, isPreview: Bool = false) {
         self.client = client
+        self.isPreview = isPreview
+        self.scannerManager = BarcodeScannerManager()
+        if isPreview {
+            scannerManager.isCameraAvailable = false
+        }
         setupSampleIntake()
+
+        self.scannerManager.onBarcodeDetected = { [weak self] code in
+            self?.onBarcodeScanned(code)
+        }
     }
-    
+
+    public func startScanning() {
+        guard !isPreview else { return }
+        scannerManager.startScanning()
+    }
+
+    public func stopScanning() {
+        scannerManager.stopScanning()
+    }
+
+    public func onBarcodeScanned(_ barcode: String) {
+        let trimmed = barcode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        self.lastScannedBarcode = trimmed
+        self.toastMessage = "Detected: \(trimmed)"
+    }
     private func setupSampleIntake() {
         let calendar = Calendar.current
         self.scannedItems = [

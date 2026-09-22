@@ -2,7 +2,7 @@ import SwiftUI
 
 public struct ScanView: View {
     @ObservedObject var viewModel: ScanViewModel
-    
+    @Environment(\.scenePhase) private var scenePhase
     @State private var scanMode: Int = 0 // 0: Rapid Barcode, 1: Receipt Review
     @State private var showingAddManualSheet: Bool = false
     @State private var manualName: String = ""
@@ -27,9 +27,15 @@ public struct ScanView: View {
                     // Viewfinder Box
                     viewfinderCard
                     
-                    // Quick Simulation Bar
-                    simulationBarcodeButtons
+                    // Detected Barcode Display
+                    if scanMode == 0 {
+                        detectedBarcodeCard
+                    }
                     
+                    // Quick Simulation Bar (Available in simulator or preview testing)
+                    if !viewModel.scannerManager.isCameraAvailable || viewModel.isPreview {
+                        simulationBarcodeButtons
+                    }
                     // Scanned Intake Items Review
                     intakeReviewSection
                 }
@@ -37,8 +43,30 @@ public struct ScanView: View {
                 .padding(.vertical, 12)
             }
             .background(ProvisionTheme.background.ignoresSafeArea())
-            .navigationTitle("Intake Scanner (Prototype)")
+            .navigationTitle("Intake Scanner")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                if scanMode == 0 {
+                    viewModel.startScanning()
+                }
+            }
+            .onDisappear {
+                viewModel.stopScanning()
+            }
+            .onChange(of: scanMode) { _, newMode in
+                if newMode == 0 {
+                    viewModel.startScanning()
+                } else {
+                    viewModel.stopScanning()
+                }
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .active && scanMode == 0 {
+                    viewModel.startScanning()
+                } else {
+                    viewModel.stopScanning()
+                }
+            }
             .sheet(isPresented: $showingAddManualSheet) {
                 manualEntrySheet
             }
@@ -62,11 +90,31 @@ public struct ScanView: View {
     
     private var viewfinderCard: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(Color(red: 0.10, green: 0.12, blue: 0.11))
+            if scanMode == 0 {
+                // Real camera scanner in Rapid Barcode mode
+                BarcodeScannerView(manager: viewModel.scannerManager) { detectedBarcode in
+                    viewModel.onBarcodeScanned(detectedBarcode)
+                }
                 .frame(height: 200)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            } else {
+                // Receipt Review (existing prototype mode)
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(Color(red: 0.10, green: 0.12, blue: 0.11))
+                    .frame(height: 200)
+
+                VStack(spacing: 12) {
+                    Image(systemName: "doc.text.viewfinder")
+                        .font(.system(size: 44))
+                        .foregroundStyle(ProvisionTheme.heroCard)
+
+                    Text("Align receipt edges in frame")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.8))
+                }
+            }
             
-            // Corner Reticles
+            // Corner Reticles Overlay
             VStack {
                 HStack {
                     cornerBracket(top: true, left: true)
@@ -82,16 +130,7 @@ public struct ScanView: View {
             }
             .padding(28)
             .frame(height: 200)
-            
-            VStack(spacing: 12) {
-                Image(systemName: scanMode == 0 ? "barcode.viewfinder" : "doc.text.viewfinder")
-                    .font(.system(size: 44))
-                    .foregroundStyle(ProvisionTheme.heroCard)
-                
-                Text(scanMode == 0 ? "Point camera at item barcode" : "Align receipt edges in frame")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.8))
-            }
+            .allowsHitTesting(false)
         }
     }
     
@@ -133,10 +172,10 @@ public struct ScanView: View {
     
     private func simButton(title: String, brand: String, barcode: String, days: Int) -> some View {
         Button {
-            viewModel.addItem(barcode: barcode, name: title, brand: brand, daysUntilExp: days)
+            viewModel.onBarcodeScanned(barcode)
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: "plus.viewfinder")
+                Image(systemName: "barcode.viewfinder")
                     .font(.system(size: 12))
                 Text(title)
                     .font(.system(size: 12, weight: .semibold))
@@ -150,6 +189,55 @@ public struct ScanView: View {
         }
     }
     
+    private var detectedBarcodeCard: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(viewModel.lastScannedBarcode.isEmpty ? ProvisionTheme.surfaceSecondary : ProvisionTheme.provisionGreenLight)
+                    .frame(width: 40, height: 40)
+                Image(systemName: "barcode.viewfinder")
+                    .font(.system(size: 20))
+                    .foregroundStyle(viewModel.lastScannedBarcode.isEmpty ? ProvisionTheme.textTertiary : ProvisionTheme.provisionGreen)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Detected Barcode")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(ProvisionTheme.textSecondary)
+                    .textCase(.uppercase)
+                    .tracking(0.8)
+
+                if viewModel.lastScannedBarcode.isEmpty {
+                    Text("Waiting for barcode...")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(ProvisionTheme.textTertiary)
+                } else {
+                    Text(viewModel.lastScannedBarcode)
+                        .font(.system(size: 17, weight: .bold, design: .monospaced))
+                        .foregroundStyle(ProvisionTheme.textPrimary)
+                }
+            }
+
+            Spacer()
+
+            if !viewModel.lastScannedBarcode.isEmpty {
+                Button {
+                    UIPasteboard.general.string = viewModel.lastScannedBarcode
+                    viewModel.toastMessage = "Copied to clipboard"
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 13))
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                        .padding(8)
+                        .background(ProvisionTheme.surfaceSecondary)
+                        .clipShape(Circle())
+                }
+            }
+        }
+        .padding(14)
+        .provisionCard(borderColor: viewModel.lastScannedBarcode.isEmpty ? ProvisionTheme.border : ProvisionTheme.provisionGreen.opacity(0.5))
+    }
+
     private var intakeReviewSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
@@ -306,4 +394,8 @@ public struct ScanView: View {
             }
         }
     }
+}
+
+#Preview("Intake Scanner") {
+    ScanView(viewModel: PreviewData.makeScanViewModel())
 }
