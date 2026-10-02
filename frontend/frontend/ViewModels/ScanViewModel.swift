@@ -58,6 +58,8 @@ public class ScanViewModel: ObservableObject {
     @Published public var unresolvedBarcode: String? = nil
     @Published public var showingQuickAddSheet: Bool = false
     @Published public var isResolvingBarcode: Bool = false
+    @Published public var isProcessingReceipt: Bool = false
+    @Published public var showingReceiptCamera: Bool = false
     public var isPreview: Bool
     public let scannerManager: BarcodeScannerManager
     private let client: APIClient
@@ -217,6 +219,74 @@ public class ScanViewModel: ObservableObject {
                 scannedItems.remove(at: idx)
             }
         }
+    }
+
+    public func processScannedReceipt(images: [UIImage]) async {
+        isProcessingReceipt = true
+        toastMessage = "Processing receipt OCR..."
+
+        var allLines: [String] = []
+        for image in images {
+            let lines = await ReceiptOCRService.shared.recognizeText(from: image)
+            allLines.append(contentsOf: lines)
+        }
+
+        let catalog = isPreview ? PreviewData.products : (try? await client.fetchProducts()) ?? PreviewData.products
+        let parsedItems = ReceiptOCRService.shared.parseReceiptLines(allLines, catalog: catalog)
+
+        var addedCount = 0
+        for item in parsedItems {
+            let exp = Calendar.current.date(byAdding: .day, value: 30, to: Date()) ?? Date()
+            let intakeItem = ScannedIntakeItem(
+                name: item.matchedProduct?.name ?? item.parsedName,
+                brand: item.matchedProduct?.brand,
+                barcode: item.matchedProduct?.barcode ?? UUID().uuidString.prefix(8).description,
+                quantity: item.quantity,
+                unit: item.matchedProduct?.unit ?? "pcs",
+                expirationDate: exp,
+                status: item.matchedProduct != nil ? .recognized : .needsReview,
+                productId: item.matchedProduct?.id,
+                unitPrice: item.parsedPrice
+            )
+            scannedItems.insert(intakeItem, at: 0)
+            addedCount += 1
+        }
+
+        toastMessage = "Extracted \(addedCount) items from receipt"
+        isProcessingReceipt = false
+    }
+
+    public func simulateReceiptScan(receiptName: String = "SM Supermarket Megamall (Receipt #0994)") {
+        self.storeName = "SM Supermarket Megamall"
+        let sampleLines = [
+            "SM SUPERMARKET MEGAMALL",
+            "CENTURY TUNA FLAKES OIL 180G    40.50",
+            "PUREFOODS CORNED BEEF 150G      92.00",
+            "SAN MIGUEL PALE PILSEN 330ML    52.00",
+            "GARDENIA CLASSIC WHITE BREAD    82.00",
+            "DATU PUTI VINEGAR BOTTLE 1L     48.00",
+            "TOTAL AMOUNT                  314.50"
+        ]
+
+        let catalog = isPreview ? PreviewData.products : PreviewData.products
+        let parsed = ReceiptOCRService.shared.parseReceiptLines(sampleLines, catalog: catalog)
+
+        for item in parsed {
+            let exp = Calendar.current.date(byAdding: .day, value: 30, to: Date()) ?? Date()
+            let intakeItem = ScannedIntakeItem(
+                name: item.matchedProduct?.name ?? item.parsedName,
+                brand: item.matchedProduct?.brand,
+                barcode: item.matchedProduct?.barcode ?? UUID().uuidString.prefix(8).description,
+                quantity: item.quantity,
+                unit: item.matchedProduct?.unit ?? "pcs",
+                expirationDate: exp,
+                status: item.matchedProduct != nil ? .recognized : .needsReview,
+                productId: item.matchedProduct?.id,
+                unitPrice: item.parsedPrice
+            )
+            scannedItems.insert(intakeItem, at: 0)
+        }
+        toastMessage = "Loaded \(parsed.count) receipt items from \(storeName)"
     }
     private func setupSampleIntake() {
         let calendar = Calendar.current

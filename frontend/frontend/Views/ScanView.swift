@@ -1,3 +1,4 @@
+import VisionKit
 import SwiftUI
 
 public struct ScanView: View {
@@ -78,6 +79,23 @@ public struct ScanView: View {
             .sheet(isPresented: $viewModel.showingQuickAddSheet) {
                 quickAddProductSheet
             }
+            .sheet(isPresented: $viewModel.showingReceiptCamera) {
+                #if canImport(VisionKit)
+                DocumentCameraScannerView(
+                    onScannedImages: { images in
+                        viewModel.showingReceiptCamera = false
+                        Task {
+                            await viewModel.processScannedReceipt(images: images)
+                        }
+                    },
+                    onCancel: {
+                        viewModel.showingReceiptCamera = false
+                    }
+                )
+                #else
+                EmptyView()
+                #endif
+            }
             .overlay(alignment: .bottom) {
                 if let msg = viewModel.toastMessage {
                     Text(msg)
@@ -106,22 +124,60 @@ public struct ScanView: View {
                 .frame(height: 200)
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             } else {
-                // Receipt Review (existing prototype mode)
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(Color(red: 0.10, green: 0.12, blue: 0.11))
-                    .frame(height: 200)
+                // Receipt Review Mode
+                ZStack {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(Color(red: 0.10, green: 0.12, blue: 0.11))
+                        .frame(height: 200)
 
-                VStack(spacing: 12) {
-                    Image(systemName: "doc.text.viewfinder")
-                        .font(.system(size: 44))
-                        .foregroundStyle(ProvisionTheme.heroCard)
+                    VStack(spacing: 12) {
+                        Image(systemName: "doc.text.viewfinder")
+                            .font(.system(size: 36))
+                            .foregroundStyle(ProvisionTheme.heroCard)
 
-                    Text("Align receipt edges in frame")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.8))
+                        Text("Supermarket Receipt Scanner")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+
+                        HStack(spacing: 8) {
+                            #if canImport(VisionKit)
+                            if VNDocumentCameraViewController.isSupported {
+                                Button {
+                                    viewModel.showingReceiptCamera = true
+                                } label: {
+                                    HStack(spacing: 5) {
+                                        Image(systemName: "camera.fill")
+                                        Text("Scan")
+                                    }
+                                    .font(.system(size: 12, weight: .bold))
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 7)
+                                    .background(ProvisionTheme.heroCard)
+                                    .foregroundStyle(ProvisionTheme.background)
+                                    .clipShape(Capsule())
+                                }
+                            }
+                            #endif
+
+                            Button {
+                                viewModel.simulateReceiptScan()
+                            } label: {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "doc.badge.plus")
+                                    Text("Sample Receipt (#0994)")
+                                }
+                                .font(.system(size: 11, weight: .semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 7)
+                                .background(ProvisionTheme.surface)
+                                .foregroundStyle(ProvisionTheme.textPrimary)
+                                .clipShape(Capsule())
+                                .overlay(Capsule().stroke(ProvisionTheme.border, lineWidth: 1))
+                            }
+                        }
+                    }
                 }
             }
-            
             // Corner Reticles Overlay
             VStack {
                 HStack {
