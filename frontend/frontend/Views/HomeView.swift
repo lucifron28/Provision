@@ -7,7 +7,8 @@ public struct HomeView: View {
     var onNavigateToShopping: () -> Void
     
     @State private var showingProfileSheet: Bool = false
-    
+    @State private var notificationsEnabled: Bool = NotificationService.shared.isAlertsEnabled
+
     public init(
         viewModel: HomeViewModel,
         authVM: AuthViewModel,
@@ -45,6 +46,9 @@ public struct HomeView: View {
             }
             .task {
                 await viewModel.loadDashboard()
+                if NotificationService.shared.isAlertsEnabled {
+                    await NotificationService.shared.syncExpirationAlerts(expiringSoon: viewModel.expiringSoonItems)
+                }
             }
             .overlay(alignment: .bottom) {
                 if let msg = viewModel.alertMessage {
@@ -388,6 +392,38 @@ public struct HomeView: View {
                     .provisionCard()
                 }
                 
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("NOTIFICATIONS & ALERTS")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                        .tracking(0.6)
+
+                    Toggle(isOn: $notificationsEnabled) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Expiration Reminders")
+                                .font(.system(size: 15, weight: .medium))
+                            Text("Daily 8:00 AM alert for items expiring in ≤ 2 days")
+                                .font(.system(size: 11))
+                                .foregroundStyle(ProvisionTheme.textSecondary)
+                        }
+                    }
+                    .tint(ProvisionTheme.provisionGreen)
+                    .onChange(of: notificationsEnabled) { _, newValue in
+                        NotificationService.shared.isAlertsEnabled = newValue
+                        if newValue {
+                            Task {
+                                let granted = await NotificationService.shared.requestAuthorization()
+                                if granted {
+                                    await NotificationService.shared.syncExpirationAlerts(expiringSoon: viewModel.expiringSoonItems)
+                                }
+                            }
+                        } else {
+                            NotificationService.shared.cancelAllExpirationAlerts()
+                        }
+                    }
+                    .padding(14)
+                    .provisionCard()
+                }
                 Spacer()
                 
                 Button(role: .destructive) {
