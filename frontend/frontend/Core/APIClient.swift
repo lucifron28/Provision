@@ -226,7 +226,35 @@ public actor APIClient {
         request.httpMethod = "GET"
         return try await execute(request)
     }
-    
+
+    // MARK: - Grocery Sessions
+
+    public func createSession(_ session: GrocerySessionCreate) async throws -> GrocerySession {
+        let url = baseURL.appendingPathComponent("sessions/")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(session)
+        return try await execute(request)
+    }
+
+    public func commitSession(id: Int, items: [SessionItemCreate]) async throws -> GrocerySession {
+        let url = baseURL.appendingPathComponent("sessions/\(id)/commit")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body = CommitSessionRequest(items: items)
+        request.httpBody = try encoder.encode(body)
+        return try await execute(request)
+    }
+
+    public func fetchSessions() async throws -> [GrocerySession] {
+        let url = baseURL.appendingPathComponent("sessions/")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        return try await execute(request)
+    }
+
     // MARK: - Batches
     
     public func fetchBatches(productId: Int? = nil, activeOnly: Bool = true) async throws -> [InventoryBatch] {

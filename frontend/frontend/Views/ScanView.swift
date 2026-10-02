@@ -306,7 +306,7 @@ public struct ScanView: View {
                                 .tint(.white)
                         } else {
                             Image(systemName: "checkmark.circle.fill")
-                            Text("Simulate Intake (Midterm Prototype)")
+                            Text("Commit Intake to Pantry")
                                 .font(.system(size: 16, weight: .bold))
                         }
                     }

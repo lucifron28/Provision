@@ -272,18 +272,89 @@ public class ScanViewModel: ObservableObject {
     }
     
     public func commitIntakeSession() async {
+        guard !scannedItems.isEmpty else { return }
         isCommitting = true
         errorMessage = nil
         
-        // Simulating intake batch registration via API
-        do {
-            try await Task.sleep(nanoseconds: 500_000_000)
-            self.toastMessage = "Simulated intake of \(scannedItems.count) items (Midterm Prototype)"
+        if isPreview {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            self.toastMessage = "Committed intake of \(scannedItems.count) items (Preview)"
             self.scannedItems.removeAll()
-        } catch {
-            self.errorMessage = "Failed to commit session: \(error.localizedDescription)"
+            self.lastScannedBarcode = ""
+            isCommitting = false
+            return
         }
-        
+
+        do {
+            // 1. Fetch available locations to get a fallback location
+            let locations = try await client.fetchLocations()
+            let defaultLocationId = locations.first?.id
+
+            // 2. Resolve any scanned item missing a productId
+            var itemsToCommit: [SessionItemCreate] = []
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd"
+
+            for item in scannedItems {
+                var targetProductId = item.productId
+
+                if targetProductId == nil {
+                    if let found = try? await client.fetchProduct(barcode: item.barcode) {
+                        targetProductId = found.id
+                    } else {
+                        let create = ProductCreate(
+                            name: item.name,
+                            brand: item.brand,
+                            barcode: item.barcode,
+                            category: "Pantry",
+                            unit: item.unit
+                        )
+                        if let created = try? await client.createProduct(create) {
+                            targetProductId = created.id
+                        }
+                    }
+                }
+
+                guard let pid = targetProductId else { continue }
+
+                let expStr = dateFormatter.string(from: item.expirationDate)
+                let sessionItem = SessionItemCreate(
+                    product_id: pid,
+                    storage_location_id: item.storageLocationId ?? defaultLocationId,
+                    quantity: item.quantity,
+                    expiration_date: expStr,
+                    unit_price: item.unitPrice
+                )
+                itemsToCommit.append(sessionItem)
+            }
+
+            guard !itemsToCommit.isEmpty else {
+                self.errorMessage = "No valid products to commit."
+                isCommitting = false
+                return
+            }
+
+            // 3. Create the draft grocery session
+            let isoFormatter = ISO8601DateFormatter()
+            let sessionName = storeName.trimmingCharacters(in: .whitespaces).isEmpty ? "Grocery Intake" : storeName
+            let sessionCreate = GrocerySessionCreate(
+                store_name: sessionName,
+                purchase_date: isoFormatter.string(from: Date()),
+                total_amount: scannedItems.compactMap { $0.unitPrice }.reduce(0.0, +),
+                notes: "Rapid intake session committed via Provision app"
+            )
+            let session = try await client.createSession(sessionCreate)
+
+            // 4. Commit session to generate batches and ledger events
+            _ = try await client.commitSession(id: session.id, items: itemsToCommit)
+
+            self.toastMessage = "Committed \(itemsToCommit.count) items to household inventory!"
+            self.scannedItems.removeAll()
+            self.lastScannedBarcode = ""
+        } catch {
+            self.errorMessage = "Failed to commit intake session: \(error.localizedDescription)"
+        }
+
         isCommitting = false
     }
 }
