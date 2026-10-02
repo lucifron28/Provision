@@ -177,10 +177,24 @@ public actor APIClient {
             components?.queryItems = queryItems
         }
         guard let url = components?.url else { throw APIError.invalidURL }
-        
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        return try await execute(request)
+        do {
+            let products: [Product] = try await execute(request)
+            LocalCacheStore.shared.saveProducts(products)
+            return products
+        } catch {
+            if let cached = LocalCacheStore.shared.loadProducts(), !cached.isEmpty {
+                if let cat = category, !cat.isEmpty {
+                    return cached.filter { $0.category == cat }
+                }
+                if let s = search, !s.isEmpty {
+                    return cached.filter { $0.name.localizedCaseInsensitiveContains(s) || ($0.brand?.localizedCaseInsensitiveContains(s) == true) }
+                }
+                return cached
+            }
+            throw error
+        }
     }
     
     public func createProduct(_ product: ProductCreate) async throws -> Product {
@@ -224,7 +238,16 @@ public actor APIClient {
         let url = baseURL.appendingPathComponent("locations/")
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        return try await execute(request)
+        do {
+            let locations: [StorageLocation] = try await execute(request)
+            LocalCacheStore.shared.saveLocations(locations)
+            return locations
+        } catch {
+            if let cached = LocalCacheStore.shared.loadLocations(), !cached.isEmpty {
+                return cached
+            }
+            throw error
+        }
     }
 
     // MARK: - Grocery Sessions
@@ -267,10 +290,25 @@ public actor APIClient {
         }
         components?.queryItems = queryItems
         guard let url = components?.url else { throw APIError.invalidURL }
-        
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        return try await execute(request)
+        do {
+            let batches: [InventoryBatch] = try await execute(request)
+            LocalCacheStore.shared.saveBatches(batches)
+            return batches
+        } catch {
+            if let cached = LocalCacheStore.shared.loadBatches(), !cached.isEmpty {
+                var filtered = cached
+                if let pid = productId {
+                    filtered = filtered.filter { $0.product_id == pid }
+                }
+                if activeOnly {
+                    filtered = filtered.filter { $0.remaining_quantity > 0 }
+                }
+                return filtered
+            }
+            throw error
+        }
     }
     
     public func createBatch(_ batch: InventoryBatchCreate) async throws -> InventoryBatch {
@@ -332,7 +370,16 @@ public actor APIClient {
         let url = baseURL.appendingPathComponent("shopping-list/")
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        return try await execute(request)
+        do {
+            let items: [ShoppingItem] = try await execute(request)
+            LocalCacheStore.shared.saveShoppingItems(items)
+            return items
+        } catch {
+            if let cached = LocalCacheStore.shared.loadShoppingItems(), !cached.isEmpty {
+                return cached
+            }
+            throw error
+        }
     }
     
     public func updateShoppingItem(id: Int, update: ShoppingItemUpdate) async throws -> ShoppingItem {
