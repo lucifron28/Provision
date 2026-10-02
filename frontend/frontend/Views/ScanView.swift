@@ -8,7 +8,12 @@ public struct ScanView: View {
     @State private var manualName: String = ""
     @State private var manualBarcode: String = ""
     @State private var manualBrand: String = ""
-    
+    @State private var quickAddName: String = ""
+    @State private var quickAddBrand: String = ""
+    @State private var quickAddCategory: String = "Canned Goods"
+    @State private var quickAddUnit: String = "pcs"
+    @State private var isRegisteringProduct: Bool = false
+
     public init(viewModel: ScanViewModel) {
         self.viewModel = viewModel
     }
@@ -69,6 +74,9 @@ public struct ScanView: View {
             }
             .sheet(isPresented: $showingAddManualSheet) {
                 manualEntrySheet
+            }
+            .sheet(isPresented: $viewModel.showingQuickAddSheet) {
+                quickAddProductSheet
             }
             .overlay(alignment: .bottom) {
                 if let msg = viewModel.toastMessage {
@@ -201,11 +209,17 @@ public struct ScanView: View {
             }
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("Detected Barcode")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(ProvisionTheme.textSecondary)
-                    .textCase(.uppercase)
-                    .tracking(0.8)
+                HStack(spacing: 6) {
+                    Text("Detected Barcode")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                        .textCase(.uppercase)
+                        .tracking(0.8)
+                    if viewModel.isResolvingBarcode {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                    }
+                }
 
                 if viewModel.lastScannedBarcode.isEmpty {
                     Text("Waiting for barcode...")
@@ -390,6 +404,74 @@ public struct ScanView: View {
                         }
                     }
                     .disabled(manualName.isEmpty)
+                }
+            }
+        }
+    }
+
+    private var quickAddProductSheet: some View {
+        NavigationStack {
+            Form {
+                Section("Unrecognized Barcode") {
+                    HStack {
+                        Text("Barcode")
+                        Spacer()
+                        Text(viewModel.unresolvedBarcode ?? "")
+                            .font(.system(size: 14, weight: .bold, design: .monospaced))
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                    }
+                }
+
+                Section("Product Details") {
+                    TextField("Product Name (Required)", text: $quickAddName)
+                    TextField("Brand (Optional)", text: $quickAddBrand)
+
+                    Picker("Category", selection: $quickAddCategory) {
+                        ForEach(["Canned Goods", "Dairy & Chilled", "Snacks & Bakery", "Beverages", "Grains & Staples", "Fresh Produce", "Condiments & Sauces", "Frozen & Meats"], id: \.self) { cat in
+                            Text(cat).tag(cat)
+                        }
+                    }
+
+                    Picker("Unit", selection: $quickAddUnit) {
+                        ForEach(ProductUnits.allUnits, id: \.self) { u in
+                            Text(u).tag(u)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("New Product Details")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        viewModel.unresolvedBarcode = nil
+                        viewModel.showingQuickAddSheet = false
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        isRegisteringProduct = true
+                        Task {
+                            _ = await viewModel.registerProductAndAddToQueue(
+                                name: quickAddName,
+                                brand: quickAddBrand.isEmpty ? nil : quickAddBrand,
+                                category: quickAddCategory,
+                                unit: quickAddUnit,
+                                packageSize: nil
+                            )
+                            quickAddName = ""
+                            quickAddBrand = ""
+                            isRegisteringProduct = false
+                        }
+                    } label: {
+                        if isRegisteringProduct {
+                            ProgressView()
+                        } else {
+                            Text("Save & Add")
+                                .bold()
+                        }
+                    }
+                    .disabled(quickAddName.trimmingCharacters(in: .whitespaces).isEmpty || isRegisteringProduct)
                 }
             }
         }

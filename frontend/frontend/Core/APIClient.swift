@@ -199,6 +199,16 @@ public actor APIClient {
         return try await execute(request)
     }
     
+    public func fetchProduct(barcode: String) async throws -> Product? {
+        var components = URLComponents(url: baseURL.appendingPathComponent("products/"), resolvingAgainstBaseURL: true)
+        components?.queryItems = [URLQueryItem(name: "barcode", value: barcode)]
+        guard let url = components?.url else { throw APIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        let products: [Product] = try await execute(request)
+        return products.first
+    }
+
     public func updateProduct(id: Int, update: ProductUpdate) async throws -> Product {
         let url = baseURL.appendingPathComponent("products/\(id)")
         var request = URLRequest(url: url)
