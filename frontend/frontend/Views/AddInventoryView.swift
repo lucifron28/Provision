@@ -27,7 +27,7 @@ public struct AddInventoryView: View {
     @State private var purchaseDate: Date = Date()
     @State private var unitPriceStr: String = ""
     @State private var selectedLocationId: Int?
-    
+    @State private var showingExpirationOCRSheet: Bool = false
     @State private var locations: [StorageLocation] = []
     @State private var isLoadingLocations: Bool = false
     @State private var isSubmitting: Bool = false
@@ -141,7 +141,17 @@ public struct AddInventoryView: View {
                     
                     Toggle("Track Expiration", isOn: $trackExpiration)
                     if trackExpiration {
-                        DatePicker("Expiration Date", selection: $expirationDate, displayedComponents: .date)
+                        HStack {
+                            DatePicker("Expiration Date", selection: $expirationDate, displayedComponents: .date)
+                            Button {
+                                showingExpirationOCRSheet = true
+                            } label: {
+                                Image(systemName: "camera.viewfinder")
+                                    .font(.system(size: 15))
+                                    .foregroundStyle(ProvisionTheme.heroCard)
+                            }
+                            .buttonStyle(.borderless)
+                        }
                     }
                     
                     if isLoadingLocations {
@@ -193,6 +203,11 @@ public struct AddInventoryView: View {
             }
             .task {
                 await fetchLocations()
+            }
+            .sheet(isPresented: $showingExpirationOCRSheet) {
+                ExpirationDateScannerSheet(title: "Scan Package Date") { scannedDate in
+                    expirationDate = scannedDate
+                }
             }
         }
     }

@@ -13,6 +13,7 @@ public struct EditBatchView: View {
     @State private var locations: [StorageLocation] = []
     @State private var isLoadingLocations: Bool = false
     @State private var isSubmitting: Bool = false
+    @State private var showingExpirationOCRSheet: Bool = false
     @State private var errorMessage: String?
     
     public init(viewModel: InventoryViewModel, batch: InventoryBatch) {
@@ -49,7 +50,17 @@ public struct EditBatchView: View {
                 Section("Metadata") {
                     Toggle("Track Expiration", isOn: $trackExpiration)
                     if trackExpiration {
-                        DatePicker("Expiration Date", selection: $expirationDate, displayedComponents: .date)
+                        HStack {
+                            DatePicker("Expiration Date", selection: $expirationDate, displayedComponents: .date)
+                            Button {
+                                showingExpirationOCRSheet = true
+                            } label: {
+                                Image(systemName: "camera.viewfinder")
+                                    .font(.system(size: 15))
+                                    .foregroundStyle(ProvisionTheme.heroCard)
+                            }
+                            .buttonStyle(.borderless)
+                        }
                     }
                     
                     if isLoadingLocations {
@@ -99,6 +110,11 @@ public struct EditBatchView: View {
             }
             .task {
                 await fetchLocations()
+            }
+            .sheet(isPresented: $showingExpirationOCRSheet) {
+                ExpirationDateScannerSheet(title: "Scan Package Date") { scannedDate in
+                    expirationDate = scannedDate
+                }
             }
         }
     }

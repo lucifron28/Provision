@@ -14,6 +14,7 @@ public struct ScanView: View {
     @State private var quickAddCategory: String = "Canned Goods"
     @State private var quickAddUnit: String = "pcs"
     @State private var isRegisteringProduct: Bool = false
+    @State private var editingItemForOCR: ScannedIntakeItem? = nil
 
     public init(viewModel: ScanViewModel) {
         self.viewModel = viewModel
@@ -95,6 +96,14 @@ public struct ScanView: View {
                 #else
                 EmptyView()
                 #endif
+            }
+            .sheet(item: $editingItemForOCR) { targetItem in
+                ExpirationDateScannerSheet(title: "Scan Expiry: \(targetItem.name)") { scannedDate in
+                    if let idx = viewModel.scannedItems.firstIndex(where: { $0.id == targetItem.id }) {
+                        viewModel.scannedItems[idx].expirationDate = scannedDate
+                    }
+                    editingItemForOCR = nil
+                }
             }
             .overlay(alignment: .bottom) {
                 if let msg = viewModel.toastMessage {
@@ -416,14 +425,23 @@ public struct ScanView: View {
                 
                 Spacer()
                 
-                // Expiry display
-                HStack(spacing: 4) {
-                    Image(systemName: "calendar")
-                        .font(.system(size: 11))
-                    Text(item.wrappedValue.expirationDate, format: .dateTime.month().day().year())
-                        .font(.system(size: 12, weight: .medium))
+                // Expiry display with OCR scan trigger
+                Button {
+                    editingItemForOCR = item.wrappedValue
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "camera.viewfinder")
+                            .font(.system(size: 11))
+                        Text(item.wrappedValue.expirationDate, format: .dateTime.month().day().year())
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(ProvisionTheme.surfaceSecondary)
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+                    .clipShape(Capsule())
                 }
-                .foregroundStyle(ProvisionTheme.textSecondary)
+                .buttonStyle(.plain)
             }
         }
         .padding(14)
