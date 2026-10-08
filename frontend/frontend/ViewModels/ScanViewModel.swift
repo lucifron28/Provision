@@ -2,37 +2,42 @@ import Foundation
 import SwiftUI
 import Combine
 
-public struct ScannedIntakeItem: Identifiable, Hashable {
-    public let id = UUID()
+public struct ScannedIntakeItem: Identifiable, Hashable, Sendable {
+    public let id: UUID
     public var name: String
     public var brand: String?
     public var barcode: String
     public var quantity: Double
     public var unit: String
-    public var expirationDate: Date
+    public var expirationDate: Date?
     public var status: IntakeStatus
     public var productId: Int?
     public var storageLocationId: Int?
     public var unitPrice: Double?
+    public var isConfirmed: Bool
     
-    public enum IntakeStatus: String {
+    public enum IntakeStatus: String, Sendable {
         case autoLogged = "Auto-logged"
         case recognized = "Recognized"
         case needsReview = "Needs Review"
+        case confirmed = "Confirmed"
     }
 
     public init(
+        id: UUID = UUID(),
         name: String,
         brand: String? = nil,
         barcode: String,
         quantity: Double = 1.0,
         unit: String = "pcs",
-        expirationDate: Date,
+        expirationDate: Date? = nil,
         status: IntakeStatus = .recognized,
         productId: Int? = nil,
         storageLocationId: Int? = nil,
-        unitPrice: Double? = nil
+        unitPrice: Double? = nil,
+        isConfirmed: Bool = false
     ) {
+        self.id = id
         self.name = name
         self.brand = brand
         self.barcode = barcode
@@ -43,13 +48,15 @@ public struct ScannedIntakeItem: Identifiable, Hashable {
         self.productId = productId
         self.storageLocationId = storageLocationId
         self.unitPrice = unitPrice
+        self.isConfirmed = isConfirmed
     }
 }
 
 @MainActor
 public class ScanViewModel: ObservableObject {
-    @Published public var storeName: String = "Trader Joe's"
+    @Published public var storeName: String
     @Published public var scannedItems: [ScannedIntakeItem] = []
+    @Published public var availableLocations: [StorageLocation] = []
     @Published public var isScanning: Bool = true
     @Published public var isCommitting: Bool = false
     @Published public var toastMessage: String? = nil
@@ -63,18 +70,29 @@ public class ScanViewModel: ObservableObject {
     public var isPreview: Bool
     public let scannerManager: BarcodeScannerManager
     private let client: APIClient
+    private var inFlightResolutions: Set<String> = []
     
     public init(client: APIClient = .shared, isPreview: Bool = false) {
         self.client = client
         self.isPreview = isPreview
+        self.storeName = isPreview ? "SM Supermarket Megamall" : ""
         self.scannerManager = BarcodeScannerManager()
         if isPreview {
             scannerManager.isCameraAvailable = false
+            setupSampleIntake()
         }
-        setupSampleIntake()
 
         self.scannerManager.onBarcodeDetected = { [weak self] code in
             self?.onBarcodeScanned(code)
+        }
+    }
+
+    public func loadLocations() async {
+        do {
+            let locations = try await client.fetchLocations()
+            self.availableLocations = locations
+        } catch {
+            self.errorMessage = "Failed to load locations: \(error.localizedDescription)"
         }
     }
 
@@ -97,13 +115,24 @@ public class ScanViewModel: ObservableObject {
     }
 
     public func resolveScannedBarcode(_ barcode: String) async {
+        // Check if barcode is already being resolved
+        if inFlightResolutions.contains(barcode) {
+            return
+        }
+        inFlightResolutions.insert(barcode)
+        defer {
+            inFlightResolutions.remove(barcode)
+        }
+
         isResolvingBarcode = true
+        defer {
+            isResolvingBarcode = false
+        }
 
         // 1. Check if already scanned in current session -> increment quantity
         if let idx = scannedItems.firstIndex(where: { $0.barcode == barcode }) {
             scannedItems[idx].quantity += 1.0
             self.toastMessage = "Incremented \(scannedItems[idx].name) (\(Int(scannedItems[idx].quantity)))"
-            isResolvingBarcode = false
             return
         }
 
@@ -120,24 +149,17 @@ public class ScanViewModel: ObservableObject {
         }
 
         if let prod = resolvedProduct {
-            let defaultExpDays: Int
-            switch prod.category {
-            case "Dairy & Chilled": defaultExpDays = 7
-            case "Fresh Produce": defaultExpDays = 5
-            case "Frozen & Meats": defaultExpDays = 90
-            default: defaultExpDays = 180
-            }
-            let exp = Calendar.current.date(byAdding: .day, value: defaultExpDays, to: Date()) ?? Date()
-
             let item = ScannedIntakeItem(
                 name: prod.name,
                 brand: prod.brand,
                 barcode: barcode,
                 quantity: 1.0,
                 unit: prod.unit ?? "pcs",
-                expirationDate: exp,
+                expirationDate: nil,
                 status: .recognized,
-                productId: prod.id
+                productId: prod.id,
+                storageLocationId: nil,
+                isConfirmed: false
             )
             self.scannedItems.insert(item, at: 0)
             self.toastMessage = "Recognized: \(prod.name)"
@@ -146,8 +168,6 @@ public class ScanViewModel: ObservableObject {
             self.showingQuickAddSheet = true
             self.toastMessage = "Unrecognized barcode: \(barcode)"
         }
-
-        isResolvingBarcode = false
     }
 
     public func registerProductAndAddToQueue(
@@ -183,16 +203,17 @@ public class ScanViewModel: ObservableObject {
                 createdProduct = try await client.createProduct(create)
             }
 
-            let exp = Calendar.current.date(byAdding: .day, value: 30, to: Date()) ?? Date()
             let item = ScannedIntakeItem(
                 name: createdProduct.name,
                 brand: createdProduct.brand,
                 barcode: barcode,
                 quantity: 1.0,
                 unit: createdProduct.unit ?? "pcs",
-                expirationDate: exp,
+                expirationDate: nil,
                 status: .autoLogged,
-                productId: createdProduct.id
+                productId: createdProduct.id,
+                storageLocationId: nil,
+                isConfirmed: false
             )
             self.scannedItems.insert(item, at: 0)
             self.toastMessage = "Added \(createdProduct.name) to intake queue"
@@ -236,17 +257,18 @@ public class ScanViewModel: ObservableObject {
 
         var addedCount = 0
         for item in parsedItems {
-            let exp = Calendar.current.date(byAdding: .day, value: 30, to: Date()) ?? Date()
             let intakeItem = ScannedIntakeItem(
                 name: item.matchedProduct?.name ?? item.parsedName,
                 brand: item.matchedProduct?.brand,
                 barcode: item.matchedProduct?.barcode ?? UUID().uuidString.prefix(8).description,
                 quantity: item.quantity,
                 unit: item.matchedProduct?.unit ?? "pcs",
-                expirationDate: exp,
+                expirationDate: nil,
                 status: item.matchedProduct != nil ? .recognized : .needsReview,
                 productId: item.matchedProduct?.id,
-                unitPrice: item.parsedPrice
+                storageLocationId: nil,
+                unitPrice: item.parsedPrice,
+                isConfirmed: false
             )
             scannedItems.insert(intakeItem, at: 0)
             addedCount += 1
@@ -272,17 +294,18 @@ public class ScanViewModel: ObservableObject {
         let parsed = ReceiptOCRService.shared.parseReceiptLines(sampleLines, catalog: catalog)
 
         for item in parsed {
-            let exp = Calendar.current.date(byAdding: .day, value: 30, to: Date()) ?? Date()
             let intakeItem = ScannedIntakeItem(
                 name: item.matchedProduct?.name ?? item.parsedName,
                 brand: item.matchedProduct?.brand,
                 barcode: item.matchedProduct?.barcode ?? UUID().uuidString.prefix(8).description,
                 quantity: item.quantity,
                 unit: item.matchedProduct?.unit ?? "pcs",
-                expirationDate: exp,
+                expirationDate: nil,
                 status: item.matchedProduct != nil ? .recognized : .needsReview,
                 productId: item.matchedProduct?.id,
-                unitPrice: item.parsedPrice
+                storageLocationId: nil,
+                unitPrice: item.parsedPrice,
+                isConfirmed: false
             )
             scannedItems.insert(intakeItem, at: 0)
         }
@@ -297,8 +320,11 @@ public class ScanViewModel: ObservableObject {
                 barcode: "00123456",
                 quantity: 1,
                 unit: "1L",
-                expirationDate: calendar.date(byAdding: .day, value: 5, to: Date()) ?? Date(),
-                status: .autoLogged
+                expirationDate: calendar.date(byAdding: .day, value: 5, to: Date()),
+                status: .autoLogged,
+                productId: 1,
+                storageLocationId: 1,
+                isConfirmed: true
             ),
             ScannedIntakeItem(
                 name: "Greek Yogurt Tub",
@@ -306,8 +332,11 @@ public class ScanViewModel: ObservableObject {
                 barcode: "00789012",
                 quantity: 2,
                 unit: "pack",
-                expirationDate: calendar.date(byAdding: .day, value: 12, to: Date()) ?? Date(),
-                status: .autoLogged
+                expirationDate: calendar.date(byAdding: .day, value: 12, to: Date()),
+                status: .autoLogged,
+                productId: 2,
+                storageLocationId: 1,
+                isConfirmed: true
             ),
             ScannedIntakeItem(
                 name: "Century Tuna Flakes",
@@ -315,14 +344,60 @@ public class ScanViewModel: ObservableObject {
                 barcode: "4800016644810",
                 quantity: 4,
                 unit: "cans",
-                expirationDate: calendar.date(byAdding: .year, value: 2, to: Date()) ?? Date(),
-                status: .recognized
+                expirationDate: calendar.date(byAdding: .year, value: 2, to: Date()),
+                status: .recognized,
+                productId: 3,
+                storageLocationId: 2,
+                isConfirmed: true
             )
         ]
     }
+
+    @discardableResult
+    public func confirmItem(_ item: ScannedIntakeItem) -> Bool {
+        guard let idx = scannedItems.firstIndex(where: { $0.id == item.id }) else { return false }
+        var target = scannedItems[idx]
+
+        // An item can only be confirmed if it has a productId, is not .needsReview, has storageLocationId, and valid quantity/unit
+        guard target.productId != nil && target.status != .needsReview else {
+            self.errorMessage = "Cannot confirm: '\(target.name)' is unresolved. Please link or register the product first."
+            return false
+        }
+        guard target.storageLocationId != nil else {
+            self.errorMessage = "Cannot confirm: Please select a storage location for '\(target.name)'."
+            return false
+        }
+        guard target.quantity > 0 && !target.unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            self.errorMessage = "Cannot confirm: '\(target.name)' must have a valid quantity and unit."
+            return false
+        }
+
+        target.isConfirmed.toggle()
+        if target.isConfirmed {
+            target.status = .confirmed
+        } else {
+            target.status = .recognized
+        }
+        scannedItems[idx] = target
+        return target.isConfirmed
+    }
+
+    public func confirmAllValid() {
+        for idx in scannedItems.indices {
+            let item = scannedItems[idx]
+            if item.productId != nil &&
+                item.status != .needsReview &&
+                item.storageLocationId != nil &&
+                item.quantity > 0 &&
+                !item.unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                scannedItems[idx].isConfirmed = true
+                scannedItems[idx].status = .confirmed
+            }
+        }
+    }
     
-    public func addItem(barcode: String, name: String, brand: String? = nil, quantity: Double = 1, unit: String = "units", daysUntilExp: Int = 14) {
-        let exp = Calendar.current.date(byAdding: .day, value: daysUntilExp, to: Date()) ?? Date()
+    public func addItem(barcode: String, name: String, brand: String? = nil, quantity: Double = 1, unit: String = "units", daysUntilExp: Int? = nil) {
+        let exp: Date? = daysUntilExp.flatMap { Calendar.current.date(byAdding: .day, value: $0, to: Date()) }
         let item = ScannedIntakeItem(
             name: name,
             brand: brand,
@@ -342,10 +417,37 @@ public class ScanViewModel: ObservableObject {
     }
     
     public func commitIntakeSession() async {
-        guard !scannedItems.isEmpty else { return }
+        guard !scannedItems.isEmpty else {
+            self.errorMessage = "Intake queue is empty. Scan or add items before committing."
+            return
+        }
         isCommitting = true
         errorMessage = nil
-        
+
+        // Enforce strict validation
+        for item in scannedItems {
+            guard item.productId != nil && item.status != .needsReview else {
+                self.errorMessage = "Cannot commit: '\(item.name)' is unresolved. Please link or register the product first."
+                isCommitting = false
+                return
+            }
+            guard item.storageLocationId != nil else {
+                self.errorMessage = "Cannot commit: Please select a storage location for '\(item.name)'."
+                isCommitting = false
+                return
+            }
+            guard item.quantity > 0 && !item.unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                self.errorMessage = "Cannot commit: '\(item.name)' must have a valid quantity and unit."
+                isCommitting = false
+                return
+            }
+            guard item.isConfirmed else {
+                self.errorMessage = "Cannot commit: Please confirm details for '\(item.name)' before committing."
+                isCommitting = false
+                return
+            }
+        }
+
         if isPreview {
             try? await Task.sleep(nanoseconds: 300_000_000)
             self.toastMessage = "Committed intake of \(scannedItems.count) items (Preview)"
@@ -356,41 +458,26 @@ public class ScanViewModel: ObservableObject {
         }
 
         do {
-            // 1. Fetch available locations to get a fallback location
-            let locations = try await client.fetchLocations()
-            let defaultLocationId = locations.first?.id
-
-            // 2. Resolve any scanned item missing a productId
-            var itemsToCommit: [SessionItemCreate] = []
             let dateFormatter = DateFormatter()
             dateFormatter.dateFormat = "yyyy-MM-dd"
 
+            var itemsToCommit: [SessionItemCreate] = []
             for item in scannedItems {
-                var targetProductId = item.productId
-
-                if targetProductId == nil {
-                    if let found = try? await client.fetchProduct(barcode: item.barcode) {
-                        targetProductId = found.id
-                    } else {
-                        let create = ProductCreate(
-                            name: item.name,
-                            brand: item.brand,
-                            barcode: item.barcode,
-                            category: "Pantry",
-                            unit: item.unit
-                        )
-                        if let created = try? await client.createProduct(create) {
-                            targetProductId = created.id
-                        }
-                    }
+                guard let pid = item.productId else {
+                    self.errorMessage = "Cannot commit: '\(item.name)' is unresolved. Please link or register the product first."
+                    isCommitting = false
+                    return
+                }
+                guard let locId = item.storageLocationId else {
+                    self.errorMessage = "Cannot commit: Please select a storage location for '\(item.name)'."
+                    isCommitting = false
+                    return
                 }
 
-                guard let pid = targetProductId else { continue }
-
-                let expStr = dateFormatter.string(from: item.expirationDate)
+                let expStr: String? = item.expirationDate.map { dateFormatter.string(from: $0) }
                 let sessionItem = SessionItemCreate(
                     product_id: pid,
-                    storage_location_id: item.storageLocationId ?? defaultLocationId,
+                    storage_location_id: locId,
                     quantity: item.quantity,
                     expiration_date: expStr,
                     unit_price: item.unitPrice
@@ -398,15 +485,10 @@ public class ScanViewModel: ObservableObject {
                 itemsToCommit.append(sessionItem)
             }
 
-            guard !itemsToCommit.isEmpty else {
-                self.errorMessage = "No valid products to commit."
-                isCommitting = false
-                return
-            }
-
-            // 3. Create the draft grocery session
+            // Create the draft grocery session
             let isoFormatter = ISO8601DateFormatter()
-            let sessionName = storeName.trimmingCharacters(in: .whitespaces).isEmpty ? "Grocery Intake" : storeName
+            let trimmedStore = storeName.trimmingCharacters(in: .whitespaces)
+            let sessionName = trimmedStore.isEmpty ? "Grocery Intake" : trimmedStore
             let sessionCreate = GrocerySessionCreate(
                 store_name: sessionName,
                 purchase_date: isoFormatter.string(from: Date()),
@@ -415,7 +497,7 @@ public class ScanViewModel: ObservableObject {
             )
             let session = try await client.createSession(sessionCreate)
 
-            // 4. Commit session to generate batches and ledger events
+            // Commit session to generate batches and ledger events
             _ = try await client.commitSession(id: session.id, items: itemsToCommit)
 
             self.toastMessage = "Committed \(itemsToCommit.count) items to household inventory!"
