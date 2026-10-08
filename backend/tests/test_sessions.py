@@ -92,3 +92,43 @@ def test_cancel_grocery_session(client):
     )
     assert commit_res.status_code == 400
     assert "cancelled session" in commit_res.json()["detail"].lower()
+
+
+def test_grocery_session_commit_with_null_expiration_date(client):
+    p = client.post("/api/v1/products/", json={"name": "Canned Corned Beef", "brand": "Purefoods"}).json()
+    loc = client.post("/api/v1/locations/", json={"name": "Pantry Cabinet"}).json()
+
+    session_res = client.post(
+        "/api/v1/grocery-sessions/",
+        json={"store_name": "SM Supermarket", "notes": "Null expiry intake"},
+    )
+    assert session_res.status_code == 201
+    session_id = session_res.json()["id"]
+
+    commit_payload = {
+        "items": [
+            {
+                "product_id": p["id"],
+                "storage_location_id": loc["id"],
+                "quantity": 3.0,
+                "unit_price": 75.0,
+                "expiration_date": None,
+            }
+        ],
+        "total_amount": 225.0,
+    }
+    commit_res = client.post(f"/api/v1/grocery-sessions/{session_id}/commit", json=commit_payload)
+    assert commit_res.status_code == 200
+    committed = commit_res.json()
+    assert committed["status"] == "COMPLETED"
+    assert len(committed["batches"]) == 1
+
+    batch_id = committed["batches"][0]["id"]
+    batch = client.get(f"/api/v1/batches/{batch_id}").json()
+    assert batch["expiration_date"] is None
+    assert batch["remaining_quantity"] == 3.0
+
+    events = client.get(f"/api/v1/inventory/events?batch_id={batch_id}").json()
+    assert len(events) == 1
+    assert events[0]["event_type"] == "PURCHASED"
+    assert events[0]["quantity"] == 3.0
