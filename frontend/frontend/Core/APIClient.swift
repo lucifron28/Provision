@@ -3,9 +3,10 @@ import Foundation
 // MARK: - API Client
 // Concrete, readable URLSession async/await client communicating with the FastAPI backend
 
-public enum APIError: LocalizedError {
+public enum APIError: LocalizedError, Sendable {
     case invalidURL
     case networkError(Error)
+    case unauthorized
     case invalidResponse(Int, String?)
     case decodingError(Error)
     case serverMessage(String)
@@ -16,6 +17,8 @@ public enum APIError: LocalizedError {
             return "Invalid API URL endpoint."
         case .networkError(let error):
             return "Network connection failed: \(error.localizedDescription)"
+        case .unauthorized:
+            return "Authentication required or token expired."
         case .invalidResponse(let code, let message):
             return "Server responded with status \(code): \(message ?? "No details")"
         case .decodingError(let error):
@@ -29,9 +32,9 @@ public enum APIError: LocalizedError {
 public enum APIEnvironment {
     /// Configurable local LAN host for physical iPhone testing.
     /// Change this to your development Mac's local IP (e.g. "192.168.1.100") when testing on a physical device.
-    public static var localDeviceHost: String = "127.0.0.1"
-    public static var port: Int = 8000
-    public static var apiVersionPath: String = "api/v1"
+    nonisolated(unsafe) public static var localDeviceHost: String = "127.0.0.1"
+    nonisolated(unsafe) public static var port: Int = 8000
+    nonisolated(unsafe) public static var apiVersionPath: String = "api/v1"
     
     public static var defaultBaseURL: URL {
         #if targetEnvironment(simulator)
@@ -47,16 +50,21 @@ public actor APIClient {
     
     public var baseURL: URL
     public var accessToken: String? = nil
+    public private(set) var isOfflineMode: Bool = false
     private let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
-    public init(baseURL: URL = APIEnvironment.defaultBaseURL) {
+    public init(baseURL: URL = APIEnvironment.defaultBaseURL, session: URLSession? = nil) {
         self.baseURL = baseURL
         
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 10.0
-        config.timeoutIntervalForResource = 30.0
-        self.session = URLSession(configuration: config)
+        if let session = session {
+            self.session = session
+        } else {
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest = 10.0
+            config.timeoutIntervalForResource = 30.0
+            self.session = URLSession(configuration: config)
+        }
         
         self.decoder = JSONDecoder()
         self.encoder = JSONEncoder()
@@ -70,6 +78,22 @@ public actor APIClient {
         self.accessToken = token
     }
     
+    public func clearCache() async {
+        isOfflineMode = false
+        await LocalCacheStore.shared.clearAll()
+    }
+
+    private func isNetworkFailure(_ error: Error) -> Bool {
+        switch error {
+        case APIError.networkError:
+            return true
+        case is URLError:
+            return true
+        default:
+            return false
+        }
+    }
+
     // MARK: - Generic Request Helper
     
     private func execute<T: Decodable>(_ request: URLRequest) async throws -> T {
@@ -90,6 +114,10 @@ public actor APIClient {
             throw APIError.invalidResponse(-1, "Not an HTTP response")
         }
         
+        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+            throw APIError.unauthorized
+        }
+
         guard (200...299).contains(httpResponse.statusCode) else {
             // Attempt to parse FastAPI detail message
             if let errorObj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -125,6 +153,10 @@ public actor APIClient {
             throw APIError.invalidResponse(-1, "Not an HTTP response")
         }
         
+        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+            throw APIError.unauthorized
+        }
+
         guard (200...299).contains(httpResponse.statusCode) else {
             if let errorObj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let detail = errorObj["detail"] as? String {
@@ -181,17 +213,26 @@ public actor APIClient {
         request.httpMethod = "GET"
         do {
             let products: [Product] = try await execute(request)
-            LocalCacheStore.shared.saveProducts(products)
+            isOfflineMode = false
+            let isUnfiltered = (search == nil || search!.isEmpty) && (category == nil || category!.isEmpty)
+            if isUnfiltered {
+                await LocalCacheStore.shared.saveProducts(products)
+            }
             return products
         } catch {
-            if let cached = LocalCacheStore.shared.loadProducts(), !cached.isEmpty {
+            guard isNetworkFailure(error) else {
+                throw error
+            }
+            if let cached = await LocalCacheStore.shared.loadProducts(), !cached.isEmpty {
+                isOfflineMode = true
+                var result = cached
                 if let cat = category, !cat.isEmpty {
-                    return cached.filter { $0.category == cat }
+                    result = result.filter { $0.category == cat }
                 }
                 if let s = search, !s.isEmpty {
-                    return cached.filter { $0.name.localizedCaseInsensitiveContains(s) || ($0.brand?.localizedCaseInsensitiveContains(s) == true) }
+                    result = result.filter { $0.name.localizedCaseInsensitiveContains(s) || ($0.brand?.localizedCaseInsensitiveContains(s) == true) }
                 }
-                return cached
+                return result
             }
             throw error
         }
@@ -240,10 +281,15 @@ public actor APIClient {
         request.httpMethod = "GET"
         do {
             let locations: [StorageLocation] = try await execute(request)
-            LocalCacheStore.shared.saveLocations(locations)
+            isOfflineMode = false
+            await LocalCacheStore.shared.saveLocations(locations)
             return locations
         } catch {
-            if let cached = LocalCacheStore.shared.loadLocations(), !cached.isEmpty {
+            guard isNetworkFailure(error) else {
+                throw error
+            }
+            if let cached = await LocalCacheStore.shared.loadLocations(), !cached.isEmpty {
+                isOfflineMode = true
                 return cached
             }
             throw error
@@ -294,10 +340,17 @@ public actor APIClient {
         request.httpMethod = "GET"
         do {
             let batches: [InventoryBatch] = try await execute(request)
-            LocalCacheStore.shared.saveBatches(batches)
+            isOfflineMode = false
+            if productId == nil {
+                await LocalCacheStore.shared.saveBatches(batches)
+            }
             return batches
         } catch {
-            if let cached = LocalCacheStore.shared.loadBatches(), !cached.isEmpty {
+            guard isNetworkFailure(error) else {
+                throw error
+            }
+            if let cached = await LocalCacheStore.shared.loadBatches(), !cached.isEmpty {
+                isOfflineMode = true
                 var filtered = cached
                 if let pid = productId {
                     filtered = filtered.filter { $0.product_id == pid }
@@ -372,10 +425,15 @@ public actor APIClient {
         request.httpMethod = "GET"
         do {
             let items: [ShoppingItem] = try await execute(request)
-            LocalCacheStore.shared.saveShoppingItems(items)
+            isOfflineMode = false
+            await LocalCacheStore.shared.saveShoppingItems(items)
             return items
         } catch {
-            if let cached = LocalCacheStore.shared.loadShoppingItems(), !cached.isEmpty {
+            guard isNetworkFailure(error) else {
+                throw error
+            }
+            if let cached = await LocalCacheStore.shared.loadShoppingItems(), !cached.isEmpty {
+                isOfflineMode = true
                 return cached
             }
             throw error
