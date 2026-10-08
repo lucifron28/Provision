@@ -252,29 +252,21 @@ public class ScanViewModel: ObservableObject {
             allLines.append(contentsOf: lines)
         }
 
-        let catalog = isPreview ? PreviewData.products : (try? await client.fetchProducts()) ?? PreviewData.products
-        let parsedItems = ReceiptOCRService.shared.parseReceiptLines(allLines, catalog: catalog)
-
-        var addedCount = 0
-        for item in parsedItems {
-            let intakeItem = ScannedIntakeItem(
-                name: item.matchedProduct?.name ?? item.parsedName,
-                brand: item.matchedProduct?.brand,
-                barcode: item.matchedProduct?.barcode ?? UUID().uuidString.prefix(8).description,
-                quantity: item.quantity,
-                unit: item.matchedProduct?.unit ?? "pcs",
-                expirationDate: nil,
-                status: item.matchedProduct != nil ? .recognized : .needsReview,
-                productId: item.matchedProduct?.id,
-                storageLocationId: nil,
-                unitPrice: item.parsedPrice,
-                isConfirmed: false
-            )
-            scannedItems.insert(intakeItem, at: 0)
-            addedCount += 1
+        // Requirement 8: Never silently substitute PreviewData.products in production!
+        let catalog: [Product]
+        if isPreview {
+            catalog = PreviewData.products
+        } else {
+            do {
+                catalog = try await client.fetchProducts()
+            } catch {
+                catalog = []
+                self.errorMessage = "Failed to load product catalog for receipt matching: \(error.localizedDescription)"
+            }
         }
 
-        toastMessage = "Extracted \(addedCount) items from receipt"
+        let parsedItems = ReceiptOCRService.shared.parseReceiptLines(allLines, catalog: catalog)
+        integrateReceiptItems(parsedItems)
         isProcessingReceipt = false
     }
 
@@ -282,7 +274,7 @@ public class ScanViewModel: ObservableObject {
         self.storeName = "SM Supermarket Megamall"
         let sampleLines = [
             "SM SUPERMARKET MEGAMALL",
-            "CENTURY TUNA FLAKES OIL 180G    40.50",
+            "CENTURY TUNA FLAKES OIL 180G    2 @ 40.50 V",
             "PUREFOODS CORNED BEEF 150G      92.00",
             "SAN MIGUEL PALE PILSEN 330ML    52.00",
             "GARDENIA CLASSIC WHITE BREAD    82.00",
@@ -290,26 +282,78 @@ public class ScanViewModel: ObservableObject {
             "TOTAL AMOUNT                  314.50"
         ]
 
-        let catalog = isPreview ? PreviewData.products : PreviewData.products
+        let catalog = isPreview ? PreviewData.products : []
         let parsed = ReceiptOCRService.shared.parseReceiptLines(sampleLines, catalog: catalog)
+        integrateReceiptItems(parsed)
+    }
 
-        for item in parsed {
-            let intakeItem = ScannedIntakeItem(
-                name: item.matchedProduct?.name ?? item.parsedName,
-                brand: item.matchedProduct?.brand,
-                barcode: item.matchedProduct?.barcode ?? UUID().uuidString.prefix(8).description,
-                quantity: item.quantity,
-                unit: item.matchedProduct?.unit ?? "pcs",
-                expirationDate: nil,
-                status: item.matchedProduct != nil ? .recognized : .needsReview,
-                productId: item.matchedProduct?.id,
-                storageLocationId: nil,
-                unitPrice: item.parsedPrice,
-                isConfirmed: false
-            )
-            scannedItems.insert(intakeItem, at: 0)
+    private func integrateReceiptItems(_ parsedItems: [ReceiptLineItem]) {
+        var mergedCount = 0
+        var newCount = 0
+
+        for item in parsedItems {
+            let isRecognized = (item.confidence == .exact || item.confidence == .high) && item.matchedProduct != nil
+            let status: ScannedIntakeItem.IntakeStatus = isRecognized ? .recognized : .needsReview
+            let candidateBarcode = item.matchedProduct?.barcode ?? UUID().uuidString.prefix(8).description
+
+            // Requirement 6: Match receipt items against already scanned products where possible rather than adding duplicates
+            if let pid = item.matchedProduct?.id, let idx = scannedItems.firstIndex(where: { $0.productId == pid }) {
+                scannedItems[idx].quantity += item.quantity
+                if let price = item.unitPrice {
+                    scannedItems[idx].unitPrice = price
+                }
+                mergedCount += 1
+            } else if let idx = scannedItems.firstIndex(where: { $0.barcode == candidateBarcode }) {
+                scannedItems[idx].quantity += item.quantity
+                if let price = item.unitPrice {
+                    scannedItems[idx].unitPrice = price
+                }
+                mergedCount += 1
+            } else {
+                let intakeItem = ScannedIntakeItem(
+                    name: item.matchedProduct?.name ?? item.parsedName,
+                    brand: item.matchedProduct?.brand,
+                    barcode: candidateBarcode,
+                    quantity: item.quantity,
+                    unit: item.matchedProduct?.unit ?? "pcs",
+                    expirationDate: nil,
+                    status: status,
+                    productId: item.matchedProduct?.id,
+                    storageLocationId: nil,
+                    unitPrice: item.unitPrice,
+                    isConfirmed: false
+                )
+                scannedItems.insert(intakeItem, at: 0)
+                newCount += 1
+            }
         }
-        toastMessage = "Loaded \(parsed.count) receipt items from \(storeName)"
+
+        if mergedCount > 0 && newCount > 0 {
+            toastMessage = "Added \(newCount) items, merged \(mergedCount) with existing intake"
+        } else if mergedCount > 0 {
+            toastMessage = "Merged \(mergedCount) items with existing intake"
+        } else {
+            toastMessage = "Extracted \(newCount) items from receipt"
+        }
+    }
+
+    public func updateItemPrice(id: UUID, price: Double?) {
+        guard let idx = scannedItems.firstIndex(where: { $0.id == id }) else { return }
+        scannedItems[idx].unitPrice = price
+    }
+
+    public func updateItemProduct(id: UUID, product: Product) {
+        guard let idx = scannedItems.firstIndex(where: { $0.id == id }) else { return }
+        scannedItems[idx].productId = product.id
+        scannedItems[idx].name = product.name
+        scannedItems[idx].brand = product.brand
+        if let bc = product.barcode {
+            scannedItems[idx].barcode = bc
+        }
+        if let u = product.unit {
+            scannedItems[idx].unit = u
+        }
+        scannedItems[idx].status = .recognized
     }
     private func setupSampleIntake() {
         let calendar = Calendar.current
