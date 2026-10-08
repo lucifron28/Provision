@@ -17,9 +17,9 @@ public class InventoryViewModel: ObservableObject {
     
     @Published public var isLoading: Bool = false
     @Published public var isDetailLoading: Bool = false
+    @Published public var isOffline: Bool = false
     @Published public var errorMessage: String? = nil
     @Published public var toastMessage: String? = nil
-    
     private let client: APIClient
     public var isPreview: Bool
     
@@ -60,7 +60,7 @@ public class InventoryViewModel: ObservableObject {
         } catch {
             self.errorMessage = error.localizedDescription
         }
-        
+        self.isOffline = await client.isOfflineMode
         self.isLoading = false
     }
     

@@ -44,6 +44,7 @@ public class AuthViewModel: ObservableObject {
             // Invalid or expired token: clear Keychain and return to Login
             keychain.deleteAccessToken()
             await client.setAccessToken(nil)
+            await client.clearCache()
             self.currentUser = nil
             self.authState = .signedOut
         }
@@ -107,6 +108,7 @@ public class AuthViewModel: ObservableObject {
         }
         keychain.deleteAccessToken()
         await client.setAccessToken(nil)
+        await client.clearCache()
         self.currentUser = nil
         self.authState = .signedOut
     }

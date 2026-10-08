@@ -14,11 +14,14 @@ public struct InventoryView: View {
     public var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                if viewModel.isOffline {
+                    offlineBanner
+                }
+
                 // Search Bar & Filter Header
                 searchAndFilterHeader
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                
                 // Category Chips Scroll
                 categoryChipsBar
                     .padding(.bottom, 8)
@@ -66,8 +69,28 @@ public struct InventoryView: View {
             }
         }
     }
-    
-    // MARK: - Subviews
+
+// MARK: - Subviews
+
+    private var offlineBanner: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "wifi.slash")
+                .font(.system(size: 13, weight: .semibold))
+            Text("Offline Mode • Viewing Cached Pantry")
+                .font(.system(size: 13, weight: .medium))
+        }
+        .foregroundStyle(ProvisionTheme.amberWarning)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(ProvisionTheme.amberLight)
+        .clipShape(Capsule())
+        .overlay(
+            Capsule()
+                .stroke(ProvisionTheme.amberWarning.opacity(0.3), lineWidth: 1)
+        )
+        .padding(.top, 4)
+        .padding(.bottom, 4)
+    }
     
     private var searchAndFilterHeader: some View {
         HStack(spacing: 10) {
