@@ -16,6 +16,8 @@ public struct ScanView: View {
     @State private var isRegisteringProduct: Bool = false
     @State private var editingItemForOCR: ScannedIntakeItem? = nil
     @State private var manualDatePickerItem: ScannedIntakeItem? = nil
+    @State private var editingPriceItem: ScannedIntakeItem? = nil
+    @State private var editingPriceText: String = ""
 
     public init(viewModel: ScanViewModel) {
         self.viewModel = viewModel
@@ -118,6 +120,22 @@ public struct ScanView: View {
                     }
                 }
                 .presentationDetents([.medium])
+            }
+            .alert("Edit Unit Price", isPresented: Binding(get: { editingPriceItem != nil }, set: { if !$0 { editingPriceItem = nil } })) {
+                TextField("Price in PHP (e.g. 45.00)", text: $editingPriceText)
+                    .keyboardType(.decimalPad)
+                Button("Cancel", role: .cancel) { editingPriceItem = nil }
+                Button("Save") {
+                    if let target = editingPriceItem {
+                        let parsed = Double(editingPriceText.replacingOccurrences(of: ",", with: "."))
+                        viewModel.updateItemPrice(id: target.id, price: parsed)
+                    }
+                    editingPriceItem = nil
+                }
+            } message: {
+                if let target = editingPriceItem {
+                    Text("Enter the unit price for '\(target.name)'")
+                }
             }
             .overlay(alignment: .bottom) {
                 if let msg = viewModel.toastMessage {
@@ -514,7 +532,43 @@ public struct ScanView: View {
             }
             
             Divider()
-            
+
+            // Price & Line Total Row
+            HStack(spacing: 8) {
+                if let price = item.wrappedValue.unitPrice {
+                    HStack(spacing: 4) {
+                        Image(systemName: "tag.fill")
+                            .font(.system(size: 10))
+                        Text(String(format: "₱%.2f ea", price))
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundStyle(ProvisionTheme.provisionGreen)
+
+                    Text("•")
+                        .foregroundStyle(ProvisionTheme.textTertiary)
+
+                    Text(String(format: "Total: ₱%.2f", price * item.wrappedValue.quantity))
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(ProvisionTheme.textPrimary)
+                } else {
+                    Text("No price recorded")
+                        .font(.system(size: 11))
+                        .foregroundStyle(ProvisionTheme.textTertiary)
+                }
+
+                Spacer()
+
+                Button {
+                    editingPriceItem = item.wrappedValue
+                    editingPriceText = item.wrappedValue.unitPrice.map { String(format: "%.2f", $0) } ?? ""
+                } label: {
+                    Text(item.wrappedValue.unitPrice == nil ? "+ Set Price" : "Edit Price")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(ProvisionTheme.provisionGreen)
+                }
+                .buttonStyle(.plain)
+            }
+
             // Controls Row: Quantity, Location Selector, Expiration Date
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 12) {
