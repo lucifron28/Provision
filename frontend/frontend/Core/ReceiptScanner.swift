@@ -5,28 +5,68 @@ import SwiftUI
 import UIKit
 import Combine
 
+// MARK: - Match Confidence
+
+public enum MatchConfidence: String, Sendable, Codable, Hashable {
+    case exact = "Exact"
+    case high = "High"
+    case uncertain = "Uncertain"
+    case none = "None"
+}
+
 // MARK: - Parsed Receipt Line Item
 
 public struct ReceiptLineItem: Identifiable, Hashable, Sendable {
-    public let id = UUID()
+    public let id: UUID
     public var rawText: String
     public var parsedName: String
-    public var parsedPrice: Double?
+    public var unitPrice: Double?
     public var quantity: Double
     public var matchedProduct: Product?
+    public var confidence: MatchConfidence
+
+    public var lineTotal: Double? {
+        guard let price = unitPrice else { return nil }
+        return (quantity * price * 100).rounded() / 100
+    }
+
+    public var parsedPrice: Double? {
+        get { unitPrice }
+        set { unitPrice = newValue }
+    }
+
+    public init(
+        id: UUID = UUID(),
+        rawText: String,
+        parsedName: String,
+        unitPrice: Double? = nil,
+        quantity: Double = 1.0,
+        matchedProduct: Product? = nil,
+        confidence: MatchConfidence = .none
+    ) {
+        self.id = id
+        self.rawText = rawText
+        self.parsedName = parsedName
+        self.unitPrice = unitPrice
+        self.quantity = quantity
+        self.matchedProduct = matchedProduct
+        self.confidence = confidence
+    }
     
     public init(
         rawText: String,
         parsedName: String,
-        parsedPrice: Double? = nil,
+        parsedPrice: Double?,
         quantity: Double = 1.0,
         matchedProduct: Product? = nil
     ) {
+        self.id = UUID()
         self.rawText = rawText
         self.parsedName = parsedName
-        self.parsedPrice = parsedPrice
+        self.unitPrice = parsedPrice
         self.quantity = quantity
         self.matchedProduct = matchedProduct
+        self.confidence = matchedProduct != nil ? .high : .none
     }
 }
 
@@ -71,85 +111,131 @@ public final class ReceiptOCRService: Sendable {
     }
     
     /// Parses extracted receipt lines into line items with candidate prices
+    private static let headerFooterKeywords = [
+        "TOTAL", "CASH", "CHANGE", "VAT", "SUBTOTAL", "RECEIPT",
+        "THANK YOU", "INVOICE", "TIN#", "OR#", "POS#", "STORE",
+        "SUPERMARKET", "MERCHANDISE", "ITEMS SOLD", "CHANGE DUE"
+    ]
+
+    private static let multiplierRegex = try? NSRegularExpression(
+        pattern: #"(?:^|\s+)(\d+(?:\.\d+)?)\s*(?:@|[xX]|\*|(?:PCS?|PC)\s*@)\s*[P₱\s]*(\d+\.\d{2})\s*(?:[VBTvbt])?\s*$"#,
+        options: .caseInsensitive
+    )
+
+    private static let trailingPriceRegex = try? NSRegularExpression(
+        pattern: #"[P₱\s]*(\d+\.\d{2})\s*(?:[VBTvbt])?\s*$"#,
+        options: .caseInsensitive
+    )
+
+    /// Parses a single receipt line into a line item with quantity, unit price, line total, and confidence
+    public func parseLine(_ line: String, catalog: [Product]) -> ReceiptLineItem? {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 3 else { return nil }
+
+        let upper = trimmed.uppercased()
+        if Self.headerFooterKeywords.contains(where: { upper.contains($0) }) {
+            return nil
+        }
+
+        var extractedQty: Double = 1.0
+        var extractedPrice: Double? = nil
+        var cleanedName = trimmed
+
+        let fullRange = NSRange(location: 0, length: trimmed.utf16.count)
+
+        if let regex = Self.multiplierRegex,
+           let match = regex.firstMatch(in: trimmed, options: [], range: fullRange),
+           let qtyRange = Range(match.range(at: 1), in: trimmed),
+           let priceRange = Range(match.range(at: 2), in: trimmed) {
+            extractedQty = Double(trimmed[qtyRange]) ?? 1.0
+            extractedPrice = Double(trimmed[priceRange])
+            if let matchRange = Range(match.range(at: 0), in: trimmed) {
+                cleanedName = trimmed.replacingCharacters(in: matchRange, with: "").trimmingCharacters(in: .whitespaces)
+            }
+        } else if let regex = Self.trailingPriceRegex,
+                  let match = regex.firstMatch(in: trimmed, options: [], range: fullRange),
+                  let priceRange = Range(match.range(at: 1), in: trimmed) {
+            extractedPrice = Double(trimmed[priceRange])
+            if let matchRange = Range(match.range(at: 0), in: trimmed) {
+                cleanedName = trimmed.replacingCharacters(in: matchRange, with: "").trimmingCharacters(in: .whitespaces)
+            }
+        }
+
+        cleanedName = cleanedName.trimmingCharacters(in: CharacterSet(charactersIn: " -_@*"))
+        guard !cleanedName.isEmpty else { return nil }
+
+        let (matched, confidence) = findBestCatalogMatch(name: cleanedName, catalog: catalog)
+
+        return ReceiptLineItem(
+            rawText: line,
+            parsedName: matched?.name ?? cleanedName,
+            unitPrice: extractedPrice,
+            quantity: extractedQty,
+            matchedProduct: matched,
+            confidence: confidence
+        )
+    }
+
+    /// Parses extracted receipt lines into line items with candidate prices
     public func parseReceiptLines(_ lines: [String], catalog: [Product]) -> [ReceiptLineItem] {
         var items: [ReceiptLineItem] = []
-        
-        // Regex to match typical supermarket price trailing patterns: e.g. "45.50", "P120.00", "₱82.00", "99.00"
-        let priceRegex = try? NSRegularExpression(pattern: #"(?:[P₱\s]*)(\d+(?:\.\d{2}))\s*$"#, options: .caseInsensitive)
-        
-        for rawLine in lines {
-            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard line.count >= 3 else { continue }
-            
-            // Skip typical receipt header/footer lines
-            let upper = line.uppercased()
-            if upper.contains("TOTAL") || upper.contains("CASH") || upper.contains("CHANGE") ||
-               upper.contains("VAT") || upper.contains("SUBTOTAL") || upper.contains("RECEIPT") ||
-               upper.contains("THANK YOU") || upper.contains("INVOICE") || upper.contains("TIN#") {
-                continue
+        for line in lines {
+            if let item = parseLine(line, catalog: catalog) {
+                items.append(item)
             }
-            
-            var extractedPrice: Double? = nil
-            var cleanedName = line
-            
-            if let regex = priceRegex {
-                let range = NSRange(location: 0, length: line.utf16.count)
-                if let match = regex.firstMatch(in: line, options: [], range: range),
-                   let priceRange = Range(match.range(at: 1), in: line) {
-                    let priceString = String(line[priceRange])
-                    extractedPrice = Double(priceString)
-                    
-                    if let fullMatchRange = Range(match.range(at: 0), in: line) {
-                        cleanedName = line.replacingCharacters(in: fullMatchRange, with: "").trimmingCharacters(in: .whitespaces)
-                    }
-                }
-            }
-            
-            guard !cleanedName.isEmpty else { continue }
-            
-            // Fuzzy match cleaned name against local catalog
-            let matched = findBestCatalogMatch(name: cleanedName, catalog: catalog)
-            
-            let item = ReceiptLineItem(
-                rawText: rawLine,
-                parsedName: matched?.name ?? cleanedName,
-                parsedPrice: extractedPrice ?? matched?.package_size,
-                quantity: 1.0,
-                matchedProduct: matched
-            )
-            items.append(item)
         }
-        
         return items
     }
-    
-    private func findBestCatalogMatch(name: String, catalog: [Product]) -> Product? {
-        let needle = name.lowercased()
-        
-        // 1. Direct contains check
+
+    public func findBestCatalogMatch(name: String, catalog: [Product]) -> (Product?, MatchConfidence) {
+        let needle = name.lowercased().trimmingCharacters(in: .whitespaces)
+        let needleTokens = needle.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { $0.count >= 3 }
+        let needleTokenSet = Set(needleTokens)
+
+        // 1. Exact match by barcode or case-insensitive exact name
+        for product in catalog {
+            if let barcode = product.barcode, barcode.lowercased() == needle {
+                return (product, .exact)
+            }
+            if product.name.lowercased() == needle {
+                return (product, .exact)
+            }
+        }
+
+        // 2. High confidence match
         for product in catalog {
             let pName = product.name.lowercased()
-            if needle.contains(pName) || pName.contains(needle) {
-                return product
-            }
+            let pTokens = pName.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { $0.count >= 3 }
+            let pTokenSet = Set(pTokens)
+
+            // Brand present + product keyword
             if let brand = product.brand?.lowercased(), !brand.isEmpty, needle.contains(brand) {
-                let tokens = needle.components(separatedBy: " ").filter { $0.count > 2 }
-                if tokens.contains(where: { pName.contains($0) }) {
-                    return product
+                let remainingTokens = needleTokens.filter { $0 != brand }
+                if remainingTokens.contains(where: { pName.contains($0) }) {
+                    return (product, .high)
                 }
             }
-        }
-        
-        // 2. Token overlap check
-        let needleTokens = Set(needle.components(separatedBy: .alphanumerics.inverted).filter { $0.count >= 4 })
-        for product in catalog {
-            let prodTokens = Set(product.name.lowercased().components(separatedBy: .alphanumerics.inverted).filter { $0.count >= 4 })
-            if !needleTokens.isDisjoint(with: prodTokens) {
-                return product
+
+            // Overlap of >= 2 tokens (length > 3)
+            let significantNeedle = needleTokenSet.filter { $0.count > 3 }
+            let significantProd = pTokenSet.filter { $0.count > 3 }
+            let overlap = significantNeedle.intersection(significantProd)
+            if overlap.count >= 2 {
+                return (product, .high)
             }
         }
-        
-        return nil
+
+        // 3. Uncertain confidence: single token overlap
+        for product in catalog {
+            let pName = product.name.lowercased()
+            let pTokenSet = Set(pName.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { $0.count >= 3 })
+            let overlap = needleTokenSet.intersection(pTokenSet)
+            if !overlap.isEmpty {
+                return (product, .uncertain)
+            }
+        }
+
+        return (nil, .none)
     }
 }
 
