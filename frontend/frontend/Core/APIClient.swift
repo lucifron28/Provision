@@ -253,7 +253,7 @@ public actor APIClient {
     // MARK: - Grocery Sessions
 
     public func createSession(_ session: GrocerySessionCreate) async throws -> GrocerySession {
-        let url = baseURL.appendingPathComponent("sessions/")
+        let url = baseURL.appendingPathComponent("grocery-sessions/")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -262,7 +262,7 @@ public actor APIClient {
     }
 
     public func commitSession(id: Int, items: [SessionItemCreate]) async throws -> GrocerySession {
-        let url = baseURL.appendingPathComponent("sessions/\(id)/commit")
+        let url = baseURL.appendingPathComponent("grocery-sessions/\(id)/commit")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -272,7 +272,7 @@ public actor APIClient {
     }
 
     public func fetchSessions() async throws -> [GrocerySession] {
-        let url = baseURL.appendingPathComponent("sessions/")
+        let url = baseURL.appendingPathComponent("grocery-sessions/")
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         return try await execute(request)
