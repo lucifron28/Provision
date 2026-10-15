@@ -73,6 +73,18 @@ public class ScanViewModel: ObservableObject {
     public let scannerManager: BarcodeScannerManager
     private let client: APIClient
     private var inFlightResolutions: Set<String> = []
+    private var toastDismissTask: Task<Void, Never>? = nil
+
+    public func showToast(_ message: String) {
+        self.toastMessage = message
+        toastDismissTask?.cancel()
+        toastDismissTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 3_500_000_000)
+            if !Task.isCancelled && self.toastMessage == message {
+                self.toastMessage = nil
+            }
+        }
+    }
     public init(client: APIClient = .shared, isPreview: Bool = false) {
         self.client = client
         self.isPreview = isPreview
@@ -147,20 +159,37 @@ public class ScanViewModel: ObservableObject {
         // 1. Check if already scanned in current session -> increment quantity
         if let idx = scannedItems.firstIndex(where: { $0.barcode == barcode }) {
             scannedItems[idx].quantity += 1.0
-            self.toastMessage = "Incremented \(scannedItems[idx].name) (\(Int(scannedItems[idx].quantity)))"
+            invalidateConfirmation(at: idx)
+            showToast("Incremented \(scannedItems[idx].name) (\(Int(scannedItems[idx].quantity)))")
             return
         }
 
         // 2. Query catalog via API or PreviewData
         var resolvedProduct: Product? = nil
+        var lookupErrorText: String? = nil
+
         if isPreview {
             resolvedProduct = PreviewData.products.first(where: { $0.barcode == barcode })
         } else {
             do {
                 resolvedProduct = try await client.fetchProduct(barcode: barcode)
             } catch {
-                // Network error or not found
+                if case APIError.unauthorized = error {
+                    lookupErrorText = "Session expired or authentication required. Please log in again."
+                } else if case APIError.networkError = error {
+                    lookupErrorText = "Network connection failed. Unable to verify barcode \(barcode)."
+                } else if error is URLError {
+                    lookupErrorText = "Network connection failed. Unable to verify barcode \(barcode)."
+                } else {
+                    lookupErrorText = "Lookup failed for barcode \(barcode): \(error.localizedDescription)"
+                }
             }
+        }
+
+        // Priority 3: Do not treat network/auth errors as unknown products
+        if let err = lookupErrorText {
+            self.errorMessage = err
+            return
         }
 
         if let prod = resolvedProduct {
@@ -177,11 +206,13 @@ public class ScanViewModel: ObservableObject {
                 isConfirmed: false
             )
             self.scannedItems.insert(item, at: 0)
-            self.toastMessage = "Recognized: \(prod.name)"
+            showToast("Recognized: \(prod.name)")
         } else {
+            // Genuinely not found in catalog (HTTP 200 with empty list)
+            self.resolvingItemId = nil
             self.unresolvedBarcode = barcode
             self.showingQuickAddSheet = true
-            self.toastMessage = "Unrecognized barcode: \(barcode)"
+            showToast("Unrecognized barcode: \(barcode)")
         }
     }
 
@@ -227,8 +258,7 @@ public class ScanViewModel: ObservableObject {
                 scannedItems[idx].unit = createdProduct.unit ?? scannedItems[idx].unit
                 scannedItems[idx].status = .recognized
                 invalidateConfirmation(at: idx)
-                self.toastMessage = "Resolved as \(createdProduct.name)"
-                self.resolvingItemId = nil
+                showToast("Resolved as \(createdProduct.name)")
             } else {
                 let item = ScannedIntakeItem(
                     name: createdProduct.name,
@@ -243,15 +273,21 @@ public class ScanViewModel: ObservableObject {
                     isConfirmed: false
                 )
                 self.scannedItems.insert(item, at: 0)
-                self.toastMessage = "Added \(createdProduct.name) to intake queue"
+                showToast("Added \(createdProduct.name) to intake queue")
             }
-            self.unresolvedBarcode = nil
-            self.showingQuickAddSheet = false
+            clearResolutionState()
             return true
         } catch {
             self.errorMessage = "Failed to register product: \(error.localizedDescription)"
+            // Preserve unresolved item and user-entered details on failure
             return false
         }
+    }
+
+    public func clearResolutionState() {
+        resolvingItemId = nil
+        unresolvedBarcode = nil
+        showingQuickAddSheet = false
     }
 
     // Requirement 5: Invalidate confirmation when important item details are modified
@@ -281,20 +317,52 @@ public class ScanViewModel: ObservableObject {
         }
     }
 
+    // Case 2A: Unknown barcode -> existing product resolution (handles both existing & nil resolvingItemId)
+    public func resolveProductWithCatalog(product: Product) {
+        if let targetId = resolvingItemId, let idx = scannedItems.firstIndex(where: { $0.id == targetId }) {
+            scannedItems[idx].productId = product.id
+            scannedItems[idx].name = product.name
+            scannedItems[idx].brand = product.brand
+            if let bc = product.barcode, !bc.isEmpty {
+                scannedItems[idx].barcode = bc
+            } else if let b = unresolvedBarcode, !b.isEmpty {
+                scannedItems[idx].barcode = b
+            }
+            if let u = product.unit {
+                scannedItems[idx].unit = u
+            }
+            scannedItems[idx].status = .recognized
+            invalidateConfirmation(at: idx)
+            showToast("Linked as \(product.name)")
+        } else {
+            let bc = (unresolvedBarcode?.isEmpty == false ? unresolvedBarcode : product.barcode) ?? UUID().uuidString.prefix(8).description
+            let item = ScannedIntakeItem(
+                name: product.name,
+                brand: product.brand,
+                barcode: bc,
+                quantity: 1.0,
+                unit: product.unit ?? "pcs",
+                expirationDate: nil,
+                status: .recognized,
+                productId: product.id,
+                storageLocationId: nil,
+                isConfirmed: false
+            )
+            scannedItems.insert(item, at: 0)
+            showToast("Added \(product.name) to intake queue")
+        }
+        clearResolutionState()
+    }
+
     public func resolveItemWithCatalogProduct(itemId: UUID, product: Product) {
-        guard let idx = scannedItems.firstIndex(where: { $0.id == itemId }) else { return }
-        scannedItems[idx].productId = product.id
-        scannedItems[idx].name = product.name
-        scannedItems[idx].brand = product.brand
-        if let bc = product.barcode {
-            scannedItems[idx].barcode = bc
-        }
-        if let u = product.unit {
-            scannedItems[idx].unit = u
-        }
-        scannedItems[idx].status = .recognized
+        resolvingItemId = itemId
+        resolveProductWithCatalog(product: product)
+    }
+
+    public func updateItemQuantity(id: UUID, quantity: Double) {
+        guard let idx = scannedItems.firstIndex(where: { $0.id == id }) else { return }
+        scannedItems[idx].quantity = max(1.0, quantity)
         invalidateConfirmation(at: idx)
-        toastMessage = "Resolved as \(product.name)"
     }
 
     public func updateItemLocation(id: UUID, locationId: Int?) {
@@ -354,6 +422,29 @@ public class ScanViewModel: ObservableObject {
         integrateReceiptItems(parsed)
     }
 
+    private func reconcileExistingItem(at idx: Int, with receiptItem: ReceiptLineItem) {
+        let existing = scannedItems[idx]
+
+        // Priority 4: Safe reconciliation - avoid double-counting
+        // Reconcile quantity to maximum observed (receipt basket count or already scanned count)
+        let finalQuantity = max(existing.quantity, receiptItem.quantity)
+        let quantityChanged = (existing.quantity != finalQuantity)
+        scannedItems[idx].quantity = finalQuantity
+
+        // Update unit price from verified receipt if available
+        if let price = receiptItem.unitPrice {
+            scannedItems[idx].unitPrice = price
+        }
+
+        // Flag for user review if quantities differed, confidence was uncertain, or item was previously confirmed
+        if quantityChanged || existing.isConfirmed || receiptItem.confidence == .uncertain {
+            scannedItems[idx].status = .needsReview
+        }
+
+        // Always invalidate confirmation when receipt reconciliation modifies an item
+        invalidateConfirmation(at: idx)
+    }
+
     private func integrateReceiptItems(_ parsedItems: [ReceiptLineItem]) {
         var mergedCount = 0
         var newCount = 0
@@ -363,18 +454,12 @@ public class ScanViewModel: ObservableObject {
             let status: ScannedIntakeItem.IntakeStatus = isRecognized ? .recognized : .needsReview
             let candidateBarcode = item.matchedProduct?.barcode ?? UUID().uuidString.prefix(8).description
 
-            // Requirement 6: Match receipt items against already scanned products where possible rather than adding duplicates
+            // Identify existing items using reliable product identifiers
             if let pid = item.matchedProduct?.id, let idx = scannedItems.firstIndex(where: { $0.productId == pid }) {
-                scannedItems[idx].quantity += item.quantity
-                if let price = item.unitPrice {
-                    scannedItems[idx].unitPrice = price
-                }
+                reconcileExistingItem(at: idx, with: item)
                 mergedCount += 1
             } else if let idx = scannedItems.firstIndex(where: { $0.barcode == candidateBarcode }) {
-                scannedItems[idx].quantity += item.quantity
-                if let price = item.unitPrice {
-                    scannedItems[idx].unitPrice = price
-                }
+                reconcileExistingItem(at: idx, with: item)
                 mergedCount += 1
             } else {
                 let intakeItem = ScannedIntakeItem(
@@ -396,11 +481,11 @@ public class ScanViewModel: ObservableObject {
         }
 
         if mergedCount > 0 && newCount > 0 {
-            toastMessage = "Added \(newCount) items, merged \(mergedCount) with existing intake"
+            showToast("Added \(newCount) items, merged \(mergedCount) with existing intake")
         } else if mergedCount > 0 {
-            toastMessage = "Merged \(mergedCount) items with existing intake"
+            showToast("Merged \(mergedCount) items with existing intake")
         } else {
-            toastMessage = "Extracted \(newCount) items from receipt"
+            showToast("Extracted \(newCount) items from receipt")
         }
     }
 

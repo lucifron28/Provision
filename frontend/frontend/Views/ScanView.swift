@@ -83,6 +83,9 @@ public struct ScanView: View {
             }
             .sheet(isPresented: $viewModel.showingQuickAddSheet) {
                 quickAddProductSheet
+                    .onDisappear {
+                        viewModel.clearResolutionState()
+                    }
             }
             .sheet(isPresented: $viewModel.showingReceiptCamera) {
                 #if canImport(VisionKit)
@@ -106,18 +109,14 @@ public struct ScanView: View {
                     title: "Scan Expiry: \(targetItem.name)",
                     initialDate: targetItem.expirationDate
                 ) { (scannedDate: Date?) in
-                    if let idx = viewModel.scannedItems.firstIndex(where: { $0.id == targetItem.id }) {
-                        viewModel.scannedItems[idx].expirationDate = scannedDate
-                    }
+                    viewModel.updateItemExpirationDate(id: targetItem.id, date: scannedDate)
                     editingItemForOCR = nil
                 }
             }
             .sheet(item: $manualDatePickerItem) { targetItem in
                 NavigationStack {
                     DatePickerSheet(initialDate: targetItem.expirationDate ?? Date()) { selectedDate in
-                        if let idx = viewModel.scannedItems.firstIndex(where: { $0.id == targetItem.id }) {
-                            viewModel.scannedItems[idx].expirationDate = selectedDate
-                        }
+                        viewModel.updateItemExpirationDate(id: targetItem.id, date: selectedDate)
                         manualDatePickerItem = nil
                     } onCancel: {
                         manualDatePickerItem = nil
@@ -618,10 +617,13 @@ public struct ScanView: View {
                         Text("Qty: \(Int(item.wrappedValue.quantity)) \(item.wrappedValue.unit)")
                             .font(.system(size: 13, weight: .semibold))
 
-                        Stepper("", value: item.quantity, in: 1...99, step: 1)
-                            .labelsHidden()
+                        Stepper("", onIncrement: {
+                            viewModel.incrementQuantity(for: item.wrappedValue)
+                        }, onDecrement: {
+                            viewModel.decrementQuantity(for: item.wrappedValue)
+                        })
+                        .labelsHidden()
                     }
-
                     Spacer()
 
                     // Confirm/Unconfirm action button
@@ -660,7 +662,7 @@ public struct ScanView: View {
                     Menu {
                         ForEach(viewModel.availableLocations) { loc in
                             Button {
-                                item.wrappedValue.storageLocationId = loc.id
+                                viewModel.updateItemLocation(id: item.wrappedValue.id, locationId: loc.id)
                             } label: {
                                 HStack {
                                     Text(loc.name)
@@ -729,7 +731,7 @@ public struct ScanView: View {
                             .buttonStyle(.plain)
 
                             Button {
-                                item.wrappedValue.expirationDate = nil
+                                viewModel.updateItemExpirationDate(id: item.wrappedValue.id, date: nil)
                             } label: {
                                 Text("Clear")
                                     .font(.system(size: 11, weight: .semibold))
@@ -862,11 +864,8 @@ public struct ScanView: View {
                         if let selId = selectedCatalogProductId,
                            let foundProd = viewModel.availableCatalog.first(where: { $0.id == selId }) {
                             Button {
-                                if let targetId = viewModel.resolvingItemId {
-                                    viewModel.resolveItemWithCatalogProduct(itemId: targetId, product: foundProd)
-                                }
+                                viewModel.resolveProductWithCatalog(product: foundProd)
                                 selectedCatalogProductId = nil
-                                viewModel.showingQuickAddSheet = false
                             } label: {
                                 HStack {
                                     Image(systemName: "link.circle.fill")
@@ -908,8 +907,7 @@ public struct ScanView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
-                        viewModel.unresolvedBarcode = nil
-                        viewModel.showingQuickAddSheet = false
+                        viewModel.clearResolutionState()
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
