@@ -355,22 +355,22 @@ do {
 // ==============================================================================
 do {
     print("Test 6: Product-resolution cancellation and state cleanup...")
-    
+
     var resolvingId: UUID? = UUID()
     var unresolvedBarcode: String? = "4800001112223"
     var showingSheet: Bool = true
-    
+
     func clearResolutionState() {
         resolvingId = nil
         unresolvedBarcode = nil
         showingSheet = false
     }
-    
+
     clearResolutionState()
     try assertTrue(resolvingId == nil, "resolvingId must be nil after clearResolutionState")
     try assertTrue(unresolvedBarcode == nil, "unresolvedBarcode must be nil after clearResolutionState")
     try assertTrue(!showingSheet, "showingSheet must be false after clearResolutionState")
-    
+
     print("  -> Passed!")
 }
 
@@ -379,17 +379,17 @@ do {
 // ==============================================================================
 do {
     print("Test 7: Barcode lookup error differentiation (404 vs Network error)...")
-    
+
     enum MockAPIError: Error {
         case networkError
         case unauthorized
         case serverError(String)
     }
-    
+
     var showingQuickAdd = false
     var unresolvedBarcode: String? = nil
     var errorMessage: String? = nil
-    
+
     func handleLookupResult(barcode: String, result: Result<String?, MockAPIError>) {
         switch result {
         case .success(let found):
@@ -410,20 +410,20 @@ do {
             }
         }
     }
-    
+
     // Case A: Network failure -> MUST NOT show registration sheet!
     handleLookupResult(barcode: "4800000000000", result: .failure(.networkError))
     try assertTrue(!showingQuickAdd, "Network failure must NOT show quick add registration sheet")
     try assertTrue(unresolvedBarcode == nil, "unresolvedBarcode must not be set on network error")
     try assertEquals(errorMessage, "Network connection failed. Unable to verify barcode 4800000000000.", "Must show network error message")
-    
+
     // Case B: Genuine 404 (product not found in catalog) -> Shows registration sheet
     errorMessage = nil
     handleLookupResult(barcode: "4800000000000", result: .success(nil))
     try assertTrue(showingQuickAdd, "Genuinely unknown barcode must show registration sheet")
     try assertEquals(unresolvedBarcode, "4800000000000", "unresolvedBarcode must be set")
     try assertTrue(errorMessage == nil, "No error message on genuine not found")
-    
+
     print("  -> Passed!")
 }
 
@@ -432,9 +432,9 @@ do {
 // ==============================================================================
 do {
     print("Test 8: Repeated receipt import stability...")
-    
+
     var queue: [ScannedIntakeItem] = []
-    
+
     func importReceipt(lines: [(name: String, barcode: String, qty: Double, price: Double)]) {
         for line in lines {
             if let idx = queue.firstIndex(where: { $0.barcode == line.barcode }) {
@@ -456,24 +456,24 @@ do {
             }
         }
     }
-    
+
     let receiptA = [
         (name: "Century Tuna", barcode: "4800016644818", qty: 2.0, price: 40.50),
         (name: "Gardenia Bread", barcode: "4806500800018", qty: 1.0, price: 82.00)
     ]
-    
+
     // First import
     importReceipt(lines: receiptA)
     try assertEquals(queue.count, 2, "Queue should have 2 items")
     try assertEquals(queue[0].quantity, 2.0, "Century Tuna quantity should be 2.0")
     try assertEquals(queue[1].quantity, 1.0, "Gardenia Bread quantity should be 1.0")
-    
+
     // Second import of same receipt
     importReceipt(lines: receiptA)
     try assertEquals(queue.count, 2, "Repeated import must NOT add duplicate entries")
     try assertEquals(queue[0].quantity, 2.0, "Repeated import must NOT increase Century Tuna quantity")
     try assertEquals(queue[1].quantity, 1.0, "Repeated import must NOT increase Gardenia Bread quantity")
-    
+
     print("  -> Passed!")
 }
 
