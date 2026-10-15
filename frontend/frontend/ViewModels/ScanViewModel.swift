@@ -15,7 +15,7 @@ public struct ScannedIntakeItem: Identifiable, Hashable, Sendable {
     public var storageLocationId: Int?
     public var unitPrice: Double?
     public var isConfirmed: Bool
-    
+
     public enum IntakeStatus: String, Sendable {
         case autoLogged = "Auto-logged"
         case recognized = "Recognized"
@@ -63,6 +63,8 @@ public class ScanViewModel: ObservableObject {
     @Published public var errorMessage: String? = nil
     @Published public var lastScannedBarcode: String = ""
     @Published public var unresolvedBarcode: String? = nil
+    @Published public var resolvingItemId: UUID? = nil
+    @Published public var availableCatalog: [Product] = []
     @Published public var showingQuickAddSheet: Bool = false
     @Published public var isResolvingBarcode: Bool = false
     @Published public var isProcessingReceipt: Bool = false
@@ -71,7 +73,6 @@ public class ScanViewModel: ObservableObject {
     public let scannerManager: BarcodeScannerManager
     private let client: APIClient
     private var inFlightResolutions: Set<String> = []
-    
     public init(client: APIClient = .shared, isPreview: Bool = false) {
         self.client = client
         self.isPreview = isPreview
@@ -93,6 +94,19 @@ public class ScanViewModel: ObservableObject {
             self.availableLocations = locations
         } catch {
             self.errorMessage = "Failed to load locations: \(error.localizedDescription)"
+        }
+        await loadCatalog()
+    }
+
+    public func loadCatalog() async {
+        if isPreview {
+            self.availableCatalog = PreviewData.products
+            return
+        }
+        do {
+            self.availableCatalog = try await client.fetchProducts()
+        } catch {
+            // Keep existing or empty
         }
     }
 
@@ -203,20 +217,33 @@ public class ScanViewModel: ObservableObject {
                 createdProduct = try await client.createProduct(create)
             }
 
-            let item = ScannedIntakeItem(
-                name: createdProduct.name,
-                brand: createdProduct.brand,
-                barcode: barcode,
-                quantity: 1.0,
-                unit: createdProduct.unit ?? "pcs",
-                expirationDate: nil,
-                status: .autoLogged,
-                productId: createdProduct.id,
-                storageLocationId: nil,
-                isConfirmed: false
-            )
-            self.scannedItems.insert(item, at: 0)
-            self.toastMessage = "Added \(createdProduct.name) to intake queue"
+            // Requirement 3: Update original intake entry instead of creating duplicate unresolved entries
+            if let targetId = resolvingItemId, let idx = scannedItems.firstIndex(where: { $0.id == targetId }) {
+                scannedItems[idx].productId = createdProduct.id
+                scannedItems[idx].name = createdProduct.name
+                scannedItems[idx].brand = createdProduct.brand
+                scannedItems[idx].barcode = barcode
+                scannedItems[idx].unit = createdProduct.unit ?? scannedItems[idx].unit
+                scannedItems[idx].status = .recognized
+                invalidateConfirmation(at: idx)
+                self.toastMessage = "Resolved as \(createdProduct.name)"
+                self.resolvingItemId = nil
+            } else {
+                let item = ScannedIntakeItem(
+                    name: createdProduct.name,
+                    brand: createdProduct.brand,
+                    barcode: barcode,
+                    quantity: 1.0,
+                    unit: createdProduct.unit ?? "pcs",
+                    expirationDate: nil,
+                    status: .autoLogged,
+                    productId: createdProduct.id,
+                    storageLocationId: nil,
+                    isConfirmed: false
+                )
+                self.scannedItems.insert(item, at: 0)
+                self.toastMessage = "Added \(createdProduct.name) to intake queue"
+            }
             self.unresolvedBarcode = nil
             self.showingQuickAddSheet = false
             return true
@@ -226,9 +253,19 @@ public class ScanViewModel: ObservableObject {
         }
     }
 
+    // Requirement 5: Invalidate confirmation when important item details are modified
+    public func invalidateConfirmation(at index: Int) {
+        guard index >= 0 && index < scannedItems.count else { return }
+        scannedItems[index].isConfirmed = false
+        if scannedItems[index].status == .confirmed {
+            scannedItems[index].status = .recognized
+        }
+    }
+
     public func incrementQuantity(for item: ScannedIntakeItem) {
         if let idx = scannedItems.firstIndex(where: { $0.id == item.id }) {
             scannedItems[idx].quantity += 1.0
+            invalidateConfirmation(at: idx)
         }
     }
 
@@ -236,10 +273,39 @@ public class ScanViewModel: ObservableObject {
         if let idx = scannedItems.firstIndex(where: { $0.id == item.id }) {
             if scannedItems[idx].quantity > 1.0 {
                 scannedItems[idx].quantity -= 1.0
+                invalidateConfirmation(at: idx)
             } else {
                 scannedItems.remove(at: idx)
             }
         }
+    }
+
+    public func resolveItemWithCatalogProduct(itemId: UUID, product: Product) {
+        guard let idx = scannedItems.firstIndex(where: { $0.id == itemId }) else { return }
+        scannedItems[idx].productId = product.id
+        scannedItems[idx].name = product.name
+        scannedItems[idx].brand = product.brand
+        if let bc = product.barcode {
+            scannedItems[idx].barcode = bc
+        }
+        if let u = product.unit {
+            scannedItems[idx].unit = u
+        }
+        scannedItems[idx].status = .recognized
+        invalidateConfirmation(at: idx)
+        toastMessage = "Resolved as \(product.name)"
+    }
+
+    public func updateItemLocation(id: UUID, locationId: Int?) {
+        guard let idx = scannedItems.firstIndex(where: { $0.id == id }) else { return }
+        scannedItems[idx].storageLocationId = locationId
+        invalidateConfirmation(at: idx)
+    }
+
+    public func updateItemExpirationDate(id: UUID, date: Date?) {
+        guard let idx = scannedItems.firstIndex(where: { $0.id == id }) else { return }
+        scannedItems[idx].expirationDate = date
+        invalidateConfirmation(at: idx)
     }
 
     public func processScannedReceipt(images: [UIImage]) async {
@@ -340,20 +406,11 @@ public class ScanViewModel: ObservableObject {
     public func updateItemPrice(id: UUID, price: Double?) {
         guard let idx = scannedItems.firstIndex(where: { $0.id == id }) else { return }
         scannedItems[idx].unitPrice = price
+        invalidateConfirmation(at: idx)
     }
 
     public func updateItemProduct(id: UUID, product: Product) {
-        guard let idx = scannedItems.firstIndex(where: { $0.id == id }) else { return }
-        scannedItems[idx].productId = product.id
-        scannedItems[idx].name = product.name
-        scannedItems[idx].brand = product.brand
-        if let bc = product.barcode {
-            scannedItems[idx].barcode = bc
-        }
-        if let u = product.unit {
-            scannedItems[idx].unit = u
-        }
-        scannedItems[idx].status = .recognized
+        resolveItemWithCatalogProduct(itemId: id, product: product)
     }
     private func setupSampleIntake() {
         let calendar = Calendar.current
@@ -439,7 +496,7 @@ public class ScanViewModel: ObservableObject {
             }
         }
     }
-    
+
     public func addItem(barcode: String, name: String, brand: String? = nil, quantity: Double = 1, unit: String = "units", daysUntilExp: Int? = nil) {
         let exp: Date? = daysUntilExp.flatMap { Calendar.current.date(byAdding: .day, value: $0, to: Date()) }
         let item = ScannedIntakeItem(
@@ -455,19 +512,19 @@ public class ScanViewModel: ObservableObject {
         lastScannedBarcode = barcode
         toastMessage = "Scanned \(name)"
     }
-    
+
     public func removeItem(at offsets: IndexSet) {
         scannedItems.remove(atOffsets: offsets)
     }
-    
+
     public func commitIntakeSession() async {
+        guard !isCommitting else { return }
         guard !scannedItems.isEmpty else {
             self.errorMessage = "Intake queue is empty. Scan or add items before committing."
             return
         }
         isCommitting = true
         errorMessage = nil
-
         // Enforce strict validation
         for item in scannedItems {
             guard item.productId != nil && item.status != .needsReview else {
@@ -533,14 +590,16 @@ public class ScanViewModel: ObservableObject {
             let isoFormatter = ISO8601DateFormatter()
             let trimmedStore = storeName.trimmingCharacters(in: .whitespaces)
             let sessionName = trimmedStore.isEmpty ? "Grocery Intake" : trimmedStore
+            let computedTotal = scannedItems.compactMap { item in
+                item.unitPrice.map { $0 * item.quantity }
+            }.reduce(0.0, +)
             let sessionCreate = GrocerySessionCreate(
                 store_name: sessionName,
                 purchase_date: isoFormatter.string(from: Date()),
-                total_amount: scannedItems.compactMap { $0.unitPrice }.reduce(0.0, +),
+                total_amount: computedTotal > 0 ? computedTotal : nil,
                 notes: "Rapid intake session committed via Provision app"
             )
             let session = try await client.createSession(sessionCreate)
-
             // Commit session to generate batches and ledger events
             _ = try await client.commitSession(id: session.id, items: itemsToCommit)
 
