@@ -60,6 +60,26 @@ public struct AnalyticsView: View {
                         .frame(maxWidth: .infinity)
                         .provisionCard()
                     } else {
+                        // Inline refresh error banner if pull-to-refresh fails while data is already loaded
+                        if let err = viewModel.errorMessage {
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(ProvisionTheme.redAlert)
+                                Text("Refresh failed: \(err)")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(ProvisionTheme.redAlert)
+                                Spacer()
+                                Button("Dismiss") {
+                                    viewModel.errorMessage = nil
+                                }
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(ProvisionTheme.redAlert)
+                            }
+                            .padding(12)
+                            .background(ProvisionTheme.redLight)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+
                         // Valuation Summary Card
                         valuationCard
 
@@ -73,6 +93,7 @@ public struct AnalyticsView: View {
                         riskRadarCard
                     }
                 }
+                .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
             .background(ProvisionTheme.background.ignoresSafeArea())
