@@ -47,15 +47,21 @@ public struct InventoryView: View {
                             showingAddSheet = true
                         } label: {
                             Image(systemName: "plus")
+                                .font(.system(size: 17, weight: .semibold))
                                 .foregroundStyle(ProvisionTheme.provisionGreen)
+                                .accessibleTouchTarget()
                         }
+                        .accessibilityLabel("Add Product to Inventory")
                         
                         Button {
                             Task { await viewModel.loadData() }
                         } label: {
                             Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(ProvisionTheme.provisionGreen)
+                                .accessibleTouchTarget()
                         }
+                        .accessibilityLabel("Refresh Inventory")
                     }
                 }
             }

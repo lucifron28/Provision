@@ -9,20 +9,21 @@ public enum ProvisionTheme {
     public static let surface = Color.white
     public static let surfaceSecondary = Color(red: 0.96, green: 0.94, blue: 0.91) // Soft beige #F5F0E8
     public static let heroCard = Color(red: 0.97, green: 0.93, blue: 0.87) // Warm peach #F7EDE0
-    
+
     public static let provisionGreen = Color(red: 0.20, green: 0.38, blue: 0.26) // Deep forest green #336142
     public static let provisionGreenLight = Color(red: 0.91, green: 0.95, blue: 0.92) // Soft green tag
-    
-    public static let amberWarning = Color(red: 0.88, green: 0.55, blue: 0.15) // Warning amber #E08C26
+
+    // Accessible warning amber with >= 4.5:1 contrast on light backgrounds (WCAG AA)
+    public static let amberWarning = Color(red: 0.68, green: 0.36, blue: 0.05) // Deep amber #AD5C0D
     public static let amberLight = Color(red: 0.99, green: 0.95, blue: 0.88)
-    
-    public static let redAlert = Color(red: 0.82, green: 0.24, blue: 0.24) // Urgency red #D13D3D
+
+    public static let redAlert = Color(red: 0.78, green: 0.20, blue: 0.20) // Accessible urgency red
     public static let redLight = Color(red: 0.98, green: 0.92, blue: 0.92)
-    
+
     public static let textPrimary = Color(red: 0.12, green: 0.14, blue: 0.13)
-    public static let textSecondary = Color(red: 0.45, green: 0.47, blue: 0.46)
-    public static let textTertiary = Color(red: 0.65, green: 0.67, blue: 0.66)
-    public static let border = Color(red: 0.90, green: 0.88, blue: 0.84)
+    public static let textSecondary = Color(red: 0.38, green: 0.40, blue: 0.39) // Accessible secondary (>= 4.5:1)
+    public static let textTertiary = Color(red: 0.46, green: 0.48, blue: 0.47) // Accessible tertiary (>= 3.0:1)
+    public static let border = Color(red: 0.88, green: 0.86, blue: 0.82)
 }
 
 // MARK: - View Modifiers
@@ -31,7 +32,7 @@ public struct ProvisionCardStyle: ViewModifier {
     var backgroundColor: Color = ProvisionTheme.surface
     var cornerRadius: CGFloat = 16
     var borderColor: Color = ProvisionTheme.border.opacity(0.6)
-    
+
     public func body(content: Content) -> some View {
         content
             .background(backgroundColor)
@@ -51,5 +52,49 @@ public extension View {
         borderColor: Color = ProvisionTheme.border.opacity(0.6)
     ) -> some View {
         modifier(ProvisionCardStyle(backgroundColor: backgroundColor, cornerRadius: cornerRadius, borderColor: borderColor))
+    }
+}
+
+// MARK: - Accessible Touch Targets & Minimum Hit Testing
+
+public struct AccessibleTouchTarget: ViewModifier {
+    public func body(content: Content) -> some View {
+        content
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+    }
+}
+
+public extension View {
+    func accessibleTouchTarget() -> some View {
+        modifier(AccessibleTouchTarget())
+    }
+}
+
+// MARK: - Restrained Haptic Feedback
+
+public enum HapticFeedback {
+    @MainActor public static func light() {
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.prepare()
+        generator.impactOccurred()
+    }
+
+    @MainActor public static func medium() {
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.prepare()
+        generator.impactOccurred()
+    }
+
+    @MainActor public static func success() {
+        let generator = UINotificationFeedbackGenerator()
+        generator.prepare()
+        generator.notificationOccurred(.success)
+    }
+
+    @MainActor public static func warning() {
+        let generator = UINotificationFeedbackGenerator()
+        generator.prepare()
+        generator.notificationOccurred(.warning)
     }
 }

@@ -97,8 +97,11 @@ public struct ProductDetailView: View {
                 if let batch = selectedBatchForDiscard, !isDiscarding {
                     isDiscarding = true
                     Task {
-                        _ = await viewModel.discardBatch(batchId: batch.id)
+                        let success = await viewModel.discardBatch(batchId: batch.id)
                         isDiscarding = false
+                        if success {
+                            HapticFeedback.warning()
+                        }
                     }
                 }
             }
@@ -578,6 +581,7 @@ public struct ProductDetailView: View {
                         )
                         isConsuming = false
                         if success {
+                            HapticFeedback.success()
                             showingConsumeSheet = false
                         } else {
                             consumeErrorMessage = viewModel.errorMessage

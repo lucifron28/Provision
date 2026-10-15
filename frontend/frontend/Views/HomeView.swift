@@ -133,7 +133,9 @@ public struct HomeView: View {
                     .background(ProvisionTheme.surface)
                     .clipShape(Circle())
                     .overlay(Circle().stroke(ProvisionTheme.border, lineWidth: 1))
+                    .accessibleTouchTarget()
             }
+            .accessibilityLabel("Settings and Account")
         }
         .padding(.top, 8)
     }

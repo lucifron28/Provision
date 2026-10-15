@@ -159,8 +159,9 @@ public struct ShoppingListView: View {
         List {
             ForEach(viewModel.filteredItems) { item in
                 HStack(spacing: 12) {
-                    // Checkbox button
+                    // Checkbox button with haptic feedback and accessible touch target
                     Button {
+                        HapticFeedback.light()
                         Task { await viewModel.toggleItem(item) }
                     } label: {
                         ZStack {
@@ -177,8 +178,11 @@ public struct ShoppingListView: View {
                                     .foregroundStyle(.white)
                             }
                         }
+                        .accessibleTouchTarget()
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(item.is_bought ? "Mark \(item.name) as needed" : "Mark \(item.name) as purchased")
+                    .accessibilityValue(item.is_bought ? "Purchased" : "To buy")
                     
                     VStack(alignment: .leading, spacing: 2) {
                         Text(item.name)

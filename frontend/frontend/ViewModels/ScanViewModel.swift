@@ -122,6 +122,7 @@ public class ScanViewModel: ObservableObject {
         let trimmed = barcode.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         self.lastScannedBarcode = trimmed
+        HapticFeedback.medium()
 
         Task {
             await resolveScannedBarcode(trimmed)
@@ -606,10 +607,11 @@ public class ScanViewModel: ObservableObject {
             self.toastMessage = "Committed \(itemsToCommit.count) items to household inventory!"
             self.scannedItems.removeAll()
             self.lastScannedBarcode = ""
+            HapticFeedback.success()
         } catch {
             self.errorMessage = "Failed to commit intake session: \(error.localizedDescription)"
+            HapticFeedback.warning()
         }
-
         isCommitting = false
     }
 }
