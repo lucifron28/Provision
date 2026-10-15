@@ -2,6 +2,8 @@ import SwiftUI
 
 public struct ShoppingListView: View {
     @ObservedObject var viewModel: ShoppingViewModel
+    @State private var showingClearDoneConfirmation: Bool = false
+    @State private var itemToDelete: ShoppingItem? = nil
     
     public init(viewModel: ShoppingViewModel) {
         self.viewModel = viewModel
@@ -48,7 +50,7 @@ public struct ShoppingListView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     if viewModel.items.contains(where: { $0.is_bought }) {
                         Button("Clear Done") {
-                            Task { await viewModel.clearCompleted() }
+                            showingClearDoneConfirmation = true
                         }
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(ProvisionTheme.redAlert)
@@ -58,6 +60,35 @@ public struct ShoppingListView: View {
             .task {
                 if viewModel.items.isEmpty {
                     await viewModel.loadItems()
+                }
+            }
+            .alert("Clear Completed Items?", isPresented: $showingClearDoneConfirmation) {
+                Button("Cancel", role: .cancel) {}
+                Button("Clear All", role: .destructive) {
+                    Task { await viewModel.clearCompleted() }
+                }
+            } message: {
+                let count = viewModel.items.filter { $0.is_bought }.count
+                Text("Are you sure you want to remove \(count) completed item(s) from your shopping list?")
+            }
+            .alert("Delete Item?", isPresented: Binding(get: { itemToDelete != nil }, set: { if !$0 { itemToDelete = nil } })) {
+                Button("Cancel", role: .cancel) { itemToDelete = nil }
+                Button("Delete", role: .destructive) {
+                    if let item = itemToDelete {
+                        Task { await viewModel.deleteItem(item) }
+                    }
+                    itemToDelete = nil
+                }
+            } message: {
+                if let item = itemToDelete {
+                    Text("Are you sure you want to remove '\(item.name)' from your shopping list?")
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if let msg = viewModel.toastMessage {
+                    toastView(message: msg, isError: false)
+                } else if let err = viewModel.errorMessage {
+                    toastView(message: err, isError: true)
                 }
             }
         }
@@ -170,9 +201,9 @@ public struct ShoppingListView: View {
                 }
                 .padding(.vertical, 6)
                 .listRowBackground(ProvisionTheme.surface)
-                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     Button(role: .destructive) {
-                        Task { await viewModel.deleteItem(item) }
+                        itemToDelete = item
                     } label: {
                         Label("Delete", systemImage: "trash")
                     }
@@ -189,21 +220,64 @@ public struct ShoppingListView: View {
     private var emptyShoppingList: some View {
         VStack(spacing: 16) {
             Spacer()
-            Image(systemName: "cart")
+            Image(systemName: emptyStateIcon)
                 .font(.system(size: 48))
                 .foregroundStyle(ProvisionTheme.textTertiary)
             
-            Text("No Items in Shopping List")
+            Text(emptyStateTitle)
                 .font(.system(size: 18, weight: .bold, design: .serif))
                 .foregroundStyle(ProvisionTheme.textPrimary)
             
-            Text("Add pantry items you need to restock or tap 'Auto-Generate' to populate based on low inventory.")
+            Text(emptyStateSubtitle)
                 .font(.system(size: 14))
                 .foregroundStyle(ProvisionTheme.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
             Spacer()
         }
+    }
+
+    private var emptyStateIcon: String {
+        switch viewModel.filter {
+        case .all: return "cart"
+        case .pending: return "checklist"
+        case .completed: return "checkmark.circle"
+        }
+    }
+
+    private var emptyStateTitle: String {
+        switch viewModel.filter {
+        case .all: return "Shopping List is Empty"
+        case .pending: return "No Items to Buy"
+        case .completed: return "No Completed Items"
+        }
+    }
+
+    private var emptyStateSubtitle: String {
+        switch viewModel.filter {
+        case .all:
+            return "Add grocery items manually above or tap 'Auto-Generate' to restock low pantry supplies."
+        case .pending:
+            return "You're all caught up! Everything on your list has been purchased."
+        case .completed:
+            return "Items you check off as bought will appear here until cleared."
+        }
+    }
+
+    private func toastView(message: String, isError: Bool) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: isError ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(isError ? ProvisionTheme.redAlert : ProvisionTheme.provisionGreen)
+            Text(message)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(ProvisionTheme.textPrimary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(isError ? ProvisionTheme.redLight : ProvisionTheme.provisionGreenLight)
+        .clipShape(Capsule())
+        .shadow(color: .black.opacity(0.08), radius: 6, y: 3)
+        .padding(.bottom, 16)
     }
 }
 
