@@ -101,7 +101,10 @@ public struct ScanView: View {
                 #endif
             }
             .sheet(item: $editingItemForOCR) { targetItem in
-                ExpirationDateScannerSheet(title: "Scan Expiry: \(targetItem.name)") { scannedDate in
+                ExpirationDateScannerSheet(
+                    title: "Scan Expiry: \(targetItem.name)",
+                    initialDate: targetItem.expirationDate
+                ) { (scannedDate: Date?) in
                     if let idx = viewModel.scannedItems.firstIndex(where: { $0.id == targetItem.id }) {
                         viewModel.scannedItems[idx].expirationDate = scannedDate
                     }

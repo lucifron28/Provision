@@ -112,8 +112,16 @@ public struct EditBatchView: View {
                 await fetchLocations()
             }
             .sheet(isPresented: $showingExpirationOCRSheet) {
-                ExpirationDateScannerSheet(title: "Scan Package Date") { scannedDate in
-                    expirationDate = scannedDate
+                ExpirationDateScannerSheet(
+                    title: "Scan Package Date",
+                    initialDate: trackExpiration ? expirationDate : nil
+                ) { (scannedDate: Date?) in
+                    if let scannedDate {
+                        expirationDate = scannedDate
+                        trackExpiration = true
+                    } else {
+                        trackExpiration = false
+                    }
                 }
             }
         }
