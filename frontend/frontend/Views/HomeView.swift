@@ -5,7 +5,7 @@ public struct HomeView: View {
     @ObservedObject var authVM: AuthViewModel
     var onNavigateToInventory: () -> Void
     var onNavigateToShopping: () -> Void
-    
+
     @State private var showingProfileSheet: Bool = false
     @State private var notificationsEnabled: Bool = NotificationService.shared.isAlertsEnabled
 
@@ -20,22 +20,55 @@ public struct HomeView: View {
         self.onNavigateToInventory = onNavigateToInventory
         self.onNavigateToShopping = onNavigateToShopping
     }
-    
+
     public var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
                     // Header Bar
                     headerBar
-                    
-                    // Pantry Health Hero Card
-                    pantryHealthCard
-                    
-                    // Expiring Soon Section
-                    expiringSoonSection
-                    
-                    // Restock Needed Section
-                    restockNeededSection
+                    if viewModel.isLoading && !viewModel.hasLoadedOnce {
+                        VStack(spacing: 12) {
+                            ProgressView()
+                                .tint(ProvisionTheme.provisionGreen)
+                            Text("Loading household pantry...")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(ProvisionTheme.textSecondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(40)
+                    } else if let err = viewModel.errorMessage, !viewModel.hasLoadedOnce {
+                        VStack(spacing: 12) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 32))
+                                .foregroundStyle(ProvisionTheme.redAlert)
+                            Text("Unable to load pantry data")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(ProvisionTheme.textPrimary)
+                            Text(err)
+                                .font(.system(size: 12))
+                                .foregroundStyle(ProvisionTheme.textSecondary)
+                                .multilineTextAlignment(.center)
+                            Button("Try Again") {
+                                Task { await viewModel.loadDashboard() }
+                            }
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                            .padding(.top, 4)
+                        }
+                        .padding(24)
+                        .frame(maxWidth: .infinity)
+                        .provisionCard()
+                    } else {
+                        // Pantry Health Hero Card
+                        pantryHealthCard
+
+                        // Expiring Soon Section
+                        expiringSoonSection
+
+                        // Restock Needed Section
+                        restockNeededSection
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 24)
@@ -62,9 +95,9 @@ public struct HomeView: View {
             }
         }
     }
-    
+
     // MARK: - Subviews
-    
+
     private var headerBar: some View {
         HStack(spacing: 12) {
             // User Avatar
@@ -78,18 +111,18 @@ public struct HomeView: View {
                     .frame(width: 38, height: 38)
                     .foregroundStyle(ProvisionTheme.provisionGreen)
             }
-            
+
             VStack(alignment: .leading, spacing: 2) {
-                Text("Good Morning,")
+                Text(timeGreeting)
                     .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(ProvisionTheme.textSecondary)
-                Text("Provision")
+                Text(authVM.currentUser?.displayNameOrEmail ?? "Provision")
                     .font(.system(size: 22, weight: .bold, design: .serif))
                     .foregroundStyle(ProvisionTheme.provisionGreen)
             }
-            
+
             Spacer()
-            
+
             Button {
                 showingProfileSheet = true
             } label: {
@@ -104,7 +137,7 @@ public struct HomeView: View {
         }
         .padding(.top, 8)
     }
-    
+
     private var pantryHealthCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
@@ -116,43 +149,43 @@ public struct HomeView: View {
                     .font(.system(size: 16))
                     .foregroundStyle(ProvisionTheme.provisionGreen)
             }
-            
+
             VStack(alignment: .leading, spacing: 4) {
                 Text("TOTAL VALUE")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(ProvisionTheme.textSecondary)
                     .tracking(0.8)
-                
+
                 Text("₱\(formatCurrency(viewModel.valuation.total_value))")
                     .font(.system(size: 32, weight: .bold, design: .serif))
                     .foregroundStyle(ProvisionTheme.textPrimary)
             }
-            
+
             Divider()
                 .background(ProvisionTheme.border.opacity(0.8))
-            
+
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Monthly Spend")
+                    Text("Recorded Spend")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(ProvisionTheme.textSecondary)
-                    
+
                     Text("₱\(formatCurrency(viewModel.spending.total_spent))")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(ProvisionTheme.textPrimary)
                 }
-                
+
                 Spacer()
-                
+
                 HStack(spacing: 4) {
-                    Image(systemName: "arrow.down.right")
+                    Image(systemName: viewModel.pantryStatus.icon)
                         .font(.system(size: 10, weight: .bold))
-                    Text("Good")
+                    Text(viewModel.pantryStatus.title)
                         .font(.system(size: 12, weight: .semibold))
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .background(ProvisionTheme.provisionGreen)
+                .background(viewModel.pantryStatus.color)
                 .foregroundStyle(.white)
                 .clipShape(Capsule())
             }
@@ -165,23 +198,34 @@ public struct HomeView: View {
                 .stroke(ProvisionTheme.border.opacity(0.6), lineWidth: 1)
         )
     }
-    
+
+    private var timeGreeting: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        if hour >= 5 && hour < 12 {
+            return "Good Morning,"
+        } else if hour >= 12 && hour < 17 {
+            return "Good Afternoon,"
+        } else {
+            return "Good Evening,"
+        }
+    }
+
     private var expiringSoonSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Expiring Soon")
                     .font(.system(size: 18, weight: .bold, design: .serif))
                     .foregroundStyle(ProvisionTheme.textPrimary)
-                
+
                 Spacer()
-                
+
                 Button("View All") {
                     onNavigateToInventory()
                 }
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(ProvisionTheme.textSecondary)
             }
-            
+
             if viewModel.expiringSoonItems.isEmpty {
                 HStack(spacing: 12) {
                     ZStack {
@@ -216,7 +260,7 @@ public struct HomeView: View {
             }
         }
     }
-    
+
     private func expiringItemCard(item: ExpiringSoonItem) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -228,9 +272,9 @@ public struct HomeView: View {
                         .font(.system(size: 15))
                         .foregroundStyle(item.days_until_expiration <= 1 ? ProvisionTheme.redAlert : ProvisionTheme.amberWarning)
                 }
-                
+
                 Spacer()
-                
+
                 Text(item.urgencyBadgeText)
                     .font(.system(size: 10, weight: .bold))
                     .padding(.horizontal, 8)
@@ -239,18 +283,18 @@ public struct HomeView: View {
                     .foregroundStyle(item.days_until_expiration <= 1 ? ProvisionTheme.redAlert : ProvisionTheme.amberWarning)
                     .clipShape(Capsule())
             }
-            
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.product_name)
                     .font(.system(size: 16, weight: .bold, design: .serif))
                     .foregroundStyle(ProvisionTheme.textPrimary)
                     .lineLimit(1)
-                
+
                 Text(item.displayQuantity)
                     .font(.system(size: 12, weight: .regular))
                     .foregroundStyle(ProvisionTheme.textSecondary)
             }
-            
+
             Button {
                 Task {
                     await viewModel.quickConsumeExpiringItem(item)
@@ -273,14 +317,14 @@ public struct HomeView: View {
         .frame(width: 160)
         .provisionCard()
     }
-    
-    
+
+
     private var restockNeededSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Restock Needed")
                 .font(.system(size: 18, weight: .bold, design: .serif))
                 .foregroundStyle(ProvisionTheme.textPrimary)
-            
+
             if viewModel.lowStockItems.isEmpty {
                 HStack(spacing: 12) {
                     ZStack {
@@ -313,7 +357,7 @@ public struct HomeView: View {
                                 Image(systemName: "exclamationmark.circle.fill")
                                     .foregroundStyle(ProvisionTheme.amberWarning)
                             }
-                            
+
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(item.product_name)
                                     .font(.system(size: 15, weight: .semibold))
@@ -322,9 +366,9 @@ public struct HomeView: View {
                                     .font(.system(size: 13, weight: .medium))
                                     .foregroundStyle(ProvisionTheme.redAlert)
                             }
-                            
+
                             Spacer()
-                            
+
                             Button {
                                 Task {
                                     await viewModel.addLowStockToShoppingList(item)
@@ -345,8 +389,8 @@ public struct HomeView: View {
             }
         }
     }
-    
-    
+
+
     private var profileSheet: some View {
         NavigationStack {
             VStack(spacing: 24) {
@@ -361,25 +405,25 @@ public struct HomeView: View {
                             .frame(width: 64, height: 64)
                             .foregroundStyle(ProvisionTheme.provisionGreen)
                     }
-                    
+
                     VStack(spacing: 4) {
                         Text(authVM.currentUser?.displayNameOrEmail ?? "Household Member")
                             .font(.system(size: 20, weight: .bold, design: .serif))
                             .foregroundStyle(ProvisionTheme.textPrimary)
-                        
+
                         Text(authVM.currentUser?.email ?? "user@provision.local")
                             .font(.system(size: 14))
                             .foregroundStyle(ProvisionTheme.textSecondary)
                     }
                 }
                 .padding(.top, 24)
-                
+
                 VStack(alignment: .leading, spacing: 10) {
                     Text("HOUSEHOLD PANTRY")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(ProvisionTheme.textSecondary)
                         .tracking(0.6)
-                    
+
                     HStack {
                         Text("Pantry Access")
                             .font(.system(size: 15))
@@ -391,7 +435,7 @@ public struct HomeView: View {
                     .padding(14)
                     .provisionCard()
                 }
-                
+
                 VStack(alignment: .leading, spacing: 10) {
                     Text("NOTIFICATIONS & ALERTS")
                         .font(.system(size: 11, weight: .bold))
@@ -425,7 +469,7 @@ public struct HomeView: View {
                     .provisionCard()
                 }
                 Spacer()
-                
+
                 Button(role: .destructive) {
                     showingProfileSheet = false
                     Task {
@@ -457,7 +501,7 @@ public struct HomeView: View {
         }
         .presentationDetents([.medium])
     }
-    
+
     private func toastView(message: String, isError: Bool) -> some View {
         Text(message)
             .font(.system(size: 13, weight: .medium))
@@ -470,7 +514,7 @@ public struct HomeView: View {
             .padding(.bottom, 16)
             .transition(.move(edge: .bottom).combined(with: .opacity))
     }
-    
+
     private func formatCurrency(_ value: Double) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
