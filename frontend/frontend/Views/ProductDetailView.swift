@@ -23,7 +23,10 @@ public struct ProductDetailView: View {
     @State private var adjustErrorMessage: String? = nil
     
     @State private var selectedBatchForDiscard: InventoryBatch? = nil
-    
+    @State private var showingDiscardBatchSelection: Bool = false
+    @State private var isDiscarding: Bool = false
+    @State private var isConsuming: Bool = false
+    @State private var isAdjusting: Bool = false
     public init(viewModel: InventoryViewModel, product: Product) {
         self.viewModel = viewModel
         self.product = product
@@ -77,20 +80,41 @@ public struct ProductDetailView: View {
         .sheet(isPresented: $showingAdjustSheet) {
             adjustSheet
         }
+        .confirmationDialog("Select Batch to Discard", isPresented: $showingDiscardBatchSelection, titleVisibility: .visible) {
+            ForEach(viewModel.productBatches) { batch in
+                Button("\(formatQuantity(batch.remaining_quantity)) \(currentProduct.displayUnit) • Exp: \(batch.displayExpiration)") {
+                    selectedBatchForDiscard = batch
+                    showingDiscardAlert = true
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Choose the specific inventory batch you want to log as discarded waste.")
+        }
         .alert("Discard Batch?", isPresented: $showingDiscardAlert) {
             Button("Cancel", role: .cancel) {}
             Button("Discard", role: .destructive) {
-                if let batch = selectedBatchForDiscard {
+                if let batch = selectedBatchForDiscard, !isDiscarding {
+                    isDiscarding = true
                     Task {
                         _ = await viewModel.discardBatch(batchId: batch.id)
+                        isDiscarding = false
                     }
                 }
             }
+            .disabled(isDiscarding)
         } message: {
             if let batch = selectedBatchForDiscard {
                 Text("Are you sure you want to discard \(formatQuantity(batch.remaining_quantity)) \(currentProduct.displayUnit) expiring \(batch.displayExpiration)? This will log a waste event.")
             } else {
                 Text("Are you sure you want to discard this batch?")
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if let msg = viewModel.toastMessage {
+                toastView(message: msg, isError: false)
+            } else if let err = viewModel.errorMessage {
+                toastView(message: err, isError: true)
             }
         }
     }
@@ -223,9 +247,11 @@ public struct ProductDetailView: View {
             
             // Discard Button
             Button {
-                if let earliest = viewModel.productBatches.first {
-                    selectedBatchForDiscard = earliest
+                if viewModel.productBatches.count == 1, let only = viewModel.productBatches.first {
+                    selectedBatchForDiscard = only
                     showingDiscardAlert = true
+                } else if viewModel.productBatches.count > 1 {
+                    showingDiscardBatchSelection = true
                 }
             } label: {
                 VStack(spacing: 6) {
@@ -241,8 +267,7 @@ public struct ProductDetailView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(ProvisionTheme.border, lineWidth: 1))
             }
-            .disabled(viewModel.productBatches.isEmpty)
-            
+            .disabled(viewModel.productBatches.isEmpty || isDiscarding)
             // Adjust Button
             Button {
                 if let earliest = viewModel.productBatches.first {
@@ -544,11 +569,14 @@ public struct ProductDetailView: View {
                     }
                     
                     Task {
+                        guard !isConsuming else { return }
+                        isConsuming = true
                         let success = await viewModel.consumeProduct(
                             productId: currentProduct.id,
                             quantity: amount,
                             reason: consumeReason
                         )
+                        isConsuming = false
                         if success {
                             showingConsumeSheet = false
                         } else {
@@ -556,14 +584,22 @@ public struct ProductDetailView: View {
                         }
                     }
                 } label: {
-                    Text("Confirm Consumption")
-                        .font(.system(size: 16, weight: .bold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(ProvisionTheme.provisionGreen)
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    HStack {
+                        if isConsuming {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Text("Confirm Consumption")
+                                .font(.system(size: 16, weight: .bold))
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(ProvisionTheme.provisionGreen)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
+                .disabled(isConsuming)
             }
             .padding(20)
             .background(ProvisionTheme.background.ignoresSafeArea())
@@ -641,11 +677,14 @@ public struct ProductDetailView: View {
                     }
                     
                     Task {
+                        guard !isAdjusting else { return }
+                        isAdjusting = true
                         let success = await viewModel.adjustBatch(
                             batchId: adjustBatchId,
                             newQuantity: newAmount,
                             reason: adjustReason
                         )
+                        isAdjusting = false
                         if success {
                             showingAdjustSheet = false
                         } else {
@@ -653,14 +692,22 @@ public struct ProductDetailView: View {
                         }
                     }
                 } label: {
-                    Text("Save Adjustment")
-                        .font(.system(size: 16, weight: .bold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(ProvisionTheme.provisionGreen)
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    HStack {
+                        if isAdjusting {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Text("Save Adjustment")
+                                .font(.system(size: 16, weight: .bold))
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(ProvisionTheme.provisionGreen)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
+                .disabled(isAdjusting)
             }
             .padding(20)
             .background(ProvisionTheme.background.ignoresSafeArea())
@@ -675,6 +722,22 @@ public struct ProductDetailView: View {
     
     private func formatQuantity(_ qty: Double) -> String {
         ProductUnits.formatAmount(qty)
+    }
+
+    private func toastView(message: String, isError: Bool) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: isError ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(isError ? ProvisionTheme.redAlert : ProvisionTheme.provisionGreen)
+            Text(message)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(ProvisionTheme.textPrimary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(isError ? ProvisionTheme.redLight : ProvisionTheme.provisionGreenLight)
+        .clipShape(Capsule())
+        .shadow(color: .black.opacity(0.08), radius: 6, y: 3)
+        .padding(.bottom, 16)
     }
 }
 

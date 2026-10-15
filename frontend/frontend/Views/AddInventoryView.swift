@@ -158,7 +158,7 @@ public struct AddInventoryView: View {
                         ProgressView("Loading locations...")
                     } else if !locations.isEmpty {
                         Picker("Storage Location", selection: $selectedLocationId) {
-                            Text("None").tag(Int?.none)
+                            Text("Select Location...").tag(Int?.none)
                             ForEach(locations) { loc in
                                 Text(loc.name).tag(Int?.some(loc.id))
                             }
@@ -223,6 +223,7 @@ public struct AddInventoryView: View {
     private var isFormValid: Bool {
         let parsedQty = Double(amountText.replacingOccurrences(of: ",", with: "."))
         guard let qty = parsedQty, qty > 0 else { return false }
+        guard selectedLocationId != nil else { return false }
         
         if isRestockMode || mode == .existing {
             return selectedProductId != nil
@@ -234,26 +235,24 @@ public struct AddInventoryView: View {
     private func fetchLocations() async {
         if !viewModel.locations.isEmpty {
             self.locations = viewModel.locations
-            if let first = locations.first, selectedLocationId == nil {
-                selectedLocationId = first.id
-            }
             return
         }
         if viewModel.isPreview { return }
         isLoadingLocations = true
         do {
             locations = try await APIClient.shared.fetchLocations()
-            if let first = locations.first, selectedLocationId == nil {
-                selectedLocationId = first.id
-            }
         } catch {
             errorMessage = "Could not load storage locations."
         }
         isLoadingLocations = false
     }
-    
     private func submit() {
+        guard !isSubmitting else { return }
         errorMessage = nil
+        guard selectedLocationId != nil else {
+            errorMessage = "Please select a storage location for this batch."
+            return
+        }
         let parsedQty = Double(amountText.replacingOccurrences(of: ",", with: "."))
         guard let qty = parsedQty, qty > 0 else {
             errorMessage = "Please enter a valid amount greater than zero."
