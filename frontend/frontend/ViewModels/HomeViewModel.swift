@@ -13,7 +13,19 @@ public class HomeViewModel: ObservableObject {
     @Published public var hasLoadedOnce: Bool = false
     @Published public var errorMessage: String? = nil
     @Published public var alertMessage: String? = nil
-    
+    private var toastDismissTask: Task<Void, Never>? = nil
+
+    public func showToast(_ message: String) {
+        self.alertMessage = message
+        toastDismissTask?.cancel()
+        toastDismissTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 3_500_000_000)
+            if !Task.isCancelled && self.alertMessage == message {
+                self.alertMessage = nil
+            }
+        }
+    }
+
     private let client: APIClient
     public var isPreview: Bool
 
@@ -99,7 +111,7 @@ public class HomeViewModel: ObservableObject {
 
     public func addLowStockToShoppingList(_ item: LowStockItem) async {
         if isPreview {
-            self.alertMessage = "Added \(item.product_name) to Shopping List"
+            showToast("Added \(item.product_name) to Shopping List")
             return
         }
         do {
@@ -111,7 +123,7 @@ public class HomeViewModel: ObservableObject {
                 notes: "Auto-added from Restock Needed"
             )
             _ = try await client.createShoppingItem(createItem)
-            self.alertMessage = "Added \(item.product_name) to Shopping List"
+            showToast("Added \(item.product_name) to Shopping List")
         } catch {
             self.errorMessage = "Failed to add to shopping list: \(error.localizedDescription)"
         }
@@ -119,7 +131,7 @@ public class HomeViewModel: ObservableObject {
 
     public func quickConsumeExpiringItem(_ item: ExpiringSoonItem, quantity: Double = 1.0) async {
         if isPreview {
-            self.alertMessage = "Consumed \(item.product_name)"
+            showToast("Consumed \(item.product_name)")
             self.expiringSoonItems.removeAll { $0.batch_id == item.batch_id }
             return
         }
@@ -129,7 +141,7 @@ public class HomeViewModel: ObservableObject {
                 quantity: quantity,
                 reason: "Quick consumption from Home screen"
             )
-            self.alertMessage = "Consumed \(item.product_name)"
+            showToast("Consumed \(item.product_name)")
             await loadDashboard()
         } catch {
             self.errorMessage = "Failed to consume item: \(error.localizedDescription)"
