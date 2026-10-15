@@ -9,41 +9,54 @@ public class AnalyticsViewModel: ObservableObject {
     @Published public var waste: WasteSummary = WasteSummary()
     @Published public var expiringSoonItems: [ExpiringSoonItem] = []
     @Published public var lowStockItems: [LowStockItem] = []
-    
+
     @Published public var isLoading: Bool = false
+    @Published public var hasLoadedOnce: Bool = false
     @Published public var errorMessage: String? = nil
-    
     private let client: APIClient
     public var isPreview: Bool
-    
+
     public init(client: APIClient = .shared, isPreview: Bool = false) {
         self.client = client
         self.isPreview = isPreview
     }
-    
+
     public func loadAnalytics() async {
-        if isPreview { return }
+        if isPreview {
+            hasLoadedOnce = true
+            return
+        }
         isLoading = true
         errorMessage = nil
-        
+
         do {
             async let valTask = client.fetchValuation()
             async let spendTask = client.fetchSpending()
             async let wasteTask = client.fetchWaste()
             async let expiringTask = client.fetchExpiringSoon(days: 14)
             async let lowStockTask = client.fetchLowStock(threshold: 2.0)
-            
+
             let (val, spend, waste, expiring, lowStock) = try await (valTask, spendTask, wasteTask, expiringTask, lowStockTask)
-            
+
             self.valuation = val
             self.spending = spend
             self.waste = waste
             self.expiringSoonItems = expiring
             self.lowStockItems = lowStock
+            self.hasLoadedOnce = true
         } catch {
             self.errorMessage = error.localizedDescription
         }
-        
+
         self.isLoading = false
+    }
+
+    public var isEmpty: Bool {
+        valuation.total_active_batches == 0 &&
+        valuation.total_active_products == 0 &&
+        spending.sessions_count == 0 &&
+        waste.total_waste_events == 0 &&
+        expiringSoonItems.isEmpty &&
+        lowStockItems.isEmpty
     }
 }

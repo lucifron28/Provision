@@ -2,28 +2,77 @@ import SwiftUI
 
 public struct AnalyticsView: View {
     @ObservedObject var viewModel: AnalyticsViewModel
-    
+
     public init(viewModel: AnalyticsViewModel) {
         self.viewModel = viewModel
     }
-    
+
     public var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 18) {
-                    // Valuation Summary Card
-                    valuationCard
-                    
-                    // Monthly Spending Card
-                    spendingCard
-                    
-                    // Waste & Loss Prevention Card
-                    wastePreventionCard
-                    
-                    // Expiration Risk Radar
-                    riskRadarCard
+                    if viewModel.isLoading && !viewModel.hasLoadedOnce {
+                        VStack(spacing: 12) {
+                            ProgressView()
+                                .tint(ProvisionTheme.provisionGreen)
+                            Text("Loading household analytics...")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(ProvisionTheme.textSecondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(40)
+                    } else if let err = viewModel.errorMessage, !viewModel.hasLoadedOnce {
+                        VStack(spacing: 12) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 32))
+                                .foregroundStyle(ProvisionTheme.redAlert)
+                            Text("Unable to load analytics")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(ProvisionTheme.textPrimary)
+                            Text(err)
+                                .font(.system(size: 12))
+                                .foregroundStyle(ProvisionTheme.textSecondary)
+                                .multilineTextAlignment(.center)
+                            Button("Try Again") {
+                                Task { await viewModel.loadAnalytics() }
+                            }
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                            .padding(.top, 4)
+                        }
+                        .padding(24)
+                        .frame(maxWidth: .infinity)
+                        .provisionCard()
+                    } else if viewModel.hasLoadedOnce && viewModel.isEmpty {
+                        VStack(spacing: 12) {
+                            Image(systemName: "chart.bar.xaxis")
+                                .font(.system(size: 36))
+                                .foregroundStyle(ProvisionTheme.textTertiary)
+                            Text("No Household Analytics Recorded")
+                                .font(.system(size: 16, weight: .bold, design: .serif))
+                                .foregroundStyle(ProvisionTheme.textPrimary)
+                            Text("Complete intake sessions or restock pantry items to begin tracking inventory valuation, cumulative spend, and waste reduction.")
+                                .font(.system(size: 13))
+                                .foregroundStyle(ProvisionTheme.textSecondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding(28)
+                        .frame(maxWidth: .infinity)
+                        .provisionCard()
+                    } else {
+                        // Valuation Summary Card
+                        valuationCard
+
+                        // Recorded Spending Card
+                        spendingCard
+
+                        // Waste & Loss Prevention Card
+                        wastePreventionCard
+
+                        // Expiration Risk Radar
+                        riskRadarCard
+                    }
                 }
-                .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
             .background(ProvisionTheme.background.ignoresSafeArea())
@@ -37,13 +86,13 @@ public struct AnalyticsView: View {
             }
         }
     }
-    
+
     // MARK: - Subviews
-    
+
     private var valuationCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("INVENTORY VALUATION")
+                Text("CURRENT INVENTORY VALUATION")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(ProvisionTheme.textSecondary)
                     .tracking(0.6)
@@ -51,13 +100,13 @@ public struct AnalyticsView: View {
                 Image(systemName: "banknote.fill")
                     .foregroundStyle(ProvisionTheme.provisionGreen)
             }
-            
+
             Text("₱\(formatCurrency(viewModel.valuation.total_value))")
                 .font(.system(size: 32, weight: .bold, design: .serif))
                 .foregroundStyle(ProvisionTheme.textPrimary)
-            
+
             Divider()
-            
+
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("ACTIVE BATCHES")
@@ -67,9 +116,9 @@ public struct AnalyticsView: View {
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(ProvisionTheme.textPrimary)
                 }
-                
+
                 Spacer()
-                
+
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("CATALOG PRODUCTS")
                         .font(.system(size: 10, weight: .bold))
@@ -83,11 +132,11 @@ public struct AnalyticsView: View {
         .padding(18)
         .provisionCard()
     }
-    
+
     private var spendingCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("GROCERY SPENDING")
+                Text("CUMULATIVE GROCERY SPEND")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(ProvisionTheme.textSecondary)
                     .tracking(0.6)
@@ -95,16 +144,16 @@ public struct AnalyticsView: View {
                 Image(systemName: "creditcard.fill")
                     .foregroundStyle(ProvisionTheme.provisionGreen)
             }
-            
+
             Text("₱\(formatCurrency(viewModel.spending.total_spent))")
                 .font(.system(size: 28, weight: .bold, design: .serif))
                 .foregroundStyle(ProvisionTheme.textPrimary)
-            
+
             HStack(spacing: 6) {
                 Image(systemName: "checkmark.seal.fill")
                     .font(.system(size: 12))
                     .foregroundStyle(ProvisionTheme.provisionGreen)
-                Text("Across \(viewModel.spending.sessions_count) intake grocery sessions")
+                Text("Total recorded across \(viewModel.spending.sessions_count) completed session(s)")
                     .font(.system(size: 13))
                     .foregroundStyle(ProvisionTheme.textSecondary)
             }
@@ -112,11 +161,11 @@ public struct AnalyticsView: View {
         .padding(18)
         .provisionCard()
     }
-    
+
     private var wastePreventionCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("WASTE & LOSS INTELLIGENCE")
+                Text("RECORDED WASTE & LOSS")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(ProvisionTheme.textSecondary)
                     .tracking(0.6)
@@ -124,17 +173,17 @@ public struct AnalyticsView: View {
                 Image(systemName: "arrow.triangle.2.circlepath.doc.on.clipboard")
                     .foregroundStyle(ProvisionTheme.amberWarning)
             }
-            
+
             HStack(alignment: .firstTextBaseline) {
                 Text("₱\(formatCurrency(viewModel.waste.total_financial_loss))")
                     .font(.system(size: 28, weight: .bold, design: .serif))
                     .foregroundStyle(ProvisionTheme.redAlert)
-                
+
                 Text("financial loss")
                     .font(.system(size: 13))
                     .foregroundStyle(ProvisionTheme.textSecondary)
             }
-            
+
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("ITEMS WASTED")
@@ -144,9 +193,9 @@ public struct AnalyticsView: View {
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(ProvisionTheme.textPrimary)
                 }
-                
+
                 Spacer()
-                
+
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("WASTE LOGS")
                         .font(.system(size: 10, weight: .bold))
@@ -160,14 +209,14 @@ public struct AnalyticsView: View {
         .padding(18)
         .provisionCard(borderColor: ProvisionTheme.amberWarning.opacity(0.4))
     }
-    
+
     private var riskRadarCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("DECISION INTELLIGENCE")
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(ProvisionTheme.textSecondary)
                 .tracking(0.6)
-            
+
             HStack(spacing: 12) {
                 ZStack {
                     Circle()
@@ -177,7 +226,7 @@ public struct AnalyticsView: View {
                         .font(.system(size: 22))
                         .foregroundStyle(ProvisionTheme.provisionGreen)
                 }
-                
+
                 VStack(alignment: .leading, spacing: 2) {
                     Text("FEFO Consumption Active")
                         .font(.system(size: 15, weight: .semibold))
@@ -191,7 +240,7 @@ public struct AnalyticsView: View {
             .provisionCard()
         }
     }
-    
+
     private func formatCurrency(_ value: Double) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
