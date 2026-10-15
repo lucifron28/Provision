@@ -18,11 +18,12 @@ public struct ScanView: View {
     @State private var manualDatePickerItem: ScannedIntakeItem? = nil
     @State private var editingPriceItem: ScannedIntakeItem? = nil
     @State private var editingPriceText: String = ""
+    @State private var selectedCatalogProductId: Int? = nil
 
     public init(viewModel: ScanViewModel) {
         self.viewModel = viewModel
     }
-    
+
     public var body: some View {
         NavigationStack {
             ScrollView {
@@ -33,15 +34,15 @@ public struct ScanView: View {
                         Text("Receipt Intake").tag(1)
                     }
                     .pickerStyle(.segmented)
-                    
+
                     // Viewfinder Box
                     viewfinderCard
-                    
+
                     // Detected Barcode Display
                     if scanMode == 0 {
                         detectedBarcodeCard
                     }
-                    
+
                     // Quick Simulation Bar (Available in simulator or preview testing)
                     if !viewModel.scannerManager.isCameraAvailable || viewModel.isPreview {
                         simulationBarcodeButtons
@@ -158,9 +159,9 @@ public struct ScanView: View {
             }
         }
     }
-    
+
     // MARK: - Subviews
-    
+
     private var viewfinderCard: some View {
         ZStack {
             if scanMode == 0 {
@@ -206,21 +207,25 @@ public struct ScanView: View {
                             }
                             #endif
 
-                            Button {
-                                viewModel.simulateReceiptScan()
-                            } label: {
-                                HStack(spacing: 5) {
-                                    Image(systemName: "doc.badge.plus")
-                                    Text("Sample Receipt (#0994)")
+                            #if DEBUG
+                            if viewModel.isPreview {
+                                Button {
+                                    viewModel.simulateReceiptScan()
+                                } label: {
+                                    HStack(spacing: 5) {
+                                        Image(systemName: "doc.badge.plus")
+                                        Text("Sample Receipt (#0994)")
+                                    }
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 7)
+                                    .background(ProvisionTheme.surface)
+                                    .foregroundStyle(ProvisionTheme.textPrimary)
+                                    .clipShape(Capsule())
+                                    .overlay(Capsule().stroke(ProvisionTheme.border, lineWidth: 1))
                                 }
-                                .font(.system(size: 11, weight: .semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 7)
-                                .background(ProvisionTheme.surface)
-                                .foregroundStyle(ProvisionTheme.textPrimary)
-                                .clipShape(Capsule())
-                                .overlay(Capsule().stroke(ProvisionTheme.border, lineWidth: 1))
                             }
+                            #endif
                         }
                     }
                 }
@@ -244,7 +249,7 @@ public struct ScanView: View {
             .allowsHitTesting(false)
         }
     }
-    
+
     private func cornerBracket(top: Bool, left: Bool) -> some View {
         Path { path in
             let length: CGFloat = 20
@@ -254,7 +259,7 @@ public struct ScanView: View {
             let cornerY: CGFloat = top ? 0 : length
             let endX: CGFloat = left ? length : 0
             let endY: CGFloat = top ? 0 : length
-            
+
             path.move(to: CGPoint(x: startX, y: startY))
             path.addLine(to: CGPoint(x: cornerX, y: cornerY))
             path.addLine(to: CGPoint(x: endX, y: endY))
@@ -262,14 +267,14 @@ public struct ScanView: View {
         .stroke(ProvisionTheme.heroCard, lineWidth: 3)
         .frame(width: 20, height: 20)
     }
-    
+
     private var simulationBarcodeButtons: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("QUICK SCAN SIMULATION")
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(ProvisionTheme.textTertiary)
                 .tracking(0.6)
-            
+
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     simButton(title: "Whole Milk", brand: "Dairy", barcode: "00123456", days: 7)
@@ -280,7 +285,7 @@ public struct ScanView: View {
             }
         }
     }
-    
+
     private func simButton(title: String, brand: String, barcode: String, days: Int) -> some View {
         Button {
             viewModel.onBarcodeScanned(barcode)
@@ -299,7 +304,7 @@ public struct ScanView: View {
             .overlay(Capsule().stroke(ProvisionTheme.border, lineWidth: 1))
         }
     }
-    
+
     private var detectedBarcodeCard: some View {
         HStack(spacing: 12) {
             ZStack {
@@ -366,9 +371,9 @@ public struct ScanView: View {
                         .font(.system(size: 12))
                         .foregroundStyle(ProvisionTheme.textSecondary)
                 }
-                
+
                 Spacer()
-                
+
                 HStack(spacing: 8) {
                     // "Confirm All" button if there are items ready to confirm
                     let hasConfirmableItems = viewModel.scannedItems.contains { item in
@@ -436,7 +441,20 @@ public struct ScanView: View {
                         .stroke(ProvisionTheme.redAlert.opacity(0.3), lineWidth: 1)
                 )
             }
-            
+
+            if viewModel.isProcessingReceipt {
+                HStack(spacing: 12) {
+                    ProgressView()
+                        .tint(ProvisionTheme.provisionGreen)
+                    Text("Processing receipt with Vision OCR...")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(ProvisionTheme.textPrimary)
+                    Spacer()
+                }
+                .padding(14)
+                .provisionCard()
+            }
+
             if viewModel.scannedItems.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "barcode")
@@ -450,13 +468,31 @@ public struct ScanView: View {
                 .padding(32)
                 .provisionCard()
             } else {
+                let totalCount = viewModel.scannedItems.count
+                let confirmedCount = viewModel.scannedItems.filter { $0.isConfirmed }.count
+                let allConfirmed = totalCount > 0 && confirmedCount == totalCount
+
+                // Requirement 7: Commit readiness banner
+                HStack(spacing: 8) {
+                    Image(systemName: allConfirmed ? "checkmark.circle.fill" : "info.circle.fill")
+                        .font(.system(size: 13))
+                    Text(allConfirmed ? "Ready to Commit • All \(totalCount) item(s) confirmed" : "\(confirmedCount) of \(totalCount) item(s) confirmed • Review & confirm all items to commit")
+                        .font(.system(size: 12, weight: .semibold))
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(allConfirmed ? ProvisionTheme.provisionGreenLight : ProvisionTheme.amberLight)
+                .foregroundStyle(allConfirmed ? ProvisionTheme.provisionGreen : ProvisionTheme.amberWarning)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
                 VStack(spacing: 10) {
                     ForEach($viewModel.scannedItems) { $item in
                         intakeItemRow(item: $item)
                     }
                 }
-                
-                // Commit Button
+
+                // Commit Button with anti-duplicate and disabled state
                 Button {
                     Task {
                         await viewModel.commitIntakeSession()
@@ -467,23 +503,23 @@ public struct ScanView: View {
                             ProgressView()
                                 .tint(.white)
                         } else {
-                            Image(systemName: "checkmark.circle.fill")
-                            Text("Commit Intake to Pantry")
+                            Image(systemName: allConfirmed ? "checkmark.circle.fill" : "lock.fill")
+                            Text(allConfirmed ? "Commit \(totalCount) Item(s) to Pantry" : "Commit Intake (\(confirmedCount)/\(totalCount) Confirmed)")
                                 .font(.system(size: 16, weight: .bold))
                         }
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(ProvisionTheme.provisionGreen)
+                    .background(allConfirmed ? ProvisionTheme.provisionGreen : ProvisionTheme.textTertiary)
                     .foregroundStyle(.white)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
-                .disabled(viewModel.isCommitting)
+                .disabled(viewModel.isCommitting || !allConfirmed)
                 .padding(.top, 8)
             }
         }
     }
-    
+
     private func intakeItemRow(item: Binding<ScannedIntakeItem>) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             // Header: Name, Brand, Barcode + Status Badge
@@ -492,30 +528,32 @@ public struct ScanView: View {
                     Text(item.wrappedValue.name)
                         .font(.system(size: 15, weight: .bold, design: .serif))
                         .foregroundStyle(ProvisionTheme.textPrimary)
-                    
+
                     Text("\(item.wrappedValue.brand ?? "Pantry") • Barcode: \(item.wrappedValue.barcode)")
                         .font(.system(size: 11))
                         .foregroundStyle(ProvisionTheme.textSecondary)
                 }
-                
+
                 Spacer()
-                
+
                 // Status Badge
                 statusBadge(for: item.wrappedValue)
             }
 
             // If productId == nil: prominent button/tag to trigger quick add
-            if item.wrappedValue.productId == nil {
+            if item.wrappedValue.productId == nil || item.wrappedValue.status == .needsReview {
                 Button {
+                    viewModel.resolvingItemId = item.wrappedValue.id
                     viewModel.unresolvedBarcode = item.wrappedValue.barcode
                     quickAddName = item.wrappedValue.name
                     quickAddBrand = item.wrappedValue.brand ?? ""
+                    selectedCatalogProductId = nil
                     viewModel.showingQuickAddSheet = true
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "questionmark.circle.fill")
                             .font(.system(size: 12))
-                        Text("Unresolved Product • Tap to Register")
+                        Text(item.wrappedValue.productId == nil ? "Unresolved Product • Tap to Match or Register" : "Uncertain Match • Tap to Review Product")
                             .font(.system(size: 12, weight: .bold))
                         Spacer()
                         Image(systemName: "chevron.right")
@@ -533,7 +571,7 @@ public struct ScanView: View {
                 }
                 .buttonStyle(.plain)
             }
-            
+
             Divider()
 
             // Price & Line Total Row
@@ -616,7 +654,7 @@ public struct ScanView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                
+
                 HStack(alignment: .center, spacing: 12) {
                     // Storage Location Selector
                     Menu {
@@ -744,7 +782,7 @@ public struct ScanView: View {
         .padding(14)
         .provisionCard()
     }
-    
+
     @ViewBuilder
     private func statusBadge(for item: ScannedIntakeItem) -> some View {
         if item.isConfirmed {
@@ -812,7 +850,36 @@ public struct ScanView: View {
     private var quickAddProductSheet: some View {
         NavigationStack {
             Form {
-                Section("Unrecognized Barcode") {
+                if !viewModel.availableCatalog.isEmpty {
+                    Section("Match to Existing Catalog Product") {
+                        Picker("Select Catalog Product", selection: $selectedCatalogProductId) {
+                            Text("Choose from catalog...").tag(nil as Int?)
+                            ForEach(viewModel.availableCatalog) { prod in
+                                Text("\(prod.name) (\(prod.brand ?? "Pantry"))").tag(prod.id as Int?)
+                            }
+                        }
+
+                        if let selId = selectedCatalogProductId,
+                           let foundProd = viewModel.availableCatalog.first(where: { $0.id == selId }) {
+                            Button {
+                                if let targetId = viewModel.resolvingItemId {
+                                    viewModel.resolveItemWithCatalogProduct(itemId: targetId, product: foundProd)
+                                }
+                                selectedCatalogProductId = nil
+                                viewModel.showingQuickAddSheet = false
+                            } label: {
+                                HStack {
+                                    Image(systemName: "link.circle.fill")
+                                    Text("Link as \(foundProd.name)")
+                                        .bold()
+                                }
+                                .foregroundStyle(ProvisionTheme.provisionGreen)
+                            }
+                        }
+                    }
+                }
+
+                Section("Or Register as New Product") {
                     HStack {
                         Text("Barcode")
                         Spacer()
@@ -820,9 +887,6 @@ public struct ScanView: View {
                             .font(.system(size: 14, weight: .bold, design: .monospaced))
                             .foregroundStyle(ProvisionTheme.textSecondary)
                     }
-                }
-
-                Section("Product Details") {
                     TextField("Product Name (Required)", text: $quickAddName)
                     TextField("Brand (Optional)", text: $quickAddBrand)
 
@@ -839,7 +903,7 @@ public struct ScanView: View {
                     }
                 }
             }
-            .navigationTitle("New Product Details")
+            .navigationTitle("Resolve Product Details")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
