@@ -78,21 +78,29 @@ public struct ScanViewModelProductionTests {
         print("[Test 15] Receipt mode and barcode mode never compete for acceptance...")
         try await testReceiptModeAndBarcodeModeNeverCompete()
 
-        print("[Test 16] Native camera callback pipeline forwards generation through 5 cycles...")
+        print("[Test 16] Metadata gate delivers five sequential generations and rejects stale frames...")
         try await testSequentialFiveGenerationRearmPipeline()
 
-        print("[Test 17] Coordinated multi-reason suspension isolation...")
+        print("[Test 17] Receipt tab and receipt camera own separate suspensions...")
         try await testMultipleSimultaneousSuspensionsRequireAllCleared()
 
-        print("[Test 18] Delayed lookup during commit buffers item to deferred queue...")
+        print("[Test 18] Delayed lookup is restored after a real commit completes...")
         try await testDelayedLookupDuringCommitPreservesDeferredItem()
 
-        print("[Test 19] Commit retry session status reconciliation...")
+        print("[Test 19] Failed commit retries the same draft and exact payload...")
         try await testCommitRetrySessionStatusReconciliation()
 
-        print("[Test 20] Receipt matching retry uses cached lines without recapturing...")
+        print("[Test 20] Receipt matching retries cached lines after catalog failure...")
         try await testReceiptMatchingRetryUsesCachedLinesWithoutRecapturing()
 
+        print("[Test 21] Permission callback and initial Scan activation start only when active...")
+        try await testInitialCameraPermissionAndScanActivation()
+
+        print("[Test 22] Lost commit response reconciles from persisted state after restart...")
+        try await testCommitSuccessLostResponseReconcilesAfterRestart()
+
+        print("[Test 23] Changed intake is locked until the pending draft is cancelled...")
+        try await testModifiedIntakeRequiresSafeDraftCancellation()
         print("=== ALL PROVISION PRODUCTION TESTS PASSED SUCCESSFULLY ===")
     }
 
@@ -476,8 +484,8 @@ public struct ScanViewModelProductionTests {
         vm.rearmScanner()
 
         let barcodeA = "4800016644818"
-        async let r1: Void = vm.resolveScannedBarcode(barcodeA)
-        async let r2: Void = vm.resolveScannedBarcode(barcodeA)
+        async let r1: Void = vm.resolveScannedBarcode(barcodeA, generation: vm.currentScanGeneration)
+        async let r2: Void = vm.resolveScannedBarcode(barcodeA, generation: vm.currentScanGeneration)
         _ = await (r1, r2)
 
         try assertEquals(vm.scannedItems.count, 1, "Concurrent in-flight resolutions must deduplicate cleanly")
@@ -490,7 +498,7 @@ public struct ScanViewModelProductionTests {
         vm.rearmScanner()
 
         let unknownBarcode = "9999999999999"
-        await vm.resolveScannedBarcode(unknownBarcode)
+        await vm.resolveScannedBarcode(unknownBarcode, generation: vm.currentScanGeneration)
 
         if case .needsReview(let b, _) = vm.scannerState {
             try assertEquals(b, unknownBarcode, "State must record unresolved barcode")
@@ -513,7 +521,7 @@ public struct ScanViewModelProductionTests {
 
         // Start committing: scanner paused and isCommitting active
         vm.isCommitting = true
-        vm.suspendScanning(reason: "Committing intake")
+        vm.suspendScanning(for: .committing)
 
         try assertTrue(!vm.scannerState.isArmed, "Scanner must be disarmed during commit")
         try assertTrue(!vm.canRearm, "canRearm must return false during commit")
@@ -535,7 +543,7 @@ public struct ScanViewModelProductionTests {
         try assertEquals(vm.scannedItems.count, 1, "removeItem must be ignored during commit")
 
         vm.isCommitting = false
-        vm.resumeScanningAfterSuspension()
+        vm.resumeScanning(releasing: .committing)
     }
     // 9. Simulate network failure: one error and an explicit retry path
     public static func testNetworkFailureExplicitRetryPath() async throws {
@@ -582,7 +590,7 @@ public struct ScanViewModelProductionTests {
         try assertTrue(vm.scannerState == .ready, "Should start ready")
 
         // Simulate camera hardware interruption via system suspension
-        vm.suspendScanning(reason: "Camera interrupted by incoming call")
+        vm.suspendScanning(for: .cameraInterrupted)
         try assertTrue(vm.isSuspended, "Interrupted scanner must be marked suspended")
 
         // Any barcodes during interruption are rejected
@@ -590,7 +598,7 @@ public struct ScanViewModelProductionTests {
         try await Task.sleep(nanoseconds: 20_000_000)
 
         // Resume after interruption ends
-        vm.resumeScanningAfterSuspension()
+        vm.resumeScanning(releasing: .cameraInterrupted)
         try assertTrue(!vm.isSuspended, "Suspension flag cleared after interruption ends")
         try assertTrue(vm.scannerState == .ready, "Resumed scanner must remain .ready if it was .ready before interruption")
     }
@@ -602,7 +610,7 @@ public struct ScanViewModelProductionTests {
         vm.rearmScanner()
 
         // When switching to receipt mode, barcode scanning is suspended
-        vm.suspendScanning(reason: "Receipt mode active")
+        vm.suspendScanning(for: .receiptMode)
         try assertTrue(vm.isSuspended, "Scanner must be suspended in receipt mode")
 
         vm.simulateBarcodeDetection("4800016644818")
@@ -610,7 +618,7 @@ public struct ScanViewModelProductionTests {
         try assertEquals(vm.scannedItems.count, 0, "Barcode detection must be rejected in receipt mode")
 
         // Switching back to barcode mode resumes scanning
-        vm.resumeScanningAfterSuspension()
+        vm.resumeScanning(releasing: .receiptMode)
         try assertTrue(!vm.isSuspended, "Suspension flag cleared when switching back to barcode mode")
         try assertTrue(vm.scannerState == .ready, "Switching back to barcode mode restores .ready state")
     }
@@ -635,11 +643,11 @@ public struct ScanViewModelProductionTests {
         try assertTrue(!vm.scannerState.isArmed, "Scanner must be disarmed")
 
         // Open an overlay sheet (e.g. quick add, manual entry, or app backgrounding)
-        vm.suspendScanning(reason: "Active modal overlay")
+        vm.suspendScanning(for: .quickAddSheet)
         try assertTrue(vm.isSuspended, "Scanner must be marked suspended")
 
-        // Sheet is dismissed: resumeScanningAfterSuspension() is called
-        vm.resumeScanningAfterSuspension()
+        // The modal closes by releasing only its owned suspension.
+        vm.resumeScanning(releasing: .quickAddSheet)
         try assertTrue(!vm.isSuspended, "Suspension flag must be cleared")
 
         // CRITICAL CHECK: scannerState MUST NOT be transformed back to .ready!
@@ -680,10 +688,10 @@ public struct ScanViewModelProductionTests {
         vm.isResolvingBarcode = false
 
         // Case D: While suspended
-        vm.suspendScanning(reason: "Background")
+        vm.suspendScanning(for: .background)
         try assertTrue(!vm.canRearm, "canRearm must be false while suspended")
         try assertTrue(!vm.rearmScanner(), "rearmScanner() must return false while suspended")
-        vm.resumeScanningAfterSuspension()
+        vm.resumeScanning(releasing: .background)
     }
 
     // 15. Stale callbacks from previous generation rejected
@@ -714,11 +722,10 @@ public struct ScanViewModelProductionTests {
         try assertEquals(vm.scannedItems.count, 2, "Fresh callback with gen 2 must be accepted")
     }
 
-    // 16. Native camera callback pipeline forwards generation through 5 consecutive cycles
+    // 16. Exercise the metadata acceptance gate, manager delivery callback, and ViewModel generation checks
     public static func testSequentialFiveGenerationRearmPipeline() async throws {
         let vm = ScanViewModel(isPreview: true)
         vm.scannedItems.removeAll()
-        vm.rearmScanner()
 
         let barcodes = [
             "4800016644818", // 1. Century Tuna
@@ -729,105 +736,557 @@ public struct ScanViewModelProductionTests {
         ]
 
         for i in 0..<5 {
-            let expectedGen = i + 1
-            try assertEquals(vm.currentScanGeneration, expectedGen, "Active generation must match step \(expectedGen)")
+            let expectedGeneration = i + 1
+            try assertEquals(vm.currentScanGeneration, expectedGeneration, "Active generation must match step \(expectedGeneration)")
 
-            // Real production callback wiring
-            vm.scannerManager.onBarcodeDetected?(barcodes[i], expectedGen)
+            vm.scannerManager.simulateMetadataDetection(barcodes[i], generation: expectedGeneration)
             try await Task.sleep(nanoseconds: 80_000_000)
 
-            try assertEquals(vm.scannedItems.count, i + 1, "Item \(i + 1) must be added")
-            try assertTrue(!vm.scannerState.isArmed, "Scanner must be disarmed after scan \(i + 1)")
+            try assertEquals(vm.scannedItems.count, i + 1, "Metadata callback \(expectedGeneration) must add one item")
+            try assertTrue(!vm.scannerState.isArmed, "Scanner must lock after accepted metadata callback")
+            vm.scannerManager.simulateMetadataDetection(barcodes[i], generation: expectedGeneration)
+            try assertEquals(vm.scannedItems.count, i + 1, "Repeated frame while locked must not change queue")
 
             if i < 4 {
-                try assertTrue(vm.canRearm, "canRearm must be true in .detected state")
-                try assertTrue(vm.rearmScanner(), "Explicit rearm must succeed")
+                try assertTrue(vm.canRearm, "canRearm must be true after resolution")
+                try assertTrue(vm.rearmScanner(), "Explicit Scan Next must succeed")
             }
         }
 
-        // Now at generation 5: stale callback from generation 2 arrives
-        vm.scannerManager.onBarcodeDetected?(barcodes[1], 2)
+        vm.scannerManager.simulateMetadataDetection(barcodes[1], generation: 2)
         try await Task.sleep(nanoseconds: 40_000_000)
-        try assertEquals(vm.scannedItems.count, 5, "Stale callback from gen 2 must be rejected; count must remain 5")
+        try assertEquals(vm.scannedItems.count, 5, "Stale generation must not change queue")
+        try assertEquals(vm.scannerManager.acceptanceGate.generation, 5, "Gate must retain the current generation")
     }
 
-    // 17. Coordinated multi-reason suspension isolation
+    // 17. The receipt tab and receipt camera sheet own independent suspension reasons
     public static func testMultipleSimultaneousSuspensionsRequireAllCleared() async throws {
         let vm = ScanViewModel(isPreview: true)
         vm.scannedItems.removeAll()
-        vm.rearmScanner()
-
-        try assertTrue(!vm.isSuspended, "Initially not suspended")
-
-        // Workflow 1: User switches to Receipt mode
         vm.suspendScanning(for: .receiptMode)
-        try assertTrue(vm.isSuspended, "Must be suspended for receiptMode")
-
-        // Workflow 2: Receipt OCR starts
+        vm.suspendScanning(for: .receiptCamera)
         vm.suspendScanning(for: .receiptOCR)
-        try assertTrue(vm.isSuspended, "Must be suspended for both")
 
-        // Workflow 2 finishes: releases .receiptOCR
+        vm.resumeScanning(releasing: .receiptCamera)
+        try assertTrue(vm.activeSuspensions.contains(.receiptMode), "Closing receipt camera must not release Receipt mode")
+        try assertTrue(vm.activeSuspensions.contains(.receiptOCR), "Closing receipt camera must not release OCR processing")
+
         vm.resumeScanning(releasing: .receiptOCR)
-        // CRITICAL: Must STILL be suspended because receiptMode is still active!
-        try assertTrue(vm.isSuspended, "Must remain suspended while receiptMode is still active")
-
-        // Barcode events must be rejected while still in receiptMode
+        try assertTrue(vm.activeSuspensions == [.receiptMode], "Receipt mode remains the only active reason")
         vm.onBarcodeScanned("4800016644818", generation: vm.currentScanGeneration)
         try await Task.sleep(nanoseconds: 20_000_000)
-        try assertEquals(vm.scannedItems.count, 0, "Barcode must be rejected while receiptMode remains active")
+        try assertEquals(vm.scannedItems.count, 0, "Barcode must remain rejected until Receipt mode ends")
 
-        // User switches back to Barcode mode
         vm.resumeScanning(releasing: .receiptMode)
-        try assertTrue(!vm.isSuspended, "Suspension fully cleared when all reasons released")
+        try assertTrue(!vm.isSuspended, "Barcode mode resumes only after all receipt reasons are released")
     }
 
-    // 18. Delayed lookup during commit buffers item to deferred queue
+    // 18. Hold a real catalog lookup across a real session commit and verify its item is restored
     public static func testDelayedLookupDuringCommitPreservesDeferredItem() async throws {
-        let vm = ScanViewModel(isPreview: true)
-        vm.scannedItems.removeAll()
-        vm.rearmScanner()
+        let server = ScannerTestServer()
+        defer { server.clear(); ScannerTestURLProtocol.install(nil) }
+        let defaults = makeTestDefaults()
+        let deferredBarcode = "4800361389440"
+        server.setHandler { request, stub in
+            let path = request.url?.path ?? ""
+            if request.httpMethod == "GET", server.pathEndsWith(request, component: "products"),
+               URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?
+                   .queryItems?.contains(where: { $0.name == "barcode" && $0.value == deferredBarcode }) == true {
+                server.hold("lookup", stub)
+            } else if request.httpMethod == "POST", server.pathEndsWith(request, component: "grocery-sessions") {
+                stub.respond(status: 201, data: sessionResponse(id: 801, status: "DRAFT"))
+            } else if request.httpMethod == "POST", path.hasSuffix("/801/commit") {
+                server.hold("commit", stub)
+            } else {
+                stub.respond(status: 500, data: Data(#"{"detail":"Unexpected test request"}"#.utf8))
+            }
+        }
+        let vm = ScanViewModel(client: makeTestClient(server: server), isPreview: false, pendingCommitDefaults: defaults)
+        let committedItem = makeConfirmedItem(productID: 10, locationID: 20)
+        vm.scannedItems = [committedItem]
 
-        // Pre-populate 1 item
-        vm.simulateBarcodeDetection("4800016644818")
-        try await Task.sleep(nanoseconds: 80_000_000)
-        try assertEquals(vm.scannedItems.count, 1, "Initial item added")
+        let lookup = Task {
+            await vm.resolveScannedBarcode(deferredBarcode, generation: vm.currentScanGeneration)
+        }
+        try assertTrue(await server.waitForRequest(method: "GET", pathSuffix: "/products/", queryName: "barcode", queryValue: deferredBarcode), "Catalog lookup must reach the mocked API")
+        try assertTrue(await server.waitForHeldResponse("lookup"), "Catalog response must remain explicitly held")
 
-        // Start committing
-        vm.isCommitting = true
-        vm.suspendScanning(for: .committing)
+        let commit = Task { await vm.commitIntakeSession() }
+        try assertTrue(await server.waitForRequest(method: "POST", pathSuffix: "/801/commit"), "Commit request must be active while lookup is delayed")
+        try assertTrue(await server.waitForHeldResponse("commit"), "Commit response must remain explicitly held")
+        server.respond(
+            "lookup",
+            status: 200,
+            data: try JSONEncoder().encode([Product(id: 99, name: "Deferred Product", barcode: deferredBarcode, unit: "pcs")])
+        )
+        await lookup.value
+        try assertEquals(vm.scannedItems, [committedItem], "Late lookup must not mutate the immutable active queue")
 
-        // Late lookup arrives while commit is in progress
-        await vm.resolveScannedBarcode("4800361389440", generation: vm.currentScanGeneration)
-
-        // During commit: scannedItems must NOT have been mutated!
-        try assertEquals(vm.scannedItems.count, 1, "Queue must remain at 1 item during commit")
-
-        // Commit finishes: deferred item restored
-        vm.isCommitting = false
-        vm.resumeScanning(releasing: .committing)
+        server.respond("commit", status: 200, data: sessionResponse(id: 801, status: "COMPLETED"))
+        await commit.value
+        try assertEquals(vm.scannedItems.count, 1, "Late lookup item must be restored after commit")
+        try assertEquals(vm.scannedItems[0].barcode, deferredBarcode, "Restored item must retain the lookup barcode")
+        try assertEquals(vm.scannedItems[0].productId, 99, "Restored item must retain resolved catalog identity")
+        try assertTrue(!vm.scannedItems[0].isConfirmed, "Deferred item must require normal intake review")
     }
 
-    // 19. Commit retry session status reconciliation
+    // 19. A failed request reconciles the same draft and retries the exact stored payload
     public static func testCommitRetrySessionStatusReconciliation() async throws {
-        let vm = ScanViewModel(isPreview: true)
-        vm.scannedItems.removeAll()
+        let server = ScannerTestServer()
+        defer { server.clear(); ScannerTestURLProtocol.install(nil) }
+        let defaults = makeTestDefaults()
+        server.setValue("sessionStatus", "DRAFT")
+        server.setHandler { request, stub in
+            let path = request.url?.path ?? ""
+            if request.httpMethod == "POST", server.pathEndsWith(request, component: "grocery-sessions") {
+                _ = server.increment("creates")
+                stub.respond(status: 201, data: sessionResponse(id: 701, status: "DRAFT"))
+            } else if request.httpMethod == "POST", path.hasSuffix("/701/commit") {
+                let attempt = server.increment("commits")
+                if attempt == 1 {
+                    stub.fail(URLError(.networkConnectionLost))
+                } else {
+                    server.setValue("sessionStatus", "COMPLETED")
+                    stub.respond(status: 200, data: sessionResponse(id: 701, status: "COMPLETED"))
+                }
+            } else if request.httpMethod == "GET", path.hasSuffix("/701") {
+                stub.respond(status: 200, data: sessionResponse(id: 701, status: server.value("sessionStatus") ?? "DRAFT"))
+            } else {
+                stub.respond(status: 500, data: Data(#"{"detail":"Unexpected test request"}"#.utf8))
+            }
+        }
 
-        // Initial state
-        try assertTrue(vm.pendingDraftSessionId == nil, "Initial pending draft ID is nil")
+        let vm = ScanViewModel(client: makeTestClient(server: server), isPreview: false, pendingCommitDefaults: defaults)
+        let item = makeConfirmedItem(productID: 41, locationID: 8)
+        vm.scannedItems = [item]
+        vm.storeName = "Test Store"
 
-        // Adding an item invalidates any previous draft session
-        vm.addItem(barcode: "4800016644818", name: "Century Tuna")
-        try assertTrue(vm.pendingDraftSessionId == nil, "Pending draft session invalidated on queue mutation")
+        await vm.commitIntakeSession()
+        try assertEquals(vm.pendingDraftSessionId, 701, "Draft ID must be retained after uncertain commit failure")
+        try assertTrue(vm.hasPendingCommitRecovery, "Failed commit must enter durable recovery state")
+        try assertEquals(vm.scannedItems, [item], "Failed commit must preserve the original queue")
+        vm.updateItemLocation(id: item.id, locationId: 99)
+        try assertEquals(vm.scannedItems[0].storageLocationId, 8, "Pending snapshot must reject edits")
+
+        await vm.commitIntakeSession()
+        try assertEquals(server.value("creates"), "1", "Retry must not create a second session")
+        try assertEquals(server.value("commits"), "2", "Retry must explicitly submit the original draft again")
+        try assertEquals(vm.pendingDraftSessionId, nil, "Confirmed completion must clear the pending session")
+        try assertTrue(vm.scannedItems.isEmpty, "Confirmed completion must clear only the committed intake")
+
+        let requestBodies = server.requestBodies(method: "POST", pathSuffix: "/701/commit")
+        try assertEquals(requestBodies.count, 2, "Both attempts must use the same session endpoint")
+        let decodedBodies = try requestBodies.map { try JSONSerialization.jsonObject(with: $0) }
+        let canonicalBodies = try decodedBodies.map { try JSONSerialization.data(withJSONObject: $0, options: [.sortedKeys]) }
+        try assertEquals(canonicalBodies[0], canonicalBodies[1], "Retry must send the identical immutable payload")
+        let body = decodedBodies[0] as? [String: Any]
+        let payload = (body?["items"] as? [[String: Any]])?.first
+        try assertEquals(payload?["product_id"] as? Int, 41, "Payload must fingerprint the selected product")
+        try assertEquals(payload?["storage_location_id"] as? Int, 8, "Payload must retain the selected location")
+        try assertEquals(payload?["quantity"] as? Double, 2.0, "Payload must retain quantity")
+        try assertEquals(payload?["unit_price"] as? Double, 4.5, "Payload must retain unit price")
+        try assertTrue((payload?["expiration_date"] as? String)?.count == 10, "Payload must retain the expiration date")
     }
 
-    // 20. Receipt matching retry uses cached lines without recapturing
+    // 20. Receipt lines survive a catalog error and the production retry path re-matches them
     public static func testReceiptMatchingRetryUsesCachedLinesWithoutRecapturing() async throws {
-        let vm = ScanViewModel(isPreview: true)
-        vm.scannedItems.removeAll()
+        let server = ScannerTestServer()
+        defer { server.clear(); ScannerTestURLProtocol.install(nil) }
+        server.setHandler { request, stub in
+            if request.httpMethod == "GET", server.pathEndsWith(request, component: "products") {
+                let attempt = server.increment("catalogAttempts")
+                if attempt == 1 {
+                    stub.respond(status: 503, data: Data(#"{"detail":"catalog unavailable"}"#.utf8))
+                } else {
+                    let products = [Product(id: 33, name: "Century Tuna Flakes in Oil", barcode: "4800016644818", unit: "can")]
+                    stub.respond(status: 200, data: try! JSONEncoder().encode(products))
+                }
+            } else {
+                stub.respond(status: 500, data: Data(#"{"detail":"Unexpected test request"}"#.utf8))
+            }
+        }
+        let vm = ScanViewModel(client: makeTestClient(server: server), isPreview: false, pendingCommitDefaults: makeTestDefaults())
+        let capturedLines = ["Century Tuna Flakes in Oil 40.50"]
 
-        // Simulate receipt scan which saves lines
-        vm.simulateReceiptScan()
-        try assertTrue(vm.scannedItems.count > 0, "Receipt scan must extract items")
+        await vm.processReceiptLines(capturedLines)
+        try assertEquals(vm.lastCapturedReceiptLines, capturedLines, "OCR lines must be cached before catalog matching")
+        try assertTrue(vm.scannedItems.isEmpty, "Catalog failure must not create falsely unmatched intake rows")
+        try assertTrue(vm.errorMessage?.contains("Retry Matching") == true, "Catalog failure must give the retry path")
+
+        await vm.retryReceiptMatching()
+        try assertEquals(server.value("catalogAttempts"), "2", "Retry must refetch the catalog")
+        try assertEquals(vm.lastCapturedReceiptLines, capturedLines, "Retry must reuse captured OCR lines")
+        try assertEquals(vm.scannedItems.count, 1, "Successful retry must add the receipt product")
+        try assertEquals(vm.scannedItems[0].productId, 33, "Retry must match against the recovered catalog")
+        try assertEquals(vm.scannedItems[0].unitPrice, 40.5, "Retry must preserve receipt price")
+    }
+
+    // 21. Permission completion cannot start off-screen, and first Scan activation releases its lifecycle hold
+    public static func testInitialCameraPermissionAndScanActivation() async throws {
+        let server = ScannerTestServer()
+        defer { server.clear(); ScannerTestURLProtocol.install(nil) }
+        let vm = ScanViewModel(client: makeTestClient(server: server), isPreview: false, pendingCommitDefaults: makeTestDefaults())
+        vm.scannerManager.lockAcceptance()
+        try assertTrue(vm.activeSuspensions.contains(.navigatedAway), "New scanner must remain stopped until Scan appears")
+
+        _ = await vm.scannerManager.requestPermission()
+        try assertTrue(vm.activeSuspensions.contains(.navigatedAway), "Permission callback must not start capture after navigation away")
+        try assertTrue(!vm.scannerManager.acceptanceGate.isArmed, "Permission completion must not arm capture while the scanner is off-screen")
+        try assertTrue(!vm.activeSuspensions.contains(.quickAddSheet), "Permission callback must not release an unrelated sheet")
+
+        vm.suspendScanning(for: .quickAddSheet)
+        vm.scannerManager.onPermissionGranted?()
+        try assertTrue(vm.activeSuspensions.contains(.quickAddSheet), "Permission callback must not release a quick-add suspension")
+        vm.resumeScanning(releasing: .quickAddSheet)
+        try assertTrue(vm.activeSuspensions.contains(.navigatedAway), "Releasing the sheet must not start an off-screen scanner")
+        try assertTrue(!vm.scannerManager.acceptanceGate.isArmed, "Releasing a modal cannot rearm while navigation still suspends scanning")
+
+        vm.resumeScanning(releasing: .navigatedAway)
+        try assertTrue(!vm.isSuspended, "Scan activation must release the initial lifecycle hold")
+        try assertTrue(vm.scannerManager.acceptanceGate.isArmed, "Activating Scan must rearm the current hardware generation")
+        try assertEquals(vm.currentScanGeneration, 1, "Initial activation must not implicitly rearm to a new generation")
+    }
+
+    // 22. A server-side success with a lost response is reconciled from a durable record after relaunch
+    public static func testCommitSuccessLostResponseReconcilesAfterRestart() async throws {
+        let server = ScannerTestServer()
+        defer { server.clear(); ScannerTestURLProtocol.install(nil) }
+        let defaults = makeTestDefaults()
+        server.setValue("sessionStatus", "DRAFT")
+        server.setHandler { request, stub in
+            let path = request.url?.path ?? ""
+            if request.httpMethod == "POST", server.pathEndsWith(request, component: "grocery-sessions") {
+                _ = server.increment("creates")
+                stub.respond(status: 201, data: sessionResponse(id: 702, status: "DRAFT"))
+            } else if request.httpMethod == "POST", path.hasSuffix("/702/commit") {
+                _ = server.increment("commits")
+                server.setValue("sessionStatus", "COMPLETED")
+                stub.fail(URLError(.networkConnectionLost))
+            } else if request.httpMethod == "GET", path.hasSuffix("/702") {
+                stub.respond(status: 200, data: sessionResponse(id: 702, status: server.value("sessionStatus") ?? "DRAFT"))
+            } else {
+                stub.respond(status: 500, data: Data(#"{"detail":"Unexpected test request"}"#.utf8))
+            }
+        }
+
+        let firstProcess = ScanViewModel(client: makeTestClient(server: server), isPreview: false, pendingCommitDefaults: defaults)
+        let item = makeConfirmedItem(productID: 17, locationID: 5)
+        firstProcess.scannedItems = [item]
+        await firstProcess.commitIntakeSession()
+        try assertEquals(firstProcess.pendingDraftSessionId, 702, "Uncertain session ID must be persisted before commit")
+
+        let relaunchedProcess = ScanViewModel(client: makeTestClient(server: server), isPreview: false, pendingCommitDefaults: defaults)
+        try assertEquals(relaunchedProcess.pendingDraftSessionId, 702, "Relaunch must restore pending session ID")
+        try assertEquals(relaunchedProcess.scannedItems, [item], "Relaunch must restore exact intake snapshot")
+        await relaunchedProcess.commitIntakeSession()
+
+        try assertEquals(server.value("creates"), "1", "Relaunch must not create a second session")
+        try assertEquals(server.value("commits"), "1", "Completed session must not be committed twice")
+        try assertEquals(relaunchedProcess.pendingDraftSessionId, nil, "Reconciliation must clear durable pending state")
+        try assertTrue(relaunchedProcess.scannedItems.isEmpty, "Reconciled completed intake must clear the restored queue")
+    }
+
+    // 23. Changed data cannot move to a new session until the old draft is confirmed cancelled
+    public static func testModifiedIntakeRequiresSafeDraftCancellation() async throws {
+        let server = ScannerTestServer()
+        defer { server.clear(); ScannerTestURLProtocol.install(nil) }
+        let defaults = makeTestDefaults()
+        server.setValue("sessionStatus", "DRAFT")
+        server.setHandler { request, stub in
+            let path = request.url?.path ?? ""
+            if request.httpMethod == "POST", server.pathEndsWith(request, component: "grocery-sessions") {
+                _ = server.increment("creates")
+                stub.respond(status: 201, data: sessionResponse(id: 703, status: "DRAFT"))
+            } else if request.httpMethod == "POST", path.hasSuffix("/703/commit") {
+                _ = server.increment("commits")
+                stub.fail(URLError(.networkConnectionLost))
+            } else if request.httpMethod == "GET", path.hasSuffix("/703") {
+                _ = server.increment("sessionChecks")
+                stub.respond(status: 200, data: sessionResponse(id: 703, status: server.value("sessionStatus") ?? "DRAFT"))
+            } else if request.httpMethod == "DELETE", path.hasSuffix("/703") {
+                server.setValue("sessionStatus", "CANCELLED")
+                stub.respond(status: 200, data: sessionResponse(id: 703, status: "CANCELLED"))
+            } else {
+                stub.respond(status: 500, data: Data(#"{"detail":"Unexpected test request"}"#.utf8))
+            }
+        }
+        let vm = ScanViewModel(client: makeTestClient(server: server), isPreview: false, pendingCommitDefaults: defaults)
+        let item = makeConfirmedItem(productID: 28, locationID: 6)
+        vm.scannedItems = [item]
+        await vm.commitIntakeSession()
+
+        vm.scannedItems[0].storageLocationId = 99 // Simulate a stale/direct binding bypass.
+        await vm.commitIntakeSession()
+        try assertEquals(vm.scannedItems[0].storageLocationId, 6, "Mismatched in-memory data must be restored from the immutable snapshot")
+        try assertEquals(server.value("sessionChecks"), nil, "Fingerprint mismatch must not issue a second commit or reconcile different data")
+        try assertEquals(server.value("commits"), "1", "Changed intake must not be submitted to the pending draft")
+
+        await vm.cancelPendingCommitAndUnlock()
+        try assertEquals(vm.pendingDraftSessionId, nil, "Confirmed cancellation must release the pending submission")
+        vm.updateItemLocation(id: item.id, locationId: 9)
+        try assertEquals(vm.scannedItems[0].storageLocationId, 9, "Editing is safe after the old draft is confirmed cancelled")
+        try assertEquals(server.value("creates"), "1", "Cancellation must not create a replacement session")
+    }
+
+    private static func makeTestClient(server: ScannerTestServer) -> APIClient {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ScannerTestURLProtocol.self]
+        ScannerTestURLProtocol.install(server)
+        let session = URLSession(configuration: configuration)
+        return APIClient(baseURL: URL(string: "http://provision.test/api/v1")!, session: session)
+    }
+
+    private static func makeTestDefaults() -> UserDefaults {
+        let suiteName = "provision.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
+    }
+
+    private static func makeConfirmedItem(productID: Int, locationID: Int) -> ScannedIntakeItem {
+        ScannedIntakeItem(
+            id: UUID(uuidString: "D4C2A5A0-5D0E-4C18-9ED1-9C8890000001")!,
+            name: "Test Tuna",
+            brand: "Test Brand",
+            barcode: "4800016644818",
+            quantity: 2,
+            unit: "cans",
+            expirationDate: Date(timeIntervalSince1970: 1_800_000_000),
+            status: .confirmed,
+            productId: productID,
+            storageLocationId: locationID,
+            unitPrice: 4.5,
+            isConfirmed: true
+        )
+    }
+
+    private static func sessionResponse(id: Int, status: String) -> Data {
+        Data("""
+        {"id":\(id),"store_name":"Test Store","purchase_date":"2026-10-16T12:00:00Z","total_amount":9.0,"status":"\(status)","notes":null}
+        """.utf8)
+    }
+}
+private final class ScannerTestServer {
+    typealias Handler = (URLRequest, ScannerTestURLProtocol) -> Void
+
+    private let condition = NSCondition()
+    private var handler: Handler?
+    private var requests: [URLRequest] = []
+    private var requestBodySnapshots: [Data?] = []
+    private var heldResponses: [String: ScannerTestURLProtocol] = [:]
+    private var values: [String: String] = [:]
+    private var counters: [String: Int] = [:]
+
+    func setHandler(_ handler: Handler?) {
+        condition.lock()
+        self.handler = handler
+        condition.unlock()
+    }
+
+    func receive(_ request: URLRequest, using protocolInstance: ScannerTestURLProtocol) {
+        let body = Self.bodyData(for: request)
+        condition.lock()
+        requests.append(request)
+        requestBodySnapshots.append(body)
+        let handler = self.handler
+        condition.broadcast()
+        condition.unlock()
+        handler?(request, protocolInstance)
+    }
+
+    func hold(_ key: String, _ protocolInstance: ScannerTestURLProtocol) {
+        condition.lock()
+        heldResponses[key] = protocolInstance
+        condition.broadcast()
+        condition.unlock()
+    }
+
+    func respond(_ key: String, status: Int, data: Data) {
+        condition.lock()
+        let protocolInstance = heldResponses.removeValue(forKey: key)
+        condition.broadcast()
+        condition.unlock()
+        protocolInstance?.respond(status: status, data: data)
+    }
+
+    func waitForRequest(
+        method: String,
+        pathSuffix: String,
+        queryName: String? = nil,
+        queryValue: String? = nil,
+        occurrence: Int = 1,
+        timeout: TimeInterval = 5
+    ) async -> Bool {
+        let deadline = Date(timeIntervalSinceNow: timeout)
+        while Date() < deadline {
+            if hasRequest(method: method, pathSuffix: pathSuffix, queryName: queryName, queryValue: queryValue, occurrence: occurrence) {
+                return true
+            }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        return hasRequest(method: method, pathSuffix: pathSuffix, queryName: queryName, queryValue: queryValue, occurrence: occurrence)
+    }
+
+    func waitForHeldResponse(_ key: String, timeout: TimeInterval = 5) async -> Bool {
+        let deadline = Date(timeIntervalSinceNow: timeout)
+        while Date() < deadline {
+            if hasHeldResponse(key) { return true }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        return hasHeldResponse(key)
+    }
+
+    private func hasRequest(
+        method: String,
+        pathSuffix: String,
+        queryName: String?,
+        queryValue: String?,
+        occurrence: Int
+    ) -> Bool {
+        condition.lock()
+        defer { condition.unlock() }
+        return requests.filter({
+            Self.matches($0, method: method, pathSuffix: pathSuffix, queryName: queryName, queryValue: queryValue)
+        }).count >= occurrence
+    }
+
+    private func hasHeldResponse(_ key: String) -> Bool {
+        condition.lock()
+        defer { condition.unlock() }
+        return heldResponses[key] != nil
+    }
+
+    func value(_ key: String) -> String? {
+        condition.lock()
+        defer { condition.unlock() }
+        return values[key]
+    }
+
+    func setValue(_ key: String, _ value: String) {
+        condition.lock()
+        values[key] = value
+        condition.unlock()
+    }
+
+    func increment(_ key: String) -> Int {
+        condition.lock()
+        defer { condition.unlock() }
+        let next = (counters[key] ?? 0) + 1
+        counters[key] = next
+        values[key] = String(next)
+        return next
+    }
+
+    func requestBodies(method: String, pathSuffix: String) -> [Data] {
+        condition.lock()
+        defer { condition.unlock() }
+        return requests.indices.compactMap { index in
+            guard Self.matches(requests[index], method: method, pathSuffix: pathSuffix, queryName: nil, queryValue: nil) else {
+                return nil
+            }
+            return requestBodySnapshots[index]
+        }
+    }
+
+    func clear() {
+        condition.lock()
+        handler = nil
+        heldResponses.removeAll()
+        condition.unlock()
+    }
+
+    func pathEndsWith(_ request: URLRequest, component: String) -> Bool {
+        guard let lastPathComponent = request.url?.path.split(separator: "/").last else { return false }
+        return String(lastPathComponent) == component
+    }
+
+    private static func matches(
+        _ request: URLRequest,
+        method: String,
+        pathSuffix: String,
+        queryName: String?,
+        queryValue: String?
+    ) -> Bool {
+        guard request.httpMethod == method, let url = request.url else { return false }
+        let pathComponents = url.path.split(separator: "/")
+        let suffixComponents = pathSuffix.split(separator: "/")
+        guard !suffixComponents.isEmpty,
+              pathComponents.suffix(suffixComponents.count).elementsEqual(suffixComponents) else {
+            return false
+        }
+        guard let queryName else { return true }
+        return URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?.contains(where: { $0.name == queryName && $0.value == queryValue }) == true
+    }
+
+    private static func bodyData(for request: URLRequest) -> Data? {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return nil }
+        stream.open()
+        defer { stream.close() }
+
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4_096)
+        while true {
+            let bytesRead = buffer.withUnsafeMutableBufferPointer { pointer in
+                guard let address = pointer.baseAddress else { return 0 }
+                return stream.read(address, maxLength: pointer.count)
+            }
+            guard bytesRead > 0 else { break }
+            data.append(contentsOf: buffer[..<bytesRead])
+        }
+        return data.isEmpty ? nil : data
+    }
+}
+
+private final class ScannerTestURLProtocol: URLProtocol {
+    private static let serverLock = NSLock()
+    nonisolated(unsafe) private static var activeServer: ScannerTestServer?
+
+    static func install(_ server: ScannerTestServer?) {
+        serverLock.lock()
+        activeServer = server
+        serverLock.unlock()
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        Self.serverLock.lock()
+        let server = Self.activeServer
+        Self.serverLock.unlock()
+        guard let server else {
+            fail(URLError(.resourceUnavailable))
+            return
+        }
+        server.receive(request, using: self)
+    }
+
+    override func stopLoading() {}
+
+    func respond(status: Int, data: Data) {
+        guard let url = request.url,
+              let response = HTTPURLResponse(
+                url: url,
+                statusCode: status,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+              ) else {
+            fail(URLError(.badServerResponse))
+            return
+        }
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: data)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    func fail(_ error: Error) {
+        client?.urlProtocol(self, didFailWithError: error)
     }
 }

@@ -349,6 +349,13 @@ public actor APIClient {
         return try await execute(request)
     }
 
+    public func cancelSession(id: Int) async throws -> GrocerySession {
+        let url = baseURL.appendingPathComponent("grocery-sessions/\(id)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        return try await execute(request)
+    }
+
     public func fetchSessions() async throws -> [GrocerySession] {
         let url = baseURL.appendingPathComponent("grocery-sessions/")
         var request = URLRequest(url: url)

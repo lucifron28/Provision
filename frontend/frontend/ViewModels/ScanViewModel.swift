@@ -1,8 +1,10 @@
+import CryptoKit
+
 import Foundation
 import SwiftUI
 import Combine
 
-public struct ScannedIntakeItem: Identifiable, Hashable, Sendable {
+public struct ScannedIntakeItem: Identifiable, Hashable, Codable, Sendable {
     public let id: UUID
     public var name: String
     public var brand: String?
@@ -17,7 +19,7 @@ public struct ScannedIntakeItem: Identifiable, Hashable, Sendable {
     public var isConfirmed: Bool
     public var conflictingReceiptQuantity: Double? = nil
 
-    public enum IntakeStatus: String, Sendable {
+    public enum IntakeStatus: String, Codable, Sendable {
         case autoLogged = "Auto-logged"
         case recognized = "Recognized"
         case needsReview = "Needs Review"
@@ -59,6 +61,7 @@ public struct ScannedIntakeItem: Identifiable, Hashable, Sendable {
 
 public enum SuspensionReason: String, CaseIterable, Hashable, Sendable {
     case receiptMode = "Receipt mode active"
+    case receiptCamera = "Receipt camera sheet open"
     case receiptOCR = "Processing receipt OCR"
     case quickAddSheet = "Product resolution sheet open"
     case manualEntrySheet = "Manual entry sheet open"
@@ -69,7 +72,23 @@ public enum SuspensionReason: String, CaseIterable, Hashable, Sendable {
     case committing = "Committing grocery intake"
     case cameraInterrupted = "Camera capture interrupted"
     case userPaused = "User explicitly paused"
+    case pendingCommitRecovery = "Recovering a previous intake commit"
 }
+
+private struct PendingIntakeCommit: Codable {
+    let sessionID: Int
+    let fingerprint: String
+    let storeName: String
+    let intakeItems: [ScannedIntakeItem]
+    let requestItems: [SessionItemCreate]
+}
+
+private struct IntakeFingerprintPayload: Codable {
+    let storeName: String
+    let items: [ScannedIntakeItem]
+}
+
+private let pendingIntakeCommitStorageKey = "provision.pending-intake-commit.v1"
 
 @MainActor
 public class ScanViewModel: ObservableObject {
@@ -96,9 +115,13 @@ public class ScanViewModel: ObservableObject {
     public var isSuspended: Bool { !activeSuspensions.isEmpty }
     public var currentSuspensionReason: String? { activeSuspensions.first?.rawValue }
     public var suspensionReason: String? { currentSuspensionReason }
+    public var hasPendingCommitRecovery: Bool { pendingDraftSessionId != nil || pendingCommitRecoveryError != nil }
+    public var isIntakeMutationLocked: Bool { isCommitting || hasPendingCommitRecovery }
 
-    public private(set) var pendingDraftSessionId: Int? = nil
-    private var lastCommittedIntakeHash: Int? = nil
+    @Published public private(set) var pendingDraftSessionId: Int? = nil
+    @Published public private(set) var pendingCommitRecoveryError: String? = nil
+    private var pendingIntakeCommit: PendingIntakeCommit? = nil
+    private let pendingCommitDefaults: UserDefaults
     private var postCommitDeferredItems: [ScannedIntakeItem] = []
     public var isPreview: Bool
     public let scannerManager: BarcodeScannerManager
@@ -116,11 +139,34 @@ public class ScanViewModel: ObservableObject {
             }
         }
     }
-    public init(client: APIClient = .shared, isPreview: Bool = false) {
+    public init(
+        client: APIClient = .shared,
+        isPreview: Bool = false,
+        pendingCommitDefaults: UserDefaults = .standard
+    ) {
         self.client = client
         self.isPreview = isPreview
+        self.pendingCommitDefaults = pendingCommitDefaults
         self.storeName = isPreview ? "SM Supermarket Megamall" : ""
         self.scannerManager = BarcodeScannerManager()
+        if !isPreview {
+            self.activeSuspensions.insert(.navigatedAway)
+            if let data = pendingCommitDefaults.data(forKey: pendingIntakeCommitStorageKey) {
+                do {
+                    let pending = try JSONDecoder().decode(PendingIntakeCommit.self, from: data)
+                    self.pendingIntakeCommit = pending
+                    self.pendingDraftSessionId = pending.sessionID
+                    self.storeName = pending.storeName
+                    self.scannedItems = pending.intakeItems
+                    self.activeSuspensions.insert(.pendingCommitRecovery)
+                    self.errorMessage = "A previous intake submission needs reconciliation. Retry before editing or starting another intake."
+                } catch {
+                    self.pendingCommitRecoveryError = "Saved intake recovery data could not be read. No new intake was submitted; preserve this app data and contact support before retrying."
+                    self.activeSuspensions.insert(.pendingCommitRecovery)
+                    self.errorMessage = self.pendingCommitRecoveryError
+                }
+            }
+        }
         if isPreview {
             scannerManager.isCameraAvailable = false
             setupSampleIntake()
@@ -138,9 +184,7 @@ public class ScanViewModel: ObservableObject {
         self.scannerManager.onPermissionGranted = { [weak self] in
             guard let self = self else { return }
             DiagnosticLogger.log("Camera permission granted: starting capture if active")
-            if !self.isSuspended {
-                self.resumeScanningAfterSuspension()
-            }
+            self.startScanningIfAvailable()
         }
     }
 
@@ -167,7 +211,7 @@ public class ScanViewModel: ObservableObject {
     }
 
     public var canRearm: Bool {
-        guard !isCommitting else { return false }
+        guard !isIntakeMutationLocked else { return false }
         guard !isResolvingBarcode else { return false }
         guard !isProcessingReceipt else { return false }
         guard !showingQuickAddSheet else { return false }
@@ -210,31 +254,30 @@ public class ScanViewModel: ObservableObject {
     }
 
     public func resumeScanning(releasing reason: SuspensionReason) {
-        guard activeSuspensions.contains(reason) else { return }
-        activeSuspensions.remove(reason)
-        #if DEBUG
-        DiagnosticLogger.log("Released suspension [\(reason.rawValue)]. Remaining suspensions count: \(activeSuspensions.count)")
-        #endif
+        if activeSuspensions.remove(reason) != nil {
+            #if DEBUG
+            DiagnosticLogger.log("Released suspension [\(reason.rawValue)]. Remaining suspensions count: \(activeSuspensions.count)")
+            #endif
+        }
+        startScanningIfAvailable()
+    }
 
-        // Only start hardware when ALL suspension reasons are cleared!
-        guard activeSuspensions.isEmpty else { return }
+    public func startScanningIfAvailable() {
+        guard activeSuspensions.isEmpty,
+              !isCommitting,
+              !isProcessingReceipt,
+              !showingReceiptCamera,
+              !hasPendingCommitRecovery,
+              !isPreview else {
+            return
+        }
 
-        guard !isPreview else { return }
         scannerManager.startScanning()
         if case .ready = scannerState {
             scannerManager.rearm(generation: currentScanGeneration)
         } else {
             scannerManager.lockAcceptance()
         }
-    }
-
-    // Convenience backward-compatibility helpers
-    public func suspendScanning(reason: String = "Suspended") {
-        suspendScanning(for: .quickAddSheet)
-    }
-
-    public func resumeScanningAfterSuspension() {
-        resumeScanning(releasing: .quickAddSheet)
     }
 
     public func pauseScanning(reason: String = "User paused") {
@@ -245,13 +288,9 @@ public class ScanViewModel: ObservableObject {
         #endif
     }
 
-    public func resumeScanning() {
-        resumeScanningAfterSuspension()
-    }
-
     public func retryBarcodeLookup() {
         guard case .error(let barcode, _) = scannerState else { return }
-        guard !isResolvingBarcode && !isCommitting else { return }
+        guard !isResolvingBarcode && !isIntakeMutationLocked else { return }
         self.errorMessage = nil
         self.scannerState = .processing(barcode)
         let gen = currentScanGeneration
@@ -265,20 +304,26 @@ public class ScanViewModel: ObservableObject {
     }
 
     public func startScanning() {
-        guard !isPreview else { return }
-        resumeScanningAfterSuspension()
+        startScanningIfAvailable()
     }
 
     public func stopScanning() {
-        suspendScanning(reason: "Stopped")
+        suspendScanning(for: .userPaused)
     }
-    public func onBarcodeScanned(_ barcode: String, generation: Int = 1) {
+
+    public func onBarcodeScanned(_ barcode: String, generation: Int) {
         let trimmed = barcode.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
         guard !isSuspended else {
             #if DEBUG
             DiagnosticLogger.logRejected(barcode: trimmed, reason: "Scanning is suspended (\(currentSuspensionReason ?? "overlay active"))")
+            #endif
+            return
+        }
+        guard !isIntakeMutationLocked else {
+            #if DEBUG
+            DiagnosticLogger.logRejected(barcode: trimmed, reason: "An intake submission is being reconciled")
             #endif
             return
         }
@@ -308,7 +353,8 @@ public class ScanViewModel: ObservableObject {
         }
     }
 
-    public func resolveScannedBarcode(_ barcode: String, generation: Int = 1) async {
+    public func resolveScannedBarcode(_ barcode: String, generation: Int) async {
+        guard !isIntakeMutationLocked else { return }
         guard generation == self.currentScanGeneration else {
             #if DEBUG
             DiagnosticLogger.log("Discarding resolution for \(barcode): generation changed (active=\(self.currentScanGeneration), request=\(generation))")
@@ -363,24 +409,24 @@ public class ScanViewModel: ObservableObject {
         guard generation == self.currentScanGeneration else { return }
 
         // Defect 4 Fix: Prevent delayed lookups from modifying queue during an active commit
-        if isCommitting || activeSuspensions.contains(.committing) {
+        if isCommitting || activeSuspensions.contains(.committing) || hasPendingCommitRecovery {
             #if DEBUG
             DiagnosticLogger.log("Lookup returned for \(barcode) while commit in progress: deferring to post-commit queue")
             #endif
-            if let prod = resolvedProduct {
+            if lookupErrorText == nil {
                 let deferred = ScannedIntakeItem(
-                    name: prod.name,
-                    brand: prod.brand,
+                    name: resolvedProduct?.name ?? "Unrecognized product",
+                    brand: resolvedProduct?.brand,
                     barcode: barcode,
                     quantity: 1.0,
-                    unit: prod.unit ?? "pcs",
+                    unit: resolvedProduct?.unit ?? "pcs",
                     expirationDate: nil,
-                    status: .recognized,
-                    productId: prod.id,
+                    status: resolvedProduct == nil ? .needsReview : .recognized,
+                    productId: resolvedProduct?.id,
                     storageLocationId: nil,
                     isConfirmed: false
                 )
-                self.postCommitDeferredItems.append(deferred)
+                postCommitDeferredItems.append(deferred)
             }
             return
         }
@@ -418,11 +464,6 @@ public class ScanViewModel: ObservableObject {
         }
     }
 
-    // Wrapper for legacy callers/tests without generation
-    public func resolveScannedBarcode(_ barcode: String) async {
-        await resolveScannedBarcode(barcode, generation: currentScanGeneration)
-    }
-
     public func registerProductAndAddToQueue(
         name: String,
         brand: String?,
@@ -430,7 +471,7 @@ public class ScanViewModel: ObservableObject {
         unit: String,
         packageSize: Double?
     ) async -> Bool {
-        guard !isCommitting else { return false }
+        guard !isIntakeMutationLocked else { return false }
         guard let barcode = unresolvedBarcode else { return false }
         let create = ProductCreate(
             name: name,
@@ -500,6 +541,7 @@ public class ScanViewModel: ObservableObject {
 
     // Requirement 5: Invalidate confirmation when important item details are modified
     public func invalidateConfirmation(at index: Int) {
+        guard !isIntakeMutationLocked else { return }
         guard index >= 0 && index < scannedItems.count else { return }
         scannedItems[index].isConfirmed = false
         if scannedItems[index].status == .confirmed {
@@ -508,7 +550,7 @@ public class ScanViewModel: ObservableObject {
     }
 
     public func incrementQuantity(for item: ScannedIntakeItem) {
-        guard !isCommitting else { return }
+        guard !isIntakeMutationLocked else { return }
         if let idx = scannedItems.firstIndex(where: { $0.id == item.id }) {
             scannedItems[idx].quantity += 1.0
             invalidateConfirmation(at: idx)
@@ -516,7 +558,7 @@ public class ScanViewModel: ObservableObject {
     }
 
     public func decrementQuantity(for item: ScannedIntakeItem) {
-        guard !isCommitting else { return }
+        guard !isIntakeMutationLocked else { return }
         if let idx = scannedItems.firstIndex(where: { $0.id == item.id }) {
             if scannedItems[idx].quantity > 1.0 {
                 scannedItems[idx].quantity -= 1.0
@@ -527,7 +569,7 @@ public class ScanViewModel: ObservableObject {
     }
 
     public func removeItem(id: UUID) {
-        guard !isCommitting else { return }
+        guard !isIntakeMutationLocked else { return }
         if let idx = scannedItems.firstIndex(where: { $0.id == id }) {
             let name = scannedItems[idx].name
             scannedItems.remove(at: idx)
@@ -536,7 +578,7 @@ public class ScanViewModel: ObservableObject {
     }
     // Case 2A: Unknown barcode -> existing product resolution (handles both existing & nil resolvingItemId)
     public func resolveProductWithCatalog(product: Product) {
-        guard !isCommitting else { return }
+        guard !isIntakeMutationLocked else { return }
         if let targetId = resolvingItemId, let idx = scannedItems.firstIndex(where: { $0.id == targetId }) {
             scannedItems[idx].productId = product.id
             scannedItems[idx].name = product.name
@@ -573,33 +615,33 @@ public class ScanViewModel: ObservableObject {
     }
 
     public func resolveItemWithCatalogProduct(itemId: UUID, product: Product) {
-        guard !isCommitting else { return }
+        guard !isIntakeMutationLocked else { return }
         resolvingItemId = itemId
         resolveProductWithCatalog(product: product)
     }
 
     public func updateItemQuantity(id: UUID, quantity: Double) {
-        guard !isCommitting else { return }
+        guard !isIntakeMutationLocked else { return }
         guard let idx = scannedItems.firstIndex(where: { $0.id == id }) else { return }
         scannedItems[idx].quantity = max(1.0, quantity)
         invalidateConfirmation(at: idx)
     }
 
     public func updateItemLocation(id: UUID, locationId: Int?) {
-        guard !isCommitting else { return }
+        guard !isIntakeMutationLocked else { return }
         guard let idx = scannedItems.firstIndex(where: { $0.id == id }) else { return }
         scannedItems[idx].storageLocationId = locationId
         invalidateConfirmation(at: idx)
     }
 
     public func updateItemExpirationDate(id: UUID, date: Date?) {
-        guard !isCommitting else { return }
+        guard !isIntakeMutationLocked else { return }
         guard let idx = scannedItems.firstIndex(where: { $0.id == id }) else { return }
         scannedItems[idx].expirationDate = date
         invalidateConfirmation(at: idx)
     }
     public func processScannedReceipt(images: [UIImage]) async {
-        guard !isProcessingReceipt else { return }
+        guard !isIntakeMutationLocked && !isProcessingReceipt else { return }
         guard !images.isEmpty else {
             self.errorMessage = "No receipt images were provided."
             return
@@ -617,18 +659,21 @@ public class ScanViewModel: ObservableObject {
             let lines = await ReceiptOCRService.shared.recognizeText(from: image)
             allLines.append(contentsOf: lines)
         }
-        self.lastCapturedReceiptLines = allLines
+        await processReceiptLines(allLines)
+    }
 
-        guard !allLines.isEmpty else {
-            self.errorMessage = "No text could be recognized from receipt image. Please ensure the receipt is well-lit and legible."
+    func processReceiptLines(_ lines: [String]) async {
+        guard !isIntakeMutationLocked else { return }
+        lastCapturedReceiptLines = lines
+        guard !lines.isEmpty else {
+            errorMessage = "No text could be recognized from receipt image. Please ensure the receipt is well-lit and legible."
             return
         }
-
-        await matchReceiptLines(allLines)
+        await matchReceiptLines(lines)
     }
 
     public func retryReceiptMatching() async {
-        guard !isProcessingReceipt else { return }
+        guard !isIntakeMutationLocked && !isProcessingReceipt else { return }
         guard !lastCapturedReceiptLines.isEmpty else {
             self.errorMessage = "No captured receipt lines available to retry."
             return
@@ -660,6 +705,7 @@ public class ScanViewModel: ObservableObject {
     }
 
     public func simulateReceiptScan(receiptName: String = "SM Supermarket Megamall (Receipt #0994)") {
+        guard !isIntakeMutationLocked else { return }
         self.storeName = "SM Supermarket Megamall"
         let sampleLines = [
             "SM SUPERMARKET MEGAMALL",
@@ -703,7 +749,7 @@ public class ScanViewModel: ObservableObject {
     }
 
     public func resolveQuantityConflict(id: UUID, keepQuantity: Double) {
-        guard !isCommitting else { return }
+        guard !isIntakeMutationLocked else { return }
         guard let idx = scannedItems.firstIndex(where: { $0.id == id }) else { return }
         scannedItems[idx].quantity = max(1.0, keepQuantity)
         scannedItems[idx].conflictingReceiptQuantity = nil
@@ -725,6 +771,7 @@ public class ScanViewModel: ObservableObject {
     }
 
     private func integrateReceiptItems(_ parsedItems: [ReceiptLineItem]) {
+        guard !isIntakeMutationLocked else { return }
         var mergedCount = 0
         var newCount = 0
 
@@ -769,14 +816,14 @@ public class ScanViewModel: ObservableObject {
         }
     }
     public func updateItemPrice(id: UUID, price: Double?) {
-        guard !isCommitting else { return }
+        guard !isIntakeMutationLocked else { return }
         guard let idx = scannedItems.firstIndex(where: { $0.id == id }) else { return }
         scannedItems[idx].unitPrice = price
         invalidateConfirmation(at: idx)
     }
 
     public func updateItemProduct(id: UUID, product: Product) {
-        guard !isCommitting else { return }
+        guard !isIntakeMutationLocked else { return }
         resolveItemWithCatalogProduct(itemId: id, product: product)
     }
     private func setupSampleIntake() {
@@ -823,6 +870,7 @@ public class ScanViewModel: ObservableObject {
 
     @discardableResult
     public func confirmItem(_ item: ScannedIntakeItem) -> Bool {
+        guard !isIntakeMutationLocked else { return false }
         guard let idx = scannedItems.firstIndex(where: { $0.id == item.id }) else { return false }
         var target = scannedItems[idx]
 
@@ -855,7 +903,7 @@ public class ScanViewModel: ObservableObject {
     }
 
     public func confirmAllValid() {
-        guard !isCommitting else { return }
+        guard !isIntakeMutationLocked else { return }
         for idx in scannedItems.indices {
             let item = scannedItems[idx]
             if item.productId != nil &&
@@ -871,7 +919,7 @@ public class ScanViewModel: ObservableObject {
     }
 
     public func addItem(barcode: String, name: String, brand: String? = nil, quantity: Double = 1, unit: String = "units", daysUntilExp: Int? = nil) {
-        guard !isCommitting else { return }
+        guard !isIntakeMutationLocked else { return }
         let exp: Date? = daysUntilExp.flatMap { Calendar.current.date(byAdding: .day, value: $0, to: Date()) }
         let item = ScannedIntakeItem(
             name: name,
@@ -888,16 +936,49 @@ public class ScanViewModel: ObservableObject {
     }
 
     public func removeItem(at offsets: IndexSet) {
-        guard !isCommitting else { return }
+        guard !isIntakeMutationLocked else { return }
         scannedItems.remove(atOffsets: offsets)
     }
 
     public func commitIntakeSession() async {
         guard !isCommitting else { return }
-        guard !scannedItems.isEmpty else {
-            self.errorMessage = "Intake queue is empty. Scan or add items before committing."
+        guard pendingCommitRecoveryError == nil else {
+            errorMessage = pendingCommitRecoveryError
             return
         }
+        guard pendingDraftSessionId == nil || pendingIntakeCommit != nil else {
+            errorMessage = "A previous intake submission cannot be identified safely. No new submission was sent."
+            return
+        }
+        guard !scannedItems.isEmpty else {
+            errorMessage = "Intake queue is empty. Scan or add items before committing."
+            return
+        }
+
+        let itemsSnapshot = scannedItems
+        for item in itemsSnapshot {
+            guard item.conflictingReceiptQuantity == nil else {
+                errorMessage = "Cannot commit: '\(item.name)' has an unresolved quantity conflict. Please resolve it before committing."
+                return
+            }
+            guard item.productId != nil && item.status != .needsReview else {
+                errorMessage = "Cannot commit: '\(item.name)' is unresolved. Please link or register the product first."
+                return
+            }
+            guard item.storageLocationId != nil else {
+                errorMessage = "Cannot commit: Please select a storage location for '\(item.name)'."
+                return
+            }
+            guard item.quantity > 0 && !item.unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                errorMessage = "Cannot commit: '\(item.name)' must have a valid quantity and unit."
+                return
+            }
+            guard item.isConfirmed else {
+                errorMessage = "Cannot commit: Please confirm details for '\(item.name)' before committing."
+                return
+            }
+        }
+
         isCommitting = true
         errorMessage = nil
         suspendScanning(for: .committing)
@@ -906,123 +987,188 @@ public class ScanViewModel: ObservableObject {
             resumeScanning(releasing: .committing)
         }
 
-        // 1. Immutable snapshot of all items
-        let itemsSnapshot = self.scannedItems
-
-        // 2. Validate using the immutable snapshot
-        for item in itemsSnapshot {
-            guard item.conflictingReceiptQuantity == nil else {
-                self.errorMessage = "Cannot commit: '\(item.name)' has an unresolved quantity conflict (scanned \(Int(item.quantity)) vs receipt \(Int(item.conflictingReceiptQuantity!))). Please resolve before committing."
-                return
-            }
-            guard item.productId != nil && item.status != .needsReview else {
-                self.errorMessage = "Cannot commit: '\(item.name)' is unresolved. Please link or register the product first."
-                return
-            }
-            guard item.storageLocationId != nil else {
-                self.errorMessage = "Cannot commit: Please select a storage location for '\(item.name)'."
-                return
-            }
-            guard item.quantity > 0 && !item.unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                self.errorMessage = "Cannot commit: '\(item.name)' must have a valid quantity and unit."
-                return
-            }
-            guard item.isConfirmed else {
-                self.errorMessage = "Cannot commit: Please confirm details for '\(item.name)' before committing."
-                return
-            }
-        }
-
         if isPreview {
             try? await Task.sleep(nanoseconds: 300_000_000)
-            self.toastMessage = "Committed intake of \(itemsSnapshot.count) items (Preview)"
-            self.clearCommittedIntake(committedCount: itemsSnapshot.count)
+            toastMessage = "Committed intake of \(itemsSnapshot.count) items (Preview)"
+            clearCommittedIntake(committedCount: itemsSnapshot.count)
             return
         }
 
         do {
-            let dateFormatter = DateFormatter()
-            dateFormatter.dateFormat = "yyyy-MM-dd"
-
-            var itemsToCommit: [SessionItemCreate] = []
-            for item in itemsSnapshot {
-                guard let pid = item.productId, let locId = item.storageLocationId else {
-                    self.errorMessage = "Cannot commit: Invalid product or location."
+            if let pending = pendingIntakeCommit {
+                let currentFingerprint = try intakeFingerprint(items: itemsSnapshot, storeName: storeName)
+                guard currentFingerprint == pending.fingerprint else {
+                    scannedItems = pending.intakeItems
+                    storeName = pending.storeName
+                    errorMessage = "The saved intake changed after a previous submission. The original snapshot was restored; reconcile it before editing."
                     return
                 }
 
-                let expStr: String? = item.expirationDate.map { dateFormatter.string(from: $0) }
-                let sessionItem = SessionItemCreate(
-                    product_id: pid,
-                    storage_location_id: locId,
-                    quantity: item.quantity,
-                    expiration_date: expStr,
-                    unit_price: item.unitPrice
-                )
-                itemsToCommit.append(sessionItem)
+                let session = try await client.fetchSession(id: pending.sessionID)
+                switch session.status.uppercased() {
+                case "COMPLETED":
+                    clearCommittedIntake(committedCount: pending.requestItems.count)
+                case "DRAFT":
+                    await submitPendingCommit(pending)
+                case "CANCELLED":
+                    clearCancelledPendingCommit()
+                default:
+                    errorMessage = "Previous intake session #\(pending.sessionID) has status '\(session.status)'. No new session was created."
+                }
+                return
             }
 
-            // 3. Complete safe retry handling & reconciliation
-            let currentIntakeHash = itemsSnapshot.map { "\($0.barcode):\($0.quantity):\($0.unitPrice ?? 0)" }.joined(separator: "|").hashValue
-
-            let sessionId: Int
-            if let existingDraftId = self.pendingDraftSessionId, self.lastCommittedIntakeHash == currentIntakeHash {
-                // Check if existing session was already completed on server (lost client response recovery)
-                if let sessionInfo = try? await client.fetchSession(id: existingDraftId), sessionInfo.status == "COMPLETED" {
-                    #if DEBUG
-                    DiagnosticLogger.log("Draft session #\(existingDraftId) was already completed on server. Reconciling client without duplicate batches.")
-                    #endif
-                    self.clearCommittedIntake(committedCount: itemsToCommit.count)
-                    return
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd"
+            let requestItems = try itemsSnapshot.map { item -> SessionItemCreate in
+                guard let productID = item.productId, let locationID = item.storageLocationId else {
+                    throw IntakeCommitError.invalidItem
                 }
-                DiagnosticLogger.log("Reusing existing draft session #\(existingDraftId) on commit retry")
-                sessionId = existingDraftId
-            } else {
-                let isoFormatter = ISO8601DateFormatter()
-                let trimmedStore = storeName.trimmingCharacters(in: .whitespaces)
-                let sessionName = trimmedStore.isEmpty ? "Grocery Intake" : trimmedStore
-                let computedTotal = itemsSnapshot.compactMap { item in
-                    item.unitPrice.map { $0 * item.quantity }
-                }.reduce(0.0, +)
-                let sessionCreate = GrocerySessionCreate(
-                    store_name: sessionName,
+                return SessionItemCreate(
+                    product_id: productID,
+                    storage_location_id: locationID,
+                    quantity: item.quantity,
+                    expiration_date: item.expirationDate.map { dateFormatter.string(from: $0) },
+                    unit_price: item.unitPrice
+                )
+            }
+            let sessionName = storeName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalizedStoreName = sessionName.isEmpty ? "Grocery Intake" : sessionName
+            let fingerprint = try intakeFingerprint(items: itemsSnapshot, storeName: normalizedStoreName)
+            let computedTotal = itemsSnapshot.compactMap { item in
+                item.unitPrice.map { $0 * item.quantity }
+            }.reduce(0.0, +)
+            let isoFormatter = ISO8601DateFormatter()
+            let createdSession = try await client.createSession(
+                GrocerySessionCreate(
+                    store_name: normalizedStoreName,
                     purchase_date: isoFormatter.string(from: Date()),
                     total_amount: computedTotal > 0 ? computedTotal : nil,
                     notes: "Rapid intake session committed via Provision app"
                 )
-                let session = try await client.createSession(sessionCreate)
-                self.pendingDraftSessionId = session.id
-                self.lastCommittedIntakeHash = currentIntakeHash
-                sessionId = session.id
-            }
-
-            // 4. Commit session to generate batches and ledger events
-            _ = try await client.commitSession(id: sessionId, items: itemsToCommit)
-
-            // Successfully committed!
-            self.clearCommittedIntake(committedCount: itemsToCommit.count)
-            HapticFeedback.success()
+            )
+            let pending = PendingIntakeCommit(
+                sessionID: createdSession.id,
+                fingerprint: fingerprint,
+                storeName: normalizedStoreName,
+                intakeItems: itemsSnapshot,
+                requestItems: requestItems
+            )
+            try persistPendingCommit(pending)
+            await submitPendingCommit(pending)
         } catch {
-            self.errorMessage = "Failed to commit intake session: \(error.localizedDescription). You can safely retry without losing draft session."
+            errorMessage = "Failed to commit intake session: \(error.localizedDescription). The saved submission, if present, remains available for safe reconciliation."
             HapticFeedback.warning()
-            // Restore any deferred lookups that arrived during failed commit
-            if !postCommitDeferredItems.isEmpty {
-                self.scannedItems.insert(contentsOf: postCommitDeferredItems, at: 0)
-                self.postCommitDeferredItems.removeAll()
+            if pendingIntakeCommit == nil && !postCommitDeferredItems.isEmpty {
+                scannedItems.insert(contentsOf: postCommitDeferredItems, at: 0)
+                postCommitDeferredItems.removeAll()
             }
         }
     }
 
-    private func clearCommittedIntake(committedCount: Int) {
-        self.pendingDraftSessionId = nil
-        self.lastCommittedIntakeHash = nil
-        self.toastMessage = "Committed \(committedCount) items to household inventory!"
-        // Retain any items scanned while commit was in progress
-        self.scannedItems = self.postCommitDeferredItems
-        self.postCommitDeferredItems.removeAll()
-        self.lastScannedBarcode = ""
-        if let first = self.scannedItems.first {
-            self.scannerState = .detected(barcode: first.barcode, productName: first.name)
+    public func cancelPendingCommitAndUnlock() async {
+        guard !isCommitting, let pending = pendingIntakeCommit else { return }
+        isCommitting = true
+        errorMessage = nil
+        suspendScanning(for: .committing)
+        defer {
+            isCommitting = false
+            resumeScanning(releasing: .committing)
         }
+
+        do {
+            let session = try await client.fetchSession(id: pending.sessionID)
+            switch session.status.uppercased() {
+            case "COMPLETED":
+                clearCommittedIntake(committedCount: pending.requestItems.count)
+                errorMessage = "The previous intake was already committed. Its result has been reconciled."
+            case "DRAFT":
+                let cancelled = try await client.cancelSession(id: pending.sessionID)
+                guard cancelled.status.uppercased() == "CANCELLED" else {
+                    errorMessage = "The previous draft was not confirmed cancelled. The intake remains locked for reconciliation."
+                    return
+                }
+                clearCancelledPendingCommit()
+            case "CANCELLED":
+                clearCancelledPendingCommit()
+            default:
+                errorMessage = "Previous intake session #\(pending.sessionID) has status '\(session.status)'. It cannot be safely unlocked."
+            }
+        } catch {
+            errorMessage = "Could not safely cancel or reconcile the previous intake: \(error.localizedDescription). No replacement submission was sent."
+        }
+    }
+
+    private func submitPendingCommit(_ pending: PendingIntakeCommit) async {
+        do {
+            let committed = try await client.commitSession(id: pending.sessionID, items: pending.requestItems)
+            guard committed.status.uppercased() == "COMPLETED" else {
+                errorMessage = "Session #\(pending.sessionID) returned status '\(committed.status)'. Its saved submission remains locked for reconciliation."
+                return
+            }
+            clearCommittedIntake(committedCount: pending.requestItems.count)
+            HapticFeedback.success()
+        } catch {
+            errorMessage = "Could not confirm intake session #\(pending.sessionID): \(error.localizedDescription). Retry reconciliation before editing or creating another session."
+            HapticFeedback.warning()
+        }
+    }
+
+    private func intakeFingerprint(items: [ScannedIntakeItem], storeName: String) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let payload = IntakeFingerprintPayload(storeName: storeName, items: items)
+        let digest = SHA256.hash(data: try encoder.encode(payload))
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func persistPendingCommit(_ pending: PendingIntakeCommit) throws {
+        let data = try JSONEncoder().encode(pending)
+        pendingCommitDefaults.set(data, forKey: pendingIntakeCommitStorageKey)
+        pendingIntakeCommit = pending
+        pendingDraftSessionId = pending.sessionID
+        storeName = pending.storeName
+        activeSuspensions.insert(.pendingCommitRecovery)
+        scannerManager.lockAcceptance()
+        scannerManager.stopScanning()
+    }
+
+    private func clearPendingCommitState() {
+        if pendingIntakeCommit != nil {
+            pendingCommitDefaults.removeObject(forKey: pendingIntakeCommitStorageKey)
+        }
+        pendingIntakeCommit = nil
+        pendingDraftSessionId = nil
+        pendingCommitRecoveryError = nil
+        activeSuspensions.remove(.pendingCommitRecovery)
+    }
+
+    private func clearCancelledPendingCommit() {
+        clearPendingCommitState()
+        if !postCommitDeferredItems.isEmpty {
+            scannedItems.insert(contentsOf: postCommitDeferredItems, at: 0)
+            postCommitDeferredItems.removeAll()
+        }
+        errorMessage = nil
+        showToast("Previous draft cancelled; no inventory was committed. Review and retry when ready.")
+    }
+
+    private func clearCommittedIntake(committedCount: Int) {
+        clearPendingCommitState()
+        toastMessage = "Committed \(committedCount) items to household inventory!"
+        scannedItems = postCommitDeferredItems
+        postCommitDeferredItems.removeAll()
+        lastScannedBarcode = ""
+        if let first = scannedItems.first {
+            scannerState = .detected(barcode: first.barcode, productName: first.name)
+        }
+    }
+}
+
+private enum IntakeCommitError: LocalizedError {
+    case invalidItem
+
+    var errorDescription: String? {
+        "An intake item has no product or storage location."
     }
 }

@@ -57,10 +57,17 @@ public struct ScanView: View {
             .navigationTitle("Intake Scanner")
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
-                viewModel.resumeScanning(releasing: .navigatedAway)
                 if scanMode == 1 {
                     viewModel.suspendScanning(for: .receiptMode)
+                } else {
+                    viewModel.resumeScanning(releasing: .receiptMode)
                 }
+                if scenePhase == .active {
+                    viewModel.resumeScanning(releasing: .background)
+                } else {
+                    viewModel.suspendScanning(for: .background)
+                }
+                viewModel.resumeScanning(releasing: .navigatedAway)
             }
             .onDisappear {
                 viewModel.suspendScanning(for: .navigatedAway)
@@ -327,7 +334,7 @@ public struct ScanView: View {
 
     private func simButton(title: String, brand: String, barcode: String, days: Int) -> some View {
         Button {
-            viewModel.onBarcodeScanned(barcode)
+            viewModel.onBarcodeScanned(barcode, generation: viewModel.currentScanGeneration)
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "barcode.viewfinder")
@@ -475,7 +482,7 @@ public struct ScanView: View {
     private var activeModalSuspension: SuspensionReason? {
         if showingAddManualSheet { return .manualEntrySheet }
         if viewModel.showingQuickAddSheet { return .quickAddSheet }
-        if viewModel.showingReceiptCamera { return .receiptMode }
+        if viewModel.showingReceiptCamera { return .receiptCamera }
         if editingItemForOCR != nil { return .expirationSheet }
         if manualDatePickerItem != nil { return .priceEditing }
         if editingPriceItem != nil { return .priceEditing }
@@ -530,7 +537,7 @@ public struct ScanView: View {
                             .foregroundStyle(ProvisionTheme.provisionGreen)
                     }
                 }
-                .disabled(viewModel.isCommitting)
+                .disabled(viewModel.isIntakeMutationLocked)
             }
 
             // Validation error banner if viewModel.errorMessage != nil
@@ -613,7 +620,7 @@ public struct ScanView: View {
                         intakeItemRow(item: $item)
                     }
                 }
-                .disabled(viewModel.isCommitting)
+                .disabled(viewModel.isIntakeMutationLocked)
 
                 // Commit Button with anti-duplicate and disabled state
                 Button {
@@ -626,19 +633,31 @@ public struct ScanView: View {
                             ProgressView()
                                 .tint(.white)
                         } else {
-                            Image(systemName: allConfirmed ? "checkmark.circle.fill" : "lock.fill")
-                            Text(allConfirmed ? "Commit \(totalCount) Item(s) to Pantry" : "Commit Intake (\(confirmedCount)/\(totalCount) Confirmed)")
+                            Image(systemName: viewModel.hasPendingCommitRecovery ? "arrow.clockwise.circle.fill" : allConfirmed ? "checkmark.circle.fill" : "lock.fill")
+                            Text(viewModel.hasPendingCommitRecovery ? "Resolve Previous Submission" : allConfirmed ? "Commit \(totalCount) Item(s) to Pantry" : "Commit Intake (\(confirmedCount)/\(totalCount) Confirmed)")
                                 .font(.system(size: 16, weight: .bold))
                         }
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(allConfirmed ? ProvisionTheme.provisionGreen : ProvisionTheme.textTertiary)
+                    .background((allConfirmed || viewModel.hasPendingCommitRecovery) ? ProvisionTheme.provisionGreen : ProvisionTheme.textTertiary)
                     .foregroundStyle(.white)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
-                .disabled(viewModel.isCommitting || !allConfirmed)
+                .disabled(viewModel.isCommitting || viewModel.pendingCommitRecoveryError != nil || (!viewModel.hasPendingCommitRecovery && !allConfirmed))
                 .padding(.top, 8)
+
+                if viewModel.hasPendingCommitRecovery {
+                    Button("Check Status / Cancel Previous Draft") {
+                        Task {
+                            await viewModel.cancelPendingCommitAndUnlock()
+                        }
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(ProvisionTheme.redAlert)
+                    .disabled(viewModel.isCommitting || viewModel.pendingCommitRecoveryError != nil)
+                    .padding(.top, 4)
+                }
             }
         }
     }

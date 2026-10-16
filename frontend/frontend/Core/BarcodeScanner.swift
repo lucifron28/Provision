@@ -146,10 +146,10 @@ public final class BarcodeScannerManager: ObservableObject {
 
     private let sessionQueue = DispatchQueue(label: "mseuf.edu.ph.provision.scanner.session")
     private let metadataQueue = DispatchQueue(label: "mseuf.edu.ph.provision.scanner.metadata")
-    private let metadataOutput = AVCaptureMetadataOutput()
+    nonisolated(unsafe) private let metadataOutput = AVCaptureMetadataOutput()
 
     nonisolated(unsafe) private var isSessionConfiguredOnQueue: Bool = false
-    private var delegateHolder: AnyObject?
+    nonisolated(unsafe) private var delegateHolder: AnyObject?
     private var notificationTokens: [NSObjectProtocol] = []
 
     public var onBarcodeDetected: (@MainActor @Sendable (String, Int) -> Void)?
@@ -296,6 +296,20 @@ public final class BarcodeScannerManager: ObservableObject {
         self.isArmed = false
     }
 
+    func simulateMetadataDetection(_ barcode: String, generation: Int) {
+        guard !barcode.isEmpty,
+              acceptanceGate.tryAccept(barcode: barcode, generation: generation) else {
+            return
+        }
+        deliverAcceptedBarcode(barcode, generation: generation)
+    }
+
+    private func deliverAcceptedBarcode(_ barcode: String, generation: Int) {
+        isArmed = false
+        lastDetectedBarcode = barcode
+        onBarcodeDetected?(barcode, generation)
+    }
+
     private nonisolated func configureSessionSynchronouslyOnQueue() -> Bool {
         #if targetEnvironment(simulator)
         return true
@@ -308,53 +322,78 @@ public final class BarcodeScannerManager: ObservableObject {
             return false
         }
 
+        var addedInput: AVCaptureDeviceInput?
+        var addedMetadataOutput = false
+        var configurationCommitted = false
+        session.beginConfiguration()
+        defer {
+            if !configurationCommitted {
+                if addedMetadataOutput {
+                    session.removeOutput(metadataOutput)
+                }
+                if let addedInput {
+                    session.removeInput(addedInput)
+                }
+                session.commitConfiguration()
+            }
+        }
+
         do {
             DiagnosticLogger.log("Configuring AVCaptureSession on sessionQueue...")
-            session.beginConfiguration()
             session.sessionPreset = .high
 
             let input = try AVCaptureDeviceInput(device: device)
-            if session.canAddInput(input) {
-                session.addInput(input)
-            } else {
-                session.commitConfiguration()
+            guard session.canAddInput(input) else {
                 Task { @MainActor [weak self] in
                     self?.setupError = "Cannot attach camera input to session."
                 }
                 return false
             }
+            session.addInput(input)
+            addedInput = input
 
-            if session.canAddOutput(metadataOutput) {
-                session.addOutput(metadataOutput)
-
-                let delegate = BarcodeMetadataDelegate(gate: acceptanceGate) { [weak self] rawCode, gen in
-                    Task { @MainActor [weak self] in
-                        self?.isArmed = false
-                        self?.lastDetectedBarcode = rawCode
-                        self?.onBarcodeDetected?(rawCode, gen)
-                    }
+            guard session.canAddOutput(metadataOutput) else {
+                Task { @MainActor [weak self] in
+                    self?.setupError = "Cannot attach barcode metadata output to session."
                 }
-                self.delegateHolder = delegate
-                metadataOutput.setMetadataObjectsDelegate(delegate, queue: metadataQueue)
+                return false
+            }
+            session.addOutput(metadataOutput)
+            addedMetadataOutput = true
 
-                let targetTypes: [AVMetadataObject.ObjectType] = [
-                    .ean13,
-                    .ean8,
-                    .upce,
-                    .code128,
-                    .code39
-                ]
-                let available = metadataOutput.availableMetadataObjectTypes
-                let supported = targetTypes.filter { available.contains($0) }
-                metadataOutput.metadataObjectTypes = supported
-                DiagnosticLogger.log("Configured metadataObjectTypes: \(supported.map { $0.rawValue })")
+            let targetTypes: [AVMetadataObject.ObjectType] = [
+                .ean13,
+                .ean8,
+                .upce,
+                .code128,
+                .code39
+            ]
+            let supported = targetTypes.filter { metadataOutput.availableMetadataObjectTypes.contains($0) }
+            guard !supported.isEmpty else {
+                Task { @MainActor [weak self] in
+                    self?.setupError = "Camera does not support any configured barcode formats."
+                }
+                return false
             }
 
+            metadataOutput.metadataObjectTypes = supported
+            let delegate = BarcodeMetadataDelegate(gate: acceptanceGate) { [weak self] rawCode, gen in
+                Task { @MainActor [weak self] in
+                    self?.deliverAcceptedBarcode(rawCode, generation: gen)
+                }
+            }
+            self.delegateHolder = delegate
+            metadataOutput.setMetadataObjectsDelegate(delegate, queue: metadataQueue)
+
             session.commitConfiguration()
+            configurationCommitted = true
             self.isSessionConfiguredOnQueue = true
+            Task { @MainActor [weak self] in
+                self?.setupError = nil
+            }
+            DiagnosticLogger.log("Configured metadataObjectTypes: \(supported.map { $0.rawValue })")
             return true
         } catch {
-            session.commitConfiguration()
             Task { @MainActor [weak self] in
                 self?.setupError = "Camera setup failed: \(error.localizedDescription)"
             }
