@@ -61,6 +61,7 @@ public class ScanViewModel: ObservableObject {
     @Published public var scannedItems: [ScannedIntakeItem] = []
     @Published public var availableLocations: [StorageLocation] = []
     @Published public var isScanning: Bool = true
+    @Published public var scannerState: ScannerState = .ready
     @Published public var isCommitting: Bool = false
     @Published public var toastMessage: String? = nil
     @Published public var errorMessage: String? = nil
@@ -125,6 +126,40 @@ public class ScanViewModel: ObservableObject {
         }
     }
 
+    public func rearmScanner() {
+        self.scannerState = .ready
+        self.lastScannedBarcode = ""
+        self.scannerManager.rearm()
+        #if DEBUG
+        DiagnosticLogger.log("Scanner rearmed to .ready")
+        #endif
+    }
+
+    public func pauseScanning(reason: String = "User paused") {
+        self.scannerManager.lockAcceptance()
+        self.scannerState = .paused(reason: reason)
+        #if DEBUG
+        DiagnosticLogger.log("Scanner paused: \(reason)")
+        #endif
+    }
+
+    public func resumeScanning() {
+        rearmScanner()
+    }
+
+    public func retryBarcodeLookup() {
+        guard case .error(let barcode, _) = scannerState else { return }
+        self.errorMessage = nil
+        self.scannerState = .processing(barcode)
+        Task {
+            await resolveScannedBarcode(barcode)
+        }
+    }
+
+    public func simulateBarcodeDetection(_ barcode: String) {
+        onBarcodeScanned(barcode)
+    }
+
     public func startScanning() {
         guard !isPreview else { return }
         scannerManager.startScanning()
@@ -136,7 +171,18 @@ public class ScanViewModel: ObservableObject {
     public func onBarcodeScanned(_ barcode: String) {
         let trimmed = barcode.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+
+        // Phase 1 Requirement: Controlled single-scan acceptance state machine
+        guard scannerState.isArmed else {
+            #if DEBUG
+            DiagnosticLogger.logRejected(barcode: trimmed, reason: "ScannerState is \(scannerState) (not armed/ready)")
+            #endif
+            return
+        }
+
         self.lastScannedBarcode = trimmed
+        self.scannerState = .processing(trimmed)
+        self.scannerManager.lockAcceptance()
         HapticFeedback.medium()
 
         Task {
@@ -163,6 +209,7 @@ public class ScanViewModel: ObservableObject {
         if let idx = scannedItems.firstIndex(where: { $0.barcode == barcode }) {
             scannedItems[idx].quantity += 1.0
             invalidateConfirmation(at: idx)
+            self.scannerState = .detected(barcode: barcode, productName: scannedItems[idx].name)
             showToast("Incremented \(scannedItems[idx].name) (\(Int(scannedItems[idx].quantity)))")
             return
         }
@@ -192,6 +239,7 @@ public class ScanViewModel: ObservableObject {
         // Priority 3: Do not treat network/auth errors as unknown products
         if let err = lookupErrorText {
             self.errorMessage = err
+            self.scannerState = .error(barcode: barcode, message: err)
             return
         }
 
@@ -209,12 +257,14 @@ public class ScanViewModel: ObservableObject {
                 isConfirmed: false
             )
             self.scannedItems.insert(item, at: 0)
+            self.scannerState = .detected(barcode: barcode, productName: prod.name)
             showToast("Recognized: \(prod.name)")
         } else {
             // Genuinely not found in catalog (HTTP 200 with empty list)
             self.resolvingItemId = nil
             self.unresolvedBarcode = barcode
             self.showingQuickAddSheet = true
+            self.scannerState = .needsReview(barcode: barcode, reason: "Unrecognized barcode")
             showToast("Unrecognized barcode: \(barcode)")
         }
     }
@@ -650,7 +700,8 @@ public class ScanViewModel: ObservableObject {
         }
         isCommitting = true
         errorMessage = nil
-        // Enforce strict validation
+        pauseScanning(reason: "Committing intake")
+        let itemsSnapshot = self.scannedItems
         for item in scannedItems {
             guard item.conflictingReceiptQuantity == nil else {
                 self.errorMessage = "Cannot commit: '\(item.name)' has an unresolved quantity conflict (scanned \(Int(item.quantity)) vs receipt \(Int(item.conflictingReceiptQuantity!))). Please resolve before committing."
@@ -693,7 +744,7 @@ public class ScanViewModel: ObservableObject {
             dateFormatter.dateFormat = "yyyy-MM-dd"
 
             var itemsToCommit: [SessionItemCreate] = []
-            for item in scannedItems {
+            for item in itemsSnapshot {
                 guard let pid = item.productId else {
                     self.errorMessage = "Cannot commit: '\(item.name)' is unresolved. Please link or register the product first."
                     isCommitting = false

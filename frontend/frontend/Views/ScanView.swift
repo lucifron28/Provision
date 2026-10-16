@@ -38,11 +38,11 @@ public struct ScanView: View {
                     // Viewfinder Box
                     viewfinderCard
 
-                    // Detected Barcode Display
+                    // Detected Barcode Display & Single-Scan Controls
                     if scanMode == 0 {
                         detectedBarcodeCard
+                        rearmControlsCard
                     }
-
                     // Quick Simulation Bar (Available in simulator or preview testing)
                     if !viewModel.scannerManager.isCameraAvailable || viewModel.isPreview {
                         simulationBarcodeButtons
@@ -57,7 +57,8 @@ public struct ScanView: View {
             .navigationTitle("Intake Scanner")
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
-                if scanMode == 0 {
+                if scanMode == 0 && !isScanningSuspended {
+                    viewModel.rearmScanner()
                     viewModel.startScanning()
                 }
             }
@@ -65,17 +66,27 @@ public struct ScanView: View {
                 viewModel.stopScanning()
             }
             .onChange(of: scanMode) { _, newMode in
-                if newMode == 0 {
+                if newMode == 0 && !isScanningSuspended {
                     viewModel.startScanning()
+                    viewModel.resumeScanning()
                 } else {
                     viewModel.stopScanning()
                 }
             }
             .onChange(of: scenePhase) { _, newPhase in
-                if newPhase == .active && scanMode == 0 {
+                if newPhase == .active && scanMode == 0 && !isScanningSuspended {
                     viewModel.startScanning()
+                    viewModel.resumeScanning()
                 } else {
                     viewModel.stopScanning()
+                    viewModel.pauseScanning(reason: "Background")
+                }
+            }
+            .onChange(of: isScanningSuspended) { _, shouldSuspend in
+                if shouldSuspend {
+                    viewModel.pauseScanning(reason: "Active overlay or inactive")
+                } else if scanMode == 0 && scenePhase == .active {
+                    viewModel.resumeScanning()
                 }
             }
             .sheet(isPresented: $showingAddManualSheet) {
@@ -235,6 +246,50 @@ public struct ScanView: View {
                     }
                 }
             }
+            // Scanner State Banner Overlay
+            VStack {
+                HStack(spacing: 6) {
+                    switch viewModel.scannerState {
+                    case .ready:
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 8, height: 8)
+                        Text("Ready to Scan")
+                    case .processing:
+                        ProgressView()
+                            .scaleEffect(0.6)
+                            .tint(.white)
+                        Text("Looking up barcode...")
+                    case .detected(_, let name):
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(Color.green)
+                        Text("Scanned: \(name)")
+                    case .needsReview:
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundStyle(ProvisionTheme.amberWarning)
+                        Text("Action Required")
+                    case .error:
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(ProvisionTheme.redAlert)
+                        Text("Lookup Error")
+                    case .paused(let reason):
+                        Image(systemName: "pause.circle.fill")
+                            .foregroundStyle(ProvisionTheme.textTertiary)
+                        Text("Paused: \(reason)")
+                    }
+                }
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Color.black.opacity(0.65))
+                .clipShape(Capsule())
+                .padding(.top, 12)
+
+                Spacer()
+            }
+            .allowsHitTesting(false)
+
             // Corner Reticles Overlay
             VStack {
                 HStack {
@@ -365,6 +420,72 @@ public struct ScanView: View {
         .provisionCard(borderColor: viewModel.lastScannedBarcode.isEmpty ? ProvisionTheme.border : ProvisionTheme.provisionGreen.opacity(0.5))
     }
 
+    @ViewBuilder
+    private var rearmControlsCard: some View {
+        if !viewModel.scannerState.isArmed {
+            HStack(spacing: 10) {
+                Button {
+                    viewModel.rearmScanner()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "barcode.viewfinder")
+                        Text("Scan Next Barcode")
+                            .font(.system(size: 14, weight: .bold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(ProvisionTheme.provisionGreen)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
+                if case .error = viewModel.scannerState {
+                    Button {
+                        viewModel.retryBarcodeLookup()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.clockwise")
+                            Text("Retry")
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(ProvisionTheme.redLight)
+                        .foregroundStyle(ProvisionTheme.redAlert)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                } else if case .paused = viewModel.scannerState {
+                    Button {
+                        viewModel.resumeScanning()
+                    } label: {
+                        Text("Resume")
+                            .font(.system(size: 13, weight: .semibold))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(ProvisionTheme.surfaceSecondary)
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var isScanningSuspended: Bool {
+        viewModel.showingQuickAddSheet ||
+        showingAddManualSheet ||
+        viewModel.showingReceiptCamera ||
+        viewModel.isProcessingReceipt ||
+        editingItemForOCR != nil ||
+        manualDatePickerItem != nil ||
+        editingPriceItem != nil ||
+        viewModel.isCommitting ||
+        scanMode == 1 ||
+        scenePhase != .active
+    }
     private var intakeReviewSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
