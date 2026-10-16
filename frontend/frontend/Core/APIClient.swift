@@ -32,7 +32,7 @@ public enum APIError: LocalizedError, Sendable {
 public enum APIEnvironment {
     /// Configurable local LAN host for physical iPhone testing.
     /// Change this to your development Mac's local IP (e.g. "192.168.1.100") when testing on a physical device.
-    nonisolated(unsafe) public static var localDeviceHost: String = "127.0.0.1"
+    nonisolated(unsafe) public static var localDeviceHost: String = "172.22.67.167"
     nonisolated(unsafe) public static var port: Int = 8000
     nonisolated(unsafe) public static var apiVersionPath: String = "api/v1"
     
