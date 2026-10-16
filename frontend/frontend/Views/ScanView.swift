@@ -130,8 +130,14 @@ public struct ScanView: View {
                 Button("Cancel", role: .cancel) { editingPriceItem = nil }
                 Button("Save") {
                     if let target = editingPriceItem {
-                        let parsed = Double(editingPriceText.replacingOccurrences(of: ",", with: "."))
-                        viewModel.updateItemPrice(id: target.id, price: parsed)
+                        let trimmed = editingPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if trimmed.isEmpty {
+                            viewModel.updateItemPrice(id: target.id, price: nil)
+                        } else if let parsed = Double(trimmed.replacingOccurrences(of: ",", with: ".")), parsed >= 0 {
+                            viewModel.updateItemPrice(id: target.id, price: parsed)
+                        } else {
+                            viewModel.errorMessage = "Invalid price '\(trimmed)'. Please enter a valid number (e.g. 45.00)."
+                        }
                     }
                     editingPriceItem = nil
                 }
@@ -535,10 +541,72 @@ public struct ScanView: View {
 
                 Spacer()
 
-                // Status Badge
-                statusBadge(for: item.wrappedValue)
+                HStack(spacing: 8) {
+                    // Status Badge
+                    statusBadge(for: item.wrappedValue)
+
+                    // Explicit Delete Action
+                    Button(role: .destructive) {
+                        viewModel.removeItem(id: item.wrappedValue.id)
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 13))
+                            .foregroundStyle(ProvisionTheme.redAlert)
+                            .padding(6)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Remove \(item.wrappedValue.name) from intake")
+                }
             }
 
+            // Priority 4: Explicit Quantity Conflict Resolution Banner
+            if let conflictQty = item.wrappedValue.conflictingReceiptQuantity {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(ProvisionTheme.amberWarning)
+                            .font(.system(size: 13))
+                        Text("Quantity Conflict Detected")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(ProvisionTheme.amberWarning)
+                    }
+
+                    Text("Barcode count is \(Int(item.wrappedValue.quantity)), but receipt shows \(Int(conflictQty)). Choose which quantity is correct:")
+                        .font(.system(size: 12))
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+
+                    HStack(spacing: 8) {
+                        Button {
+                            viewModel.resolveQuantityConflict(id: item.wrappedValue.id, keepQuantity: item.wrappedValue.quantity)
+                        } label: {
+                            Text("Keep Scanned (\(Int(item.wrappedValue.quantity)))")
+                                .font(.system(size: 12, weight: .semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(ProvisionTheme.surfaceSecondary)
+                                .foregroundStyle(ProvisionTheme.textPrimary)
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            viewModel.resolveQuantityConflict(id: item.wrappedValue.id, keepQuantity: conflictQty)
+                        } label: {
+                            Text("Use Receipt (\(Int(conflictQty)))")
+                                .font(.system(size: 12, weight: .semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(ProvisionTheme.provisionGreenLight)
+                                .foregroundStyle(ProvisionTheme.provisionGreen)
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(10)
+                .background(ProvisionTheme.amberLight)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
             // If productId == nil: prominent button/tag to trigger quick add
             if item.wrappedValue.productId == nil || item.wrappedValue.status == .needsReview {
                 Button {
@@ -914,15 +982,17 @@ public struct ScanView: View {
                     Button {
                         isRegisteringProduct = true
                         Task {
-                            _ = await viewModel.registerProductAndAddToQueue(
+                            let success = await viewModel.registerProductAndAddToQueue(
                                 name: quickAddName,
                                 brand: quickAddBrand.isEmpty ? nil : quickAddBrand,
                                 category: quickAddCategory,
                                 unit: quickAddUnit,
                                 packageSize: nil
                             )
-                            quickAddName = ""
-                            quickAddBrand = ""
+                            if success {
+                                quickAddName = ""
+                                quickAddBrand = ""
+                            }
                             isRegisteringProduct = false
                         }
                     } label: {
