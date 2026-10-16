@@ -30,13 +30,23 @@ public enum APIError: LocalizedError, Sendable {
 }
 
 public enum APIEnvironment {
+    private static let hostKey = "provision_backend_host"
+    private static let fallbackHost = "10.212.56.11"
+
     /// Configurable local LAN host for physical iPhone testing.
-    /// Change this to your development Mac's local IP (e.g. "192.168.1.100") when testing on a physical device.
-    nonisolated(unsafe) public static var localDeviceHost: String = "10.212.56.11"
+    /// Can be customized at runtime via UserDefaults without requiring code recompilation.
+    nonisolated(unsafe) public static var localDeviceHost: String {
+        get {
+            UserDefaults.standard.string(forKey: hostKey) ?? fallbackHost
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: hostKey)
+        }
+    }
     nonisolated(unsafe) public static var port: Int = 8000
     nonisolated(unsafe) public static var apiVersionPath: String = "api/v1"
     
-    public static var defaultBaseURL: URL {
+    nonisolated public static var defaultBaseURL: URL {
         #if targetEnvironment(simulator)
         return URL(string: "http://127.0.0.1:\(port)/\(apiVersionPath)")!
         #else

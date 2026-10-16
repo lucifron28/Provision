@@ -8,7 +8,7 @@ public struct HomeView: View {
 
     @State private var showingProfileSheet: Bool = false
     @State private var notificationsEnabled: Bool = NotificationService.shared.isAlertsEnabled
-
+    @State private var devBackendHost: String = APIEnvironment.localDeviceHost
     public init(
         viewModel: HomeViewModel,
         authVM: AuthViewModel,
@@ -438,6 +438,31 @@ public struct HomeView: View {
                     .provisionCard()
                 }
 
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("DEVELOPMENT BACKEND HOST")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                        .tracking(0.6)
+
+                    HStack {
+                        Image(systemName: "network")
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                        TextField("IP Address (e.g. 10.212.56.11)", text: $devBackendHost)
+                            .font(.system(size: 14, design: .monospaced))
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        Button("Save") {
+                            let trimmed = devBackendHost.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !trimmed.isEmpty {
+                                APIEnvironment.localDeviceHost = trimmed
+                            }
+                        }
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(ProvisionTheme.provisionGreen)
+                    }
+                    .padding(14)
+                    .provisionCard()
+                }
                 VStack(alignment: .leading, spacing: 10) {
                     Text("NOTIFICATIONS & ALERTS")
                         .font(.system(size: 11, weight: .bold))
