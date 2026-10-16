@@ -4,6 +4,61 @@ import SwiftUI
 @preconcurrency import AVFoundation
 import UIKit
 
+// MARK: - Scanner Diagnostics Logger
+
+public enum DiagnosticLogger {
+    public static func log(_ message: String) {
+        #if DEBUG
+        print("🔍 [BarcodeScanner] \(message)")
+        #endif
+    }
+
+    public static func logAccepted(barcode: String) {
+        #if DEBUG
+        print("✅ [BarcodeScanner:ACCEPTED] Barcode: \(barcode)")
+        #endif
+    }
+
+    public static func logRejected(barcode: String, reason: String) {
+        #if DEBUG
+        print("⛔️ [BarcodeScanner:REJECTED] Barcode: \(barcode) — Reason: \(reason)")
+        #endif
+    }
+}
+
+// MARK: - Scanner State Machine
+
+public enum ScannerState: Equatable, Sendable {
+    case ready
+    case processing(String)
+    case detected(barcode: String, productName: String)
+    case needsReview(barcode: String, reason: String)
+    case error(barcode: String, message: String)
+    case paused(reason: String)
+
+    public var isArmed: Bool {
+        if case .ready = self { return true }
+        return false
+    }
+
+    public var statusTitle: String {
+        switch self {
+        case .ready:
+            return "Ready to Scan"
+        case .processing:
+            return "Looking up product..."
+        case .detected(_, let name):
+            return "Scanned: \(name)"
+        case .needsReview:
+            return "Action Required"
+        case .error:
+            return "Lookup Failed"
+        case .paused(let reason):
+            return "Paused (\(reason))"
+        }
+    }
+}
+
 // MARK: - Camera Permission States
 
 public enum CameraPermission: Sendable {
@@ -20,8 +75,11 @@ public final class BarcodeScannerManager: ObservableObject {
     @Published public var isCameraAvailable: Bool = true
     @Published public var isScanning: Bool = false
     @Published public var lastDetectedBarcode: String = ""
+    @Published public var isArmed: Bool = true
+    @Published public var setupError: String? = nil
     
     public let session = AVCaptureSession()
+    public var captureMetadataOutput: AVCaptureMetadataOutput { metadataOutput }
     
     private let sessionQueue = DispatchQueue(label: "mseuf.edu.ph.provision.scanner.session")
     private let metadataQueue = DispatchQueue(label: "mseuf.edu.ph.provision.scanner.metadata")
@@ -30,14 +88,10 @@ public final class BarcodeScannerManager: ObservableObject {
     private var isConfigured: Bool = false
     private var delegateHolder: AnyObject?
     
-    // Throttling / Debouncing parameters
-    private var lastScannedCode: String = ""
-    private var lastScannedTime: Date = .distantPast
-    private let sameBarcodeDebounceInterval: TimeInterval = 1.5
-    private let interBarcodeThrottleInterval: TimeInterval = 0.4
+    // Synchronous acceptance lock on metadataQueue to guarantee strictly 1 accepted event per arming
+    private var isAcceptanceLocked: Bool = false
     
     public var onBarcodeDetected: (@MainActor @Sendable (String) -> Void)?
-    
     public init() {
         checkHardwareAndPermission()
     }
@@ -92,12 +146,16 @@ public final class BarcodeScannerManager: ObservableObject {
         checkHardwareAndPermission()
         guard permission == .authorized else { return }
         
-        let session = self.session
         sessionQueue.async { [weak self] in
             guard let self = self else { return }
-            self.configureSessionIfNeeded()
-            if !session.isRunning {
-                session.startRunning()
+            if !self.isConfigured {
+                self.configureSessionOnQueue()
+            }
+            guard self.isConfigured else { return }
+            
+            if !self.session.isRunning {
+                DiagnosticLogger.log("Starting AVCaptureSession")
+                self.session.startRunning()
                 Task { @MainActor [weak self] in
                     self?.isScanning = true
                 }
@@ -107,99 +165,109 @@ public final class BarcodeScannerManager: ObservableObject {
     
     public func stopScanning() {
         guard isCameraAvailable else { return }
-        let session = self.session
         sessionQueue.async { [weak self] in
             guard let self = self else { return }
-            if session.isRunning {
-                session.stopRunning()
+            if self.session.isRunning {
+                DiagnosticLogger.log("Stopping AVCaptureSession")
+                self.session.stopRunning()
                 Task { @MainActor [weak self] in
                     self?.isScanning = false
                 }
             }
         }
     }
+
+    public func rearm() {
+        metadataQueue.async { [weak self] in
+            guard let self = self else { return }
+            self.isAcceptanceLocked = false
+            DiagnosticLogger.log("BarcodeScannerManager rearmed")
+            Task { @MainActor [weak self] in
+                self?.isArmed = true
+            }
+        }
+    }
+
+    public func lockAcceptance() {
+        metadataQueue.async { [weak self] in
+            guard let self = self else { return }
+            self.isAcceptanceLocked = true
+            DiagnosticLogger.log("BarcodeScannerManager acceptance locked")
+            Task { @MainActor [weak self] in
+                self?.isArmed = false
+            }
+        }
+    }
     
-    private nonisolated func configureSessionIfNeeded() {
+    private nonisolated func configureSessionOnQueue() {
         #if !targetEnvironment(simulator)
-        Task { @MainActor in
-            guard !self.isConfigured else { return }
+        guard !isConfigured else { return }
+        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
+            Task { @MainActor [weak self] in
+                self?.setupError = "Rear camera not available on this device."
+            }
+            return
+        }
+        
+        do {
+            DiagnosticLogger.log("Configuring AVCaptureSession on sessionQueue...")
+            session.beginConfiguration()
+            session.sessionPreset = .high
             
-            self.sessionQueue.async { [weak self] in
-                guard let self = self else { return }
-                guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
-                    return
-                }
+            let input = try AVCaptureDeviceInput(device: device)
+            if session.canAddInput(input) {
+                session.addInput(input)
+            }
+            
+            if session.canAddOutput(metadataOutput) {
+                session.addOutput(metadataOutput)
                 
-                do {
-                    self.session.beginConfiguration()
-                    self.session.sessionPreset = .high
-                    
-                    let input = try AVCaptureDeviceInput(device: device)
-                    if self.session.canAddInput(input) {
-                        self.session.addInput(input)
+                let delegate = BarcodeMetadataDelegate { [weak self] rawCode in
+                    guard let self = self else { return }
+                    // Runs synchronously on metadataQueue!
+                    guard !self.isAcceptanceLocked else {
+                        DiagnosticLogger.logRejected(barcode: rawCode, reason: "Acceptance locked")
+                        return
                     }
-                    
-                    if self.session.canAddOutput(self.metadataOutput) {
-                        self.session.addOutput(self.metadataOutput)
-                        
-                        let delegate = BarcodeMetadataDelegate { [weak self] code in
-                            Task { @MainActor [weak self] in
-                                self?.handleRawBarcodeDetected(code)
-                            }
-                        }
-                        
-                        Task { @MainActor [weak self] in
-                            self?.delegateHolder = delegate
-                        }
-                        
-                        self.metadataOutput.setMetadataObjectsDelegate(delegate, queue: self.metadataQueue)
-                        
-                        // Minimum supported grocery barcode types: EAN-13, EAN-8, UPC-E, Code 128
-                        let targetTypes: [AVMetadataObject.ObjectType] = [
-                            .ean13,
-                            .ean8,
-                            .upce,
-                            .code128,
-                            .code39,
-                            .qr
-                        ]
-                        let available = self.metadataOutput.availableMetadataObjectTypes
-                        let supported = targetTypes.filter { available.contains($0) }
-                        self.metadataOutput.metadataObjectTypes = supported
-                    }
-                    
-                    self.session.commitConfiguration()
+                    // Synchronously lock acceptance on the first detected frame!
+                    self.isAcceptanceLocked = true
+                    DiagnosticLogger.logAccepted(barcode: rawCode)
                     
                     Task { @MainActor [weak self] in
-                        self?.isConfigured = true
+                        self?.isArmed = false
+                        self?.lastDetectedBarcode = rawCode
+                        self?.onBarcodeDetected?(rawCode)
                     }
-                } catch {
-                    // Camera configuration failed
                 }
+                
+                self.delegateHolder = delegate
+                metadataOutput.setMetadataObjectsDelegate(delegate, queue: metadataQueue)
+                
+                // Grocery retail formats only: EAN-13, EAN-8, UPC-E, Code 128, Code 39 (NO .qr!)
+                let targetTypes: [AVMetadataObject.ObjectType] = [
+                    .ean13,
+                    .ean8,
+                    .upce,
+                    .code128,
+                    .code39
+                ]
+                let available = metadataOutput.availableMetadataObjectTypes
+                let supported = targetTypes.filter { available.contains($0) }
+                metadataOutput.metadataObjectTypes = supported
+                DiagnosticLogger.log("Configured metadataObjectTypes: \(supported.map { $0.rawValue })")
+            }
+            
+            session.commitConfiguration()
+            
+            Task { @MainActor [weak self] in
+                self?.isConfigured = true
+            }
+        } catch {
+            Task { @MainActor [weak self] in
+                self?.setupError = "Camera setup failed: \(error.localizedDescription)"
             }
         }
         #endif
-    }
-    
-    private func handleRawBarcodeDetected(_ code: String) {
-        let now = Date()
-        
-        // Throttling / Debouncing
-        if code == lastScannedCode && now.timeIntervalSince(lastScannedTime) < sameBarcodeDebounceInterval {
-            return // Same barcode repeated within debounce window
-        } else if now.timeIntervalSince(lastScannedTime) < interBarcodeThrottleInterval {
-            return // Rapid multi-code throttle
-        }
-        
-        lastScannedCode = code
-        lastScannedTime = now
-        lastDetectedBarcode = code
-        
-        // Trigger subtle haptic feedback
-        let generator = UIImpactFeedbackGenerator(style: .medium)
-        generator.impactOccurred()
-        
-        onBarcodeDetected?(code)
     }
 }
 
@@ -230,14 +298,24 @@ private final class BarcodeMetadataDelegate: NSObject, AVCaptureMetadataOutputOb
 
 public struct CameraPreviewRepresentable: UIViewRepresentable {
     public let session: AVCaptureSession
+    public let metadataOutput: AVCaptureMetadataOutput?
+    public let visualTargetRect: CGRect
     
-    public init(session: AVCaptureSession) {
+    public init(
+        session: AVCaptureSession,
+        metadataOutput: AVCaptureMetadataOutput? = nil,
+        visualTargetRect: CGRect = .zero
+    ) {
         self.session = session
+        self.metadataOutput = metadataOutput
+        self.visualTargetRect = visualTargetRect
     }
     
     public func makeUIView(context: Context) -> CameraPreviewUIView {
         let view = CameraPreviewUIView()
         view.previewLayer.session = session
+        view.metadataOutput = metadataOutput
+        view.targetVisualRect = visualTargetRect
         return view
     }
     
@@ -245,6 +323,8 @@ public struct CameraPreviewRepresentable: UIViewRepresentable {
         if uiView.previewLayer.session != session {
             uiView.previewLayer.session = session
         }
+        uiView.metadataOutput = metadataOutput
+        uiView.targetVisualRect = visualTargetRect
     }
 }
 
@@ -257,6 +337,18 @@ public final class CameraPreviewUIView: UIView {
         layer as! AVCaptureVideoPreviewLayer
     }
     
+    public var targetVisualRect: CGRect = .zero {
+        didSet {
+            updateRectOfInterest()
+        }
+    }
+    
+    public weak var metadataOutput: AVCaptureMetadataOutput? {
+        didSet {
+            updateRectOfInterest()
+        }
+    }
+    
     public override init(frame: CGRect) {
         super.init(frame: frame)
         previewLayer.videoGravity = .resizeAspectFill
@@ -267,6 +359,30 @@ public final class CameraPreviewUIView: UIView {
         super.init(coder: coder)
         previewLayer.videoGravity = .resizeAspectFill
         backgroundColor = .black
+    }
+
+    public override func layoutSubviews() {
+        super.layoutSubviews()
+        updateRectOfInterest()
+    }
+    
+    public func updateRectOfInterest() {
+        guard let output = metadataOutput,
+              previewLayer.bounds.width > 0,
+              previewLayer.bounds.height > 0,
+              targetVisualRect.width > 0,
+              targetVisualRect.height > 0 else {
+            return
+        }
+        
+        let converted = previewLayer.metadataOutputRectConverted(fromLayerRect: targetVisualRect)
+        if converted.origin.x >= 0 && converted.origin.y >= 0 &&
+           converted.width > 0 && converted.height > 0 &&
+           (converted.origin.x + converted.width) <= 1.05 &&
+           (converted.origin.y + converted.height) <= 1.05 {
+            output.rectOfInterest = converted
+            DiagnosticLogger.log("Updated metadataOutput.rectOfInterest to \(converted) from visualRect: \(targetVisualRect)")
+        }
     }
 }
 
@@ -292,13 +408,45 @@ public struct BarcodeScannerView: View {
             } else {
                 switch manager.permission {
                 case .authorized:
-                    CameraPreviewRepresentable(session: manager.session)
+                    GeometryReader { geo in
+                        let visualWidth: CGFloat = min(260, geo.size.width - 40)
+                        let visualHeight: CGFloat = min(160, geo.size.height - 20)
+                        let targetRect = CGRect(
+                            x: max(0, (geo.size.width - visualWidth) / 2),
+                            y: max(0, (geo.size.height - visualHeight) / 2),
+                            width: visualWidth,
+                            height: visualHeight
+                        )
+                        CameraPreviewRepresentable(
+                            session: manager.session,
+                            metadataOutput: manager.captureMetadataOutput,
+                            visualTargetRect: targetRect
+                        )
                         .background(Color.black)
+                    }
                 case .notDetermined:
                     permissionRequestingView
                 case .denied:
                     permissionDeniedView
                 }
+            }
+            
+            if let err = manager.setupError {
+                VStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 24))
+                        .foregroundStyle(ProvisionTheme.redAlert)
+                    Text("Camera Setup Error")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text(err)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.white.opacity(0.8))
+                        .multilineTextAlignment(.center)
+                }
+                .padding()
+                .background(Color.black.opacity(0.85))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             }
         }
         .onAppear {
