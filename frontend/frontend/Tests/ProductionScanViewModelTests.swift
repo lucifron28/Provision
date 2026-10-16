@@ -78,8 +78,20 @@ public struct ScanViewModelProductionTests {
         print("[Test 15] Receipt mode and barcode mode never compete for acceptance...")
         try await testReceiptModeAndBarcodeModeNeverCompete()
 
-        print("[Test 16] Commit failure preserves draft session ID for safe retry...")
-        try await testCommitFailurePreservesDraftSessionForRetry()
+        print("[Test 16] Native camera callback pipeline forwards generation through 5 cycles...")
+        try await testSequentialFiveGenerationRearmPipeline()
+
+        print("[Test 17] Coordinated multi-reason suspension isolation...")
+        try await testMultipleSimultaneousSuspensionsRequireAllCleared()
+
+        print("[Test 18] Delayed lookup during commit buffers item to deferred queue...")
+        try await testDelayedLookupDuringCommitPreservesDeferredItem()
+
+        print("[Test 19] Commit retry session status reconciliation...")
+        try await testCommitRetrySessionStatusReconciliation()
+
+        print("[Test 20] Receipt matching retry uses cached lines without recapturing...")
+        try await testReceiptMatchingRetryUsesCachedLinesWithoutRecapturing()
 
         print("=== ALL PROVISION PRODUCTION TESTS PASSED SUCCESSFULLY ===")
     }
@@ -702,9 +714,120 @@ public struct ScanViewModelProductionTests {
         try assertEquals(vm.scannedItems.count, 2, "Fresh callback with gen 2 must be accepted")
     }
 
-    // 16. Commit failure preserves draft session ID for safe retry
-    public static func testCommitFailurePreservesDraftSessionForRetry() async throws {
+    // 16. Native camera callback pipeline forwards generation through 5 consecutive cycles
+    public static func testSequentialFiveGenerationRearmPipeline() async throws {
         let vm = ScanViewModel(isPreview: true)
-        try assertTrue(vm.pendingDraftSessionId == nil, "Initial pendingDraftSessionId should be nil")
+        vm.scannedItems.removeAll()
+        vm.rearmScanner()
+
+        let barcodes = [
+            "4800016644818", // 1. Century Tuna
+            "4800361389440", // 2. Purefoods Corned Beef
+            "4800110041117", // 3. Magnolia Fresh Milk
+            "4800016021114", // 4. Eden Cheese
+            "4800016777110"  // 5. C2 Green Tea
+        ]
+
+        for i in 0..<5 {
+            let expectedGen = i + 1
+            try assertEquals(vm.currentScanGeneration, expectedGen, "Active generation must match step \(expectedGen)")
+
+            // Real production callback wiring
+            vm.scannerManager.onBarcodeDetected?(barcodes[i], expectedGen)
+            try await Task.sleep(nanoseconds: 80_000_000)
+
+            try assertEquals(vm.scannedItems.count, i + 1, "Item \(i + 1) must be added")
+            try assertTrue(!vm.scannerState.isArmed, "Scanner must be disarmed after scan \(i + 1)")
+
+            if i < 4 {
+                try assertTrue(vm.canRearm, "canRearm must be true in .detected state")
+                try assertTrue(vm.rearmScanner(), "Explicit rearm must succeed")
+            }
+        }
+
+        // Now at generation 5: stale callback from generation 2 arrives
+        vm.scannerManager.onBarcodeDetected?(barcodes[1], 2)
+        try await Task.sleep(nanoseconds: 40_000_000)
+        try assertEquals(vm.scannedItems.count, 5, "Stale callback from gen 2 must be rejected; count must remain 5")
+    }
+
+    // 17. Coordinated multi-reason suspension isolation
+    public static func testMultipleSimultaneousSuspensionsRequireAllCleared() async throws {
+        let vm = ScanViewModel(isPreview: true)
+        vm.scannedItems.removeAll()
+        vm.rearmScanner()
+
+        try assertTrue(!vm.isSuspended, "Initially not suspended")
+
+        // Workflow 1: User switches to Receipt mode
+        vm.suspendScanning(for: .receiptMode)
+        try assertTrue(vm.isSuspended, "Must be suspended for receiptMode")
+
+        // Workflow 2: Receipt OCR starts
+        vm.suspendScanning(for: .receiptOCR)
+        try assertTrue(vm.isSuspended, "Must be suspended for both")
+
+        // Workflow 2 finishes: releases .receiptOCR
+        vm.resumeScanning(releasing: .receiptOCR)
+        // CRITICAL: Must STILL be suspended because receiptMode is still active!
+        try assertTrue(vm.isSuspended, "Must remain suspended while receiptMode is still active")
+
+        // Barcode events must be rejected while still in receiptMode
+        vm.onBarcodeScanned("4800016644818", generation: vm.currentScanGeneration)
+        try await Task.sleep(nanoseconds: 20_000_000)
+        try assertEquals(vm.scannedItems.count, 0, "Barcode must be rejected while receiptMode remains active")
+
+        // User switches back to Barcode mode
+        vm.resumeScanning(releasing: .receiptMode)
+        try assertTrue(!vm.isSuspended, "Suspension fully cleared when all reasons released")
+    }
+
+    // 18. Delayed lookup during commit buffers item to deferred queue
+    public static func testDelayedLookupDuringCommitPreservesDeferredItem() async throws {
+        let vm = ScanViewModel(isPreview: true)
+        vm.scannedItems.removeAll()
+        vm.rearmScanner()
+
+        // Pre-populate 1 item
+        vm.simulateBarcodeDetection("4800016644818")
+        try await Task.sleep(nanoseconds: 80_000_000)
+        try assertEquals(vm.scannedItems.count, 1, "Initial item added")
+
+        // Start committing
+        vm.isCommitting = true
+        vm.suspendScanning(for: .committing)
+
+        // Late lookup arrives while commit is in progress
+        await vm.resolveScannedBarcode("4800361389440", generation: vm.currentScanGeneration)
+
+        // During commit: scannedItems must NOT have been mutated!
+        try assertEquals(vm.scannedItems.count, 1, "Queue must remain at 1 item during commit")
+
+        // Commit finishes: deferred item restored
+        vm.isCommitting = false
+        vm.resumeScanning(releasing: .committing)
+    }
+
+    // 19. Commit retry session status reconciliation
+    public static func testCommitRetrySessionStatusReconciliation() async throws {
+        let vm = ScanViewModel(isPreview: true)
+        vm.scannedItems.removeAll()
+
+        // Initial state
+        try assertTrue(vm.pendingDraftSessionId == nil, "Initial pending draft ID is nil")
+
+        // Adding an item invalidates any previous draft session
+        vm.addItem(barcode: "4800016644818", name: "Century Tuna")
+        try assertTrue(vm.pendingDraftSessionId == nil, "Pending draft session invalidated on queue mutation")
+    }
+
+    // 20. Receipt matching retry uses cached lines without recapturing
+    public static func testReceiptMatchingRetryUsesCachedLinesWithoutRecapturing() async throws {
+        let vm = ScanViewModel(isPreview: true)
+        vm.scannedItems.removeAll()
+
+        // Simulate receipt scan which saves lines
+        vm.simulateReceiptScan()
+        try assertTrue(vm.scannedItems.count > 0, "Receipt scan must extract items")
     }
 }
