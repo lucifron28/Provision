@@ -8,21 +8,21 @@ import UIKit
 
 public enum DiagnosticLogger {
     private static let lock = NSLock()
-    private static var lastLogTimes: [String: Date] = [:]
+    nonisolated(unsafe) private static var lastLogTimes: [String: Date] = [:]
 
-    public static func log(_ message: String) {
+    nonisolated public static func log(_ message: String) {
         #if DEBUG
         print("🔍 [BarcodeScanner] \(message)")
         #endif
     }
 
-    public static func logAccepted(barcode: String) {
+    nonisolated public static func logAccepted(barcode: String) {
         #if DEBUG
         print("✅ [BarcodeScanner:ACCEPTED] Barcode: \(barcode)")
         #endif
     }
 
-    public static func logRejected(barcode: String, reason: String) {
+    nonisolated public static func logRejected(barcode: String, reason: String) {
         #if DEBUG
         lock.lock()
         defer { lock.unlock() }
@@ -41,25 +41,24 @@ public enum DiagnosticLogger {
 
 public final class ScannerAcceptanceGate: @unchecked Sendable {
     private let mutex = NSLock()
-    private var isLocked: Bool = false
-    private var currentGeneration: Int = 1
+    nonisolated(unsafe) private var isLocked: Bool = false
+    nonisolated(unsafe) private var currentGeneration: Int = 1
+    nonisolated public init() {}
 
-    public init() {}
-
-    public func lock() {
+    nonisolated public func lock() {
         mutex.lock()
         defer { mutex.unlock() }
         isLocked = true
     }
 
-    public func unlock(generation: Int) {
+    nonisolated public func unlock(generation: Int) {
         mutex.lock()
         defer { mutex.unlock() }
         isLocked = false
         currentGeneration = generation
     }
 
-    public func tryAccept(barcode: String, generation: Int) -> Bool {
+    nonisolated public func tryAccept(barcode: String, generation: Int) -> Bool {
         mutex.lock()
         defer { mutex.unlock() }
         guard generation == currentGeneration else {
@@ -75,13 +74,13 @@ public final class ScannerAcceptanceGate: @unchecked Sendable {
         return true
     }
 
-    public var isArmed: Bool {
+    nonisolated public var isArmed: Bool {
         mutex.lock()
         defer { mutex.unlock() }
         return !isLocked
     }
 
-    public var generation: Int {
+    nonisolated public var generation: Int {
         mutex.lock()
         defer { mutex.unlock() }
         return currentGeneration
@@ -156,7 +155,7 @@ public final class BarcodeScannerManager: ObservableObject {
     public var onBarcodeDetected: (@MainActor @Sendable (String, Int) -> Void)?
     public var onSessionInterrupted: (@MainActor @Sendable () -> Void)?
     public var onSessionInterruptionEnded: (@MainActor @Sendable () -> Void)?
-
+    public var onPermissionGranted: (@MainActor @Sendable () -> Void)?
     public init() {
         checkHardwareAndPermission()
         setupInterruptionObservers()
@@ -224,15 +223,21 @@ public final class BarcodeScannerManager: ObservableObject {
     public func requestPermission() async -> Bool {
         #if targetEnvironment(simulator)
         self.permission = .authorized
+        self.onPermissionGranted?()
         return true
         #else
         let status = AVCaptureDevice.authorizationStatus(for: .video)
         if status == .authorized {
             self.permission = .authorized
+            self.onPermissionGranted?()
             return true
         } else if status == .notDetermined {
             let granted = await AVCaptureDevice.requestAccess(for: .video)
             self.permission = granted ? .authorized : .denied
+            if granted {
+                DiagnosticLogger.log("Camera access granted by user")
+                self.onPermissionGranted?()
+            }
             return granted
         } else {
             self.permission = .denied
@@ -483,11 +488,11 @@ public final class CameraPreviewUIView: UIView {
 
 public struct BarcodeScannerView: View {
     @ObservedObject public var manager: BarcodeScannerManager
-    public let onBarcodeDetected: @MainActor @Sendable (String) -> Void
+    public let onBarcodeDetected: (@MainActor @Sendable (String, Int) -> Void)?
     
     public init(
         manager: BarcodeScannerManager,
-        onBarcodeDetected: @escaping @MainActor @Sendable (String) -> Void
+        onBarcodeDetected: (@MainActor @Sendable (String, Int) -> Void)? = nil
     ) {
         self.manager = manager
         self.onBarcodeDetected = onBarcodeDetected
@@ -548,17 +553,15 @@ public struct BarcodeScannerView: View {
             }
         }
         .onAppear {
-            manager.onBarcodeDetected = { barcode, _ in
-                onBarcodeDetected(barcode)
+            // Only override manager callback if caller supplied an explicit custom handler
+            if let customCallback = onBarcodeDetected {
+                manager.onBarcodeDetected = customCallback
             }
             if manager.isCameraAvailable && manager.permission == .notDetermined {
                 Task {
                     _ = await manager.requestPermission()
                 }
             }
-        }
-        .onDisappear {
-            // Lifecycle start/stop is owned by ScanViewModel coordinator, not presentation layer
         }
     }
 
