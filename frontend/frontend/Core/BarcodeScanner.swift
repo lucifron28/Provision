@@ -7,6 +7,9 @@ import UIKit
 // MARK: - Scanner Diagnostics Logger
 
 public enum DiagnosticLogger {
+    private static let lock = NSLock()
+    private static var lastLogTimes: [String: Date] = [:]
+
     public static func log(_ message: String) {
         #if DEBUG
         print("🔍 [BarcodeScanner] \(message)")
@@ -21,8 +24,67 @@ public enum DiagnosticLogger {
 
     public static func logRejected(barcode: String, reason: String) {
         #if DEBUG
+        lock.lock()
+        defer { lock.unlock() }
+        let key = "\(barcode):\(reason)"
+        let now = Date()
+        if let last = lastLogTimes[key], now.timeIntervalSince(last) < 2.0 {
+            return
+        }
+        lastLogTimes[key] = now
         print("⛔️ [BarcodeScanner:REJECTED] Barcode: \(barcode) — Reason: \(reason)")
         #endif
+    }
+}
+
+// MARK: - Thread-Safe Scanner Acceptance Gate
+
+public final class ScannerAcceptanceGate: @unchecked Sendable {
+    private let mutex = NSLock()
+    private var isLocked: Bool = false
+    private var currentGeneration: Int = 1
+
+    public init() {}
+
+    public func lock() {
+        mutex.lock()
+        defer { mutex.unlock() }
+        isLocked = true
+    }
+
+    public func unlock(generation: Int) {
+        mutex.lock()
+        defer { mutex.unlock() }
+        isLocked = false
+        currentGeneration = generation
+    }
+
+    public func tryAccept(barcode: String, generation: Int) -> Bool {
+        mutex.lock()
+        defer { mutex.unlock() }
+        guard generation == currentGeneration else {
+            DiagnosticLogger.logRejected(barcode: barcode, reason: "Stale generation (got \(generation), current \(currentGeneration))")
+            return false
+        }
+        guard !isLocked else {
+            DiagnosticLogger.logRejected(barcode: barcode, reason: "Acceptance locked")
+            return false
+        }
+        isLocked = true
+        DiagnosticLogger.logAccepted(barcode: barcode)
+        return true
+    }
+
+    public var isArmed: Bool {
+        mutex.lock()
+        defer { mutex.unlock() }
+        return !isLocked
+    }
+
+    public var generation: Int {
+        mutex.lock()
+        defer { mutex.unlock() }
+        return currentGeneration
     }
 }
 
@@ -78,22 +140,61 @@ public final class BarcodeScannerManager: ObservableObject {
     @Published public var isArmed: Bool = true
     @Published public var setupError: String? = nil
     
-    public let session = AVCaptureSession()
+    nonisolated(unsafe) public let session = AVCaptureSession()
     public var captureMetadataOutput: AVCaptureMetadataOutput { metadataOutput }
-    
+
+    public let acceptanceGate = ScannerAcceptanceGate()
+
     private let sessionQueue = DispatchQueue(label: "mseuf.edu.ph.provision.scanner.session")
     private let metadataQueue = DispatchQueue(label: "mseuf.edu.ph.provision.scanner.metadata")
     private let metadataOutput = AVCaptureMetadataOutput()
-    
-    private var isConfigured: Bool = false
+
+    nonisolated(unsafe) private var isSessionConfiguredOnQueue: Bool = false
     private var delegateHolder: AnyObject?
-    
-    // Synchronous acceptance lock on metadataQueue to guarantee strictly 1 accepted event per arming
-    private var isAcceptanceLocked: Bool = false
-    
-    public var onBarcodeDetected: (@MainActor @Sendable (String) -> Void)?
+    private var notificationTokens: [NSObjectProtocol] = []
+
+    public var onBarcodeDetected: (@MainActor @Sendable (String, Int) -> Void)?
+    public var onSessionInterrupted: (@MainActor @Sendable () -> Void)?
+    public var onSessionInterruptionEnded: (@MainActor @Sendable () -> Void)?
+
     public init() {
         checkHardwareAndPermission()
+        setupInterruptionObservers()
+    }
+
+    deinit {
+        for token in notificationTokens {
+            NotificationCenter.default.removeObserver(token)
+        }
+    }
+
+    private func setupInterruptionObservers() {
+        let center = NotificationCenter.default
+        let t1 = center.addObserver(
+            forName: AVCaptureSession.wasInterruptedNotification,
+            object: session,
+            queue: nil
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                DiagnosticLogger.log("AVCaptureSession was interrupted")
+                self.lockAcceptance()
+                self.isScanning = false
+                self.onSessionInterrupted?()
+            }
+        }
+        let t2 = center.addObserver(
+            forName: AVCaptureSession.interruptionEndedNotification,
+            object: session,
+            queue: nil
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                DiagnosticLogger.log("AVCaptureSession interruption ended")
+                self.onSessionInterruptionEnded?()
+            }
+        }
+        notificationTokens.append(contentsOf: [t1, t2])
     }
     
     public func checkHardwareAndPermission() {
@@ -142,27 +243,28 @@ public final class BarcodeScannerManager: ObservableObject {
     
     public func startScanning() {
         guard isCameraAvailable else { return }
-        
+
         checkHardwareAndPermission()
         guard permission == .authorized else { return }
-        
+
         sessionQueue.async { [weak self] in
             guard let self = self else { return }
-            if !self.isConfigured {
-                self.configureSessionOnQueue()
+            if !self.isSessionConfiguredOnQueue {
+                let success = self.configureSessionSynchronouslyOnQueue()
+                guard success else { return }
             }
-            guard self.isConfigured else { return }
-            
+
             if !self.session.isRunning {
                 DiagnosticLogger.log("Starting AVCaptureSession")
                 self.session.startRunning()
+                let running = self.session.isRunning
                 Task { @MainActor [weak self] in
-                    self?.isScanning = true
+                    self?.isScanning = running
                 }
             }
         }
     }
-    
+
     public func stopScanning() {
         guard isCameraAvailable else { return }
         sessionQueue.async { [weak self] in
@@ -170,80 +272,66 @@ public final class BarcodeScannerManager: ObservableObject {
             if self.session.isRunning {
                 DiagnosticLogger.log("Stopping AVCaptureSession")
                 self.session.stopRunning()
-                Task { @MainActor [weak self] in
-                    self?.isScanning = false
-                }
+            }
+            Task { @MainActor [weak self] in
+                self?.isScanning = false
             }
         }
     }
 
-    public func rearm() {
-        metadataQueue.async { [weak self] in
-            guard let self = self else { return }
-            self.isAcceptanceLocked = false
-            DiagnosticLogger.log("BarcodeScannerManager rearmed")
-            Task { @MainActor [weak self] in
-                self?.isArmed = true
-            }
-        }
+    public func rearm(generation: Int = 1) {
+        acceptanceGate.unlock(generation: generation)
+        DiagnosticLogger.log("BarcodeScannerManager rearmed (generation=\(generation))")
+        self.isArmed = true
     }
 
     public func lockAcceptance() {
-        metadataQueue.async { [weak self] in
-            guard let self = self else { return }
-            self.isAcceptanceLocked = true
-            DiagnosticLogger.log("BarcodeScannerManager acceptance locked")
-            Task { @MainActor [weak self] in
-                self?.isArmed = false
-            }
-        }
+        acceptanceGate.lock()
+        DiagnosticLogger.log("BarcodeScannerManager acceptance locked")
+        self.isArmed = false
     }
-    
-    private nonisolated func configureSessionOnQueue() {
-        #if !targetEnvironment(simulator)
-        guard !isConfigured else { return }
+
+    private nonisolated func configureSessionSynchronouslyOnQueue() -> Bool {
+        #if targetEnvironment(simulator)
+        return true
+        #else
+        guard !isSessionConfiguredOnQueue else { return true }
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
             Task { @MainActor [weak self] in
                 self?.setupError = "Rear camera not available on this device."
             }
-            return
+            return false
         }
-        
+
         do {
             DiagnosticLogger.log("Configuring AVCaptureSession on sessionQueue...")
             session.beginConfiguration()
             session.sessionPreset = .high
-            
+
             let input = try AVCaptureDeviceInput(device: device)
             if session.canAddInput(input) {
                 session.addInput(input)
+            } else {
+                session.commitConfiguration()
+                Task { @MainActor [weak self] in
+                    self?.setupError = "Cannot attach camera input to session."
+                }
+                return false
             }
-            
+
             if session.canAddOutput(metadataOutput) {
                 session.addOutput(metadataOutput)
-                
-                let delegate = BarcodeMetadataDelegate { [weak self] rawCode in
-                    guard let self = self else { return }
-                    // Runs synchronously on metadataQueue!
-                    guard !self.isAcceptanceLocked else {
-                        DiagnosticLogger.logRejected(barcode: rawCode, reason: "Acceptance locked")
-                        return
-                    }
-                    // Synchronously lock acceptance on the first detected frame!
-                    self.isAcceptanceLocked = true
-                    DiagnosticLogger.logAccepted(barcode: rawCode)
-                    
+
+                let delegate = BarcodeMetadataDelegate(gate: acceptanceGate) { [weak self] rawCode, gen in
                     Task { @MainActor [weak self] in
                         self?.isArmed = false
                         self?.lastDetectedBarcode = rawCode
-                        self?.onBarcodeDetected?(rawCode)
+                        self?.onBarcodeDetected?(rawCode, gen)
                     }
                 }
-                
                 self.delegateHolder = delegate
                 metadataOutput.setMetadataObjectsDelegate(delegate, queue: metadataQueue)
-                
-                // Grocery retail formats only: EAN-13, EAN-8, UPC-E, Code 128, Code 39 (NO .qr!)
+
                 let targetTypes: [AVMetadataObject.ObjectType] = [
                     .ean13,
                     .ean8,
@@ -256,16 +344,16 @@ public final class BarcodeScannerManager: ObservableObject {
                 metadataOutput.metadataObjectTypes = supported
                 DiagnosticLogger.log("Configured metadataObjectTypes: \(supported.map { $0.rawValue })")
             }
-            
+
             session.commitConfiguration()
-            
-            Task { @MainActor [weak self] in
-                self?.isConfigured = true
-            }
+            self.isSessionConfiguredOnQueue = true
+            return true
         } catch {
+            session.commitConfiguration()
             Task { @MainActor [weak self] in
                 self?.setupError = "Camera setup failed: \(error.localizedDescription)"
             }
+            return false
         }
         #endif
     }
@@ -274,12 +362,14 @@ public final class BarcodeScannerManager: ObservableObject {
 // MARK: - AVCaptureMetadataOutputObjectsDelegate
 
 private final class BarcodeMetadataDelegate: NSObject, AVCaptureMetadataOutputObjectsDelegate, @unchecked Sendable {
-    private let onCodeDetected: @Sendable (String) -> Void
-    
-    init(onCodeDetected: @escaping @Sendable (String) -> Void) {
-        self.onCodeDetected = onCodeDetected
+    private let gate: ScannerAcceptanceGate
+    private let onCodeAccepted: @Sendable (String, Int) -> Void
+
+    init(gate: ScannerAcceptanceGate, onCodeAccepted: @escaping @Sendable (String, Int) -> Void) {
+        self.gate = gate
+        self.onCodeAccepted = onCodeAccepted
     }
-    
+
     nonisolated func metadataOutput(
         _ output: AVCaptureMetadataOutput,
         didOutput metadataObjects: [AVMetadataObject],
@@ -290,7 +380,10 @@ private final class BarcodeMetadataDelegate: NSObject, AVCaptureMetadataOutputOb
               !stringValue.isEmpty else {
             return
         }
-        onCodeDetected(stringValue)
+        let gen = gate.generation
+        if gate.tryAccept(barcode: stringValue, generation: gen) {
+            onCodeAccepted(stringValue, gen)
+        }
     }
 }
 
@@ -410,19 +503,24 @@ public struct BarcodeScannerView: View {
                 case .authorized:
                     GeometryReader { geo in
                         let visualWidth: CGFloat = min(260, geo.size.width - 40)
-                        let visualHeight: CGFloat = min(160, geo.size.height - 20)
+                        let visualHeight: CGFloat = min(140, geo.size.height - 20)
                         let targetRect = CGRect(
                             x: max(0, (geo.size.width - visualWidth) / 2),
                             y: max(0, (geo.size.height - visualHeight) / 2),
                             width: visualWidth,
                             height: visualHeight
                         )
-                        CameraPreviewRepresentable(
-                            session: manager.session,
-                            metadataOutput: manager.captureMetadataOutput,
-                            visualTargetRect: targetRect
-                        )
-                        .background(Color.black)
+                        ZStack {
+                            CameraPreviewRepresentable(
+                                session: manager.session,
+                                metadataOutput: manager.captureMetadataOutput,
+                                visualTargetRect: targetRect
+                            )
+                            .background(Color.black)
+
+                            VisualReticleGuide(rect: targetRect)
+                                .allowsHitTesting(false)
+                        }
                     }
                 case .notDetermined:
                     permissionRequestingView
@@ -450,22 +548,60 @@ public struct BarcodeScannerView: View {
             }
         }
         .onAppear {
-            manager.onBarcodeDetected = onBarcodeDetected
-            if manager.isCameraAvailable {
-                if manager.permission == .notDetermined {
-                    Task {
-                        _ = await manager.requestPermission()
-                        if manager.permission == .authorized {
-                            manager.startScanning()
-                        }
-                    }
-                } else if manager.permission == .authorized {
-                    manager.startScanning()
+            manager.onBarcodeDetected = { barcode, _ in
+                onBarcodeDetected(barcode)
+            }
+            if manager.isCameraAvailable && manager.permission == .notDetermined {
+                Task {
+                    _ = await manager.requestPermission()
                 }
             }
         }
         .onDisappear {
-            manager.stopScanning()
+            // Lifecycle start/stop is owned by ScanViewModel coordinator, not presentation layer
+        }
+    }
+
+    public struct VisualReticleGuide: View {
+        public let rect: CGRect
+        public let bracketLength: CGFloat = 20
+        public let bracketWidth: CGFloat = 3
+        public let color: Color = ProvisionTheme.heroCard
+
+        public init(rect: CGRect) {
+            self.rect = rect
+        }
+
+        public var body: some View {
+            Canvas { context, _ in
+                // Top Left
+                var tl = Path()
+                tl.move(to: CGPoint(x: rect.minX, y: rect.minY + bracketLength))
+                tl.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+                tl.addLine(to: CGPoint(x: rect.minX + bracketLength, y: rect.minY))
+                context.stroke(tl, with: .color(color), lineWidth: bracketWidth)
+
+                // Top Right
+                var tr = Path()
+                tr.move(to: CGPoint(x: rect.maxX - bracketLength, y: rect.minY))
+                tr.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+                tr.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + bracketLength))
+                context.stroke(tr, with: .color(color), lineWidth: bracketWidth)
+
+                // Bottom Left
+                var bl = Path()
+                bl.move(to: CGPoint(x: rect.minX, y: rect.maxY - bracketLength))
+                bl.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+                bl.addLine(to: CGPoint(x: rect.minX + bracketLength, y: rect.maxY))
+                context.stroke(bl, with: .color(color), lineWidth: bracketWidth)
+
+                // Bottom Right
+                var br = Path()
+                br.move(to: CGPoint(x: rect.maxX - bracketLength, y: rect.maxY))
+                br.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+                br.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - bracketLength))
+                context.stroke(br, with: .color(color), lineWidth: bracketWidth)
+            }
         }
     }
     
