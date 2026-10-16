@@ -15,6 +15,7 @@ public struct ScannedIntakeItem: Identifiable, Hashable, Sendable {
     public var storageLocationId: Int?
     public var unitPrice: Double?
     public var isConfirmed: Bool
+    public var conflictingReceiptQuantity: Double? = nil
 
     public enum IntakeStatus: String, Sendable {
         case autoLogged = "Auto-logged"
@@ -35,7 +36,8 @@ public struct ScannedIntakeItem: Identifiable, Hashable, Sendable {
         productId: Int? = nil,
         storageLocationId: Int? = nil,
         unitPrice: Double? = nil,
-        isConfirmed: Bool = false
+        isConfirmed: Bool = false,
+        conflictingReceiptQuantity: Double? = nil
     ) {
         self.id = id
         self.name = name
@@ -49,6 +51,7 @@ public struct ScannedIntakeItem: Identifiable, Hashable, Sendable {
         self.storageLocationId = storageLocationId
         self.unitPrice = unitPrice
         self.isConfirmed = isConfirmed
+        self.conflictingReceiptQuantity = conflictingReceiptQuantity
     }
 }
 
@@ -311,9 +314,16 @@ public class ScanViewModel: ObservableObject {
             if scannedItems[idx].quantity > 1.0 {
                 scannedItems[idx].quantity -= 1.0
                 invalidateConfirmation(at: idx)
-            } else {
-                scannedItems.remove(at: idx)
             }
+            // Bounded stepper: stops at minimum quantity 1.0. Does NOT delete item!
+        }
+    }
+
+    public func removeItem(id: UUID) {
+        if let idx = scannedItems.firstIndex(where: { $0.id == id }) {
+            let name = scannedItems[idx].name
+            scannedItems.remove(at: idx)
+            showToast("Removed \(name) from intake")
         }
     }
 
@@ -425,24 +435,47 @@ public class ScanViewModel: ObservableObject {
     private func reconcileExistingItem(at idx: Int, with receiptItem: ReceiptLineItem) {
         let existing = scannedItems[idx]
 
-        // Priority 4: Safe reconciliation - avoid double-counting
-        // Reconcile quantity to maximum observed (receipt basket count or already scanned count)
-        let finalQuantity = max(existing.quantity, receiptItem.quantity)
-        let quantityChanged = (existing.quantity != finalQuantity)
-        scannedItems[idx].quantity = finalQuantity
-
-        // Update unit price from verified receipt if available
-        if let price = receiptItem.unitPrice {
-            scannedItems[idx].unitPrice = price
-        }
-
-        // Flag for user review if quantities differed, confidence was uncertain, or item was previously confirmed
-        if quantityChanged || existing.isConfirmed || receiptItem.confidence == .uncertain {
+        // Priority 4: Safe reconciliation - avoid double-counting or blind max()
+        if existing.quantity == receiptItem.quantity {
+            // Quantities agree: attach receipt unit price if available
+            if let price = receiptItem.unitPrice {
+                scannedItems[idx].unitPrice = price
+            }
+            if receiptItem.confidence == .uncertain {
+                scannedItems[idx].status = .needsReview
+            }
+        } else {
+            // Explicit conflict: scanned barcode count != receipt line count
+            // Flag conflict explicitly so the user can choose the intended final quantity
+            scannedItems[idx].conflictingReceiptQuantity = receiptItem.quantity
+            if let price = receiptItem.unitPrice {
+                scannedItems[idx].unitPrice = price
+            }
             scannedItems[idx].status = .needsReview
         }
 
         // Always invalidate confirmation when receipt reconciliation modifies an item
         invalidateConfirmation(at: idx)
+    }
+
+    public func resolveQuantityConflict(id: UUID, keepQuantity: Double) {
+        guard let idx = scannedItems.firstIndex(where: { $0.id == id }) else { return }
+        scannedItems[idx].quantity = max(1.0, keepQuantity)
+        scannedItems[idx].conflictingReceiptQuantity = nil
+        if scannedItems[idx].productId != nil {
+            scannedItems[idx].status = .recognized
+        }
+        invalidateConfirmation(at: idx)
+        showToast("Set quantity to \(Int(keepQuantity)) \(scannedItems[idx].unit)")
+    }
+
+    private func deterministicReceiptBarcode(name: String) -> String {
+        let normalized = name.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+            .joined(separator: "-")
+        let key = normalized.isEmpty ? "unmatched-item" : normalized
+        return "RCPT-" + key.prefix(24)
     }
 
     private func integrateReceiptItems(_ parsedItems: [ReceiptLineItem]) {
@@ -452,7 +485,8 @@ public class ScanViewModel: ObservableObject {
         for item in parsedItems {
             let isRecognized = (item.confidence == .exact || item.confidence == .high) && item.matchedProduct != nil
             let status: ScannedIntakeItem.IntakeStatus = isRecognized ? .recognized : .needsReview
-            let candidateBarcode = item.matchedProduct?.barcode ?? UUID().uuidString.prefix(8).description
+            // Medium: Generate deterministic identifier for unmatched items to prevent duplicates on re-import
+            let candidateBarcode = item.matchedProduct?.barcode ?? deterministicReceiptBarcode(name: item.parsedName)
 
             // Identify existing items using reliable product identifiers
             if let pid = item.matchedProduct?.id, let idx = scannedItems.firstIndex(where: { $0.productId == pid }) {
@@ -546,6 +580,10 @@ public class ScanViewModel: ObservableObject {
         var target = scannedItems[idx]
 
         // An item can only be confirmed if it has a productId, is not .needsReview, has storageLocationId, and valid quantity/unit
+        guard target.conflictingReceiptQuantity == nil else {
+            self.errorMessage = "Cannot confirm: '\(target.name)' has an unresolved quantity conflict. Please choose the correct quantity first."
+            return false
+        }
         guard target.productId != nil && target.status != .needsReview else {
             self.errorMessage = "Cannot confirm: '\(target.name)' is unresolved. Please link or register the product first."
             return false
@@ -574,6 +612,7 @@ public class ScanViewModel: ObservableObject {
             let item = scannedItems[idx]
             if item.productId != nil &&
                 item.status != .needsReview &&
+                item.conflictingReceiptQuantity == nil &&
                 item.storageLocationId != nil &&
                 item.quantity > 0 &&
                 !item.unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -613,6 +652,11 @@ public class ScanViewModel: ObservableObject {
         errorMessage = nil
         // Enforce strict validation
         for item in scannedItems {
+            guard item.conflictingReceiptQuantity == nil else {
+                self.errorMessage = "Cannot commit: '\(item.name)' has an unresolved quantity conflict (scanned \(Int(item.quantity)) vs receipt \(Int(item.conflictingReceiptQuantity!))). Please resolve before committing."
+                isCommitting = false
+                return
+            }
             guard item.productId != nil && item.status != .needsReview else {
                 self.errorMessage = "Cannot commit: '\(item.name)' is unresolved. Please link or register the product first."
                 isCommitting = false
