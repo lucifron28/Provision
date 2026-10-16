@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional, List
+from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 from app.models.session import GrocerySessionStatus
 from app.schemas.batch import InventoryBatchRead
@@ -14,7 +15,7 @@ class GrocerySessionBase(BaseModel):
 
 
 class GrocerySessionCreate(GrocerySessionBase):
-    pass
+    idempotency_key: Optional[UUID] = None
 
 
 class GrocerySessionUpdate(BaseModel):

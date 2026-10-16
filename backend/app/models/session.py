@@ -29,5 +29,7 @@ class GrocerySession(Base, TimestampMixin):
         nullable=False,
     )
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    idempotency_key: Mapped[Optional[str]] = mapped_column(String(36), unique=True, index=True, nullable=True)
+    idempotency_fingerprint: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
     batches: Mapped[List["InventoryBatch"]] = relationship("InventoryBatch", back_populates="grocery_session")

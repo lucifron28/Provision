@@ -1,9 +1,12 @@
+import hashlib
+import json
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
 from app.models.session import GrocerySession, GrocerySessionStatus
@@ -51,21 +54,53 @@ def list_sessions(
     return db.scalars(stmt).all()
 
 
+def _session_create_fingerprint(session_in: GrocerySessionCreate) -> str:
+    payload = session_in.model_dump(mode="json", exclude={"idempotency_key"})
+    canonical_payload = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical_payload.encode("utf-8")).hexdigest()
+
+
+def _find_idempotent_session(db: Session, key: str, fingerprint: str) -> Optional[GrocerySession]:
+    session = db.scalar(select(GrocerySession).where(GrocerySession.idempotency_key == key))
+    if session is not None and session.idempotency_fingerprint != fingerprint:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Idempotency key was already used with different session details",
+        )
+    return session
+
 @router.post("/", response_model=GrocerySessionRead, status_code=status.HTTP_201_CREATED)
 def start_grocery_session(
     session_in: GrocerySessionCreate,
     db: Session = Depends(get_db),
 ):
-    purchase_date = session_in.purchase_date or datetime.now(timezone.utc)
+    idempotency_key = str(session_in.idempotency_key) if session_in.idempotency_key else None
+    fingerprint = _session_create_fingerprint(session_in) if idempotency_key else None
+
+    if idempotency_key and fingerprint:
+        existing = _find_idempotent_session(db, idempotency_key, fingerprint)
+        if existing is not None:
+            return existing
+
     session = GrocerySession(
         store_name=session_in.store_name,
-        purchase_date=purchase_date,
+        purchase_date=session_in.purchase_date or datetime.now(timezone.utc),
         total_amount=session_in.total_amount,
         status=GrocerySessionStatus.DRAFT,
         notes=session_in.notes,
+        idempotency_key=idempotency_key,
+        idempotency_fingerprint=fingerprint,
     )
     db.add(session)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        if idempotency_key and fingerprint:
+            existing = _find_idempotent_session(db, idempotency_key, fingerprint)
+            if existing is not None:
+                return existing
+        raise
     db.refresh(session)
     return session
 

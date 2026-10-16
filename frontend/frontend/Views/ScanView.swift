@@ -455,9 +455,10 @@ public struct ScanView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
-            } else if case .paused = viewModel.scannerState, !viewModel.isSuspended {
+            } else if case .paused = viewModel.scannerState,
+                      viewModel.activeSuspensions.contains(.userPaused) {
                 Button {
-                    viewModel.rearmScanner()
+                    viewModel.resumeScanning(releasing: .userPaused)
                 } label: {
                     Text("Resume")
                         .font(.system(size: 13, weight: .semibold))
@@ -468,6 +469,7 @@ public struct ScanView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
+                .disabled(viewModel.isIntakeMutationLocked)
             }
         }
     }

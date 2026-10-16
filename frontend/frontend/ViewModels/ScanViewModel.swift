@@ -76,11 +76,23 @@ public enum SuspensionReason: String, CaseIterable, Hashable, Sendable {
 }
 
 private struct PendingIntakeCommit: Codable {
-    let sessionID: Int
+    let sessionID: Int?
     let fingerprint: String
     let storeName: String
     let intakeItems: [ScannedIntakeItem]
     let requestItems: [SessionItemCreate]
+    let creationRequest: GrocerySessionCreate?
+
+    func attaching(sessionID: Int) -> PendingIntakeCommit {
+        PendingIntakeCommit(
+            sessionID: sessionID,
+            fingerprint: fingerprint,
+            storeName: storeName,
+            intakeItems: intakeItems,
+            requestItems: requestItems,
+            creationRequest: creationRequest
+        )
+    }
 }
 
 private struct IntakeFingerprintPayload: Codable {
@@ -115,7 +127,7 @@ public class ScanViewModel: ObservableObject {
     public var isSuspended: Bool { !activeSuspensions.isEmpty }
     public var currentSuspensionReason: String? { activeSuspensions.first?.rawValue }
     public var suspensionReason: String? { currentSuspensionReason }
-    public var hasPendingCommitRecovery: Bool { pendingDraftSessionId != nil || pendingCommitRecoveryError != nil }
+    public var hasPendingCommitRecovery: Bool { pendingIntakeCommit != nil || pendingCommitRecoveryError != nil }
     public var isIntakeMutationLocked: Bool { isCommitting || hasPendingCommitRecovery }
 
     @Published public private(set) var pendingDraftSessionId: Int? = nil
@@ -258,6 +270,11 @@ public class ScanViewModel: ObservableObject {
             #if DEBUG
             DiagnosticLogger.log("Released suspension [\(reason.rawValue)]. Remaining suspensions count: \(activeSuspensions.count)")
             #endif
+
+            if reason == .userPaused, case .paused = scannerState {
+                currentScanGeneration += 1
+                scannerState = .ready
+            }
         }
         startScanningIfAvailable()
     }
@@ -1003,18 +1020,7 @@ public class ScanViewModel: ObservableObject {
                     errorMessage = "The saved intake changed after a previous submission. The original snapshot was restored; reconcile it before editing."
                     return
                 }
-
-                let session = try await client.fetchSession(id: pending.sessionID)
-                switch session.status.uppercased() {
-                case "COMPLETED":
-                    clearCommittedIntake(committedCount: pending.requestItems.count)
-                case "DRAFT":
-                    await submitPendingCommit(pending)
-                case "CANCELLED":
-                    clearCancelledPendingCommit()
-                default:
-                    errorMessage = "Previous intake session #\(pending.sessionID) has status '\(session.status)'. No new session was created."
-                }
+                try await reconcilePendingCommit(pending)
                 return
             }
 
@@ -1039,23 +1045,23 @@ public class ScanViewModel: ObservableObject {
                 item.unitPrice.map { $0 * item.quantity }
             }.reduce(0.0, +)
             let isoFormatter = ISO8601DateFormatter()
-            let createdSession = try await client.createSession(
-                GrocerySessionCreate(
-                    store_name: normalizedStoreName,
-                    purchase_date: isoFormatter.string(from: Date()),
-                    total_amount: computedTotal > 0 ? computedTotal : nil,
-                    notes: "Rapid intake session committed via Provision app"
-                )
+            let creationRequest = GrocerySessionCreate(
+                store_name: normalizedStoreName,
+                purchase_date: isoFormatter.string(from: Date()),
+                total_amount: computedTotal > 0 ? computedTotal : nil,
+                notes: "Rapid intake session committed via Provision app",
+                idempotency_key: UUID().uuidString
             )
             let pending = PendingIntakeCommit(
-                sessionID: createdSession.id,
+                sessionID: nil,
                 fingerprint: fingerprint,
                 storeName: normalizedStoreName,
                 intakeItems: itemsSnapshot,
-                requestItems: requestItems
+                requestItems: requestItems,
+                creationRequest: creationRequest
             )
             try persistPendingCommit(pending)
-            await submitPendingCommit(pending)
+            try await reconcilePendingCommit(pending)
         } catch {
             errorMessage = "Failed to commit intake session: \(error.localizedDescription). The saved submission, if present, remains available for safe reconciliation."
             HapticFeedback.warning()
@@ -1067,7 +1073,7 @@ public class ScanViewModel: ObservableObject {
     }
 
     public func cancelPendingCommitAndUnlock() async {
-        guard !isCommitting, let pending = pendingIntakeCommit else { return }
+        guard !isCommitting, let unresolvedPending = pendingIntakeCommit else { return }
         isCommitting = true
         errorMessage = nil
         suspendScanning(for: .committing)
@@ -1077,13 +1083,17 @@ public class ScanViewModel: ObservableObject {
         }
 
         do {
-            let session = try await client.fetchSession(id: pending.sessionID)
+            let (pending, _) = try await resolvePendingSession(unresolvedPending)
+            guard let sessionID = pending.sessionID else {
+                throw IntakeCommitError.unidentifiedSession
+            }
+            let session = try await client.fetchSession(id: sessionID)
             switch session.status.uppercased() {
             case "COMPLETED":
                 clearCommittedIntake(committedCount: pending.requestItems.count)
                 errorMessage = "The previous intake was already committed. Its result has been reconciled."
             case "DRAFT":
-                let cancelled = try await client.cancelSession(id: pending.sessionID)
+                let cancelled = try await client.cancelSession(id: sessionID)
                 guard cancelled.status.uppercased() == "CANCELLED" else {
                     errorMessage = "The previous draft was not confirmed cancelled. The intake remains locked for reconciliation."
                     return
@@ -1092,24 +1102,65 @@ public class ScanViewModel: ObservableObject {
             case "CANCELLED":
                 clearCancelledPendingCommit()
             default:
-                errorMessage = "Previous intake session #\(pending.sessionID) has status '\(session.status)'. It cannot be safely unlocked."
+                errorMessage = "Previous intake session #\(sessionID) has status '\(session.status)'. It cannot be safely unlocked."
             }
         } catch {
             errorMessage = "Could not safely cancel or reconcile the previous intake: \(error.localizedDescription). No replacement submission was sent."
         }
     }
 
+    private func reconcilePendingCommit(_ unresolvedPending: PendingIntakeCommit) async throws {
+        let (pending, createdSession) = try await resolvePendingSession(unresolvedPending)
+        guard let sessionID = pending.sessionID else {
+            throw IntakeCommitError.unidentifiedSession
+        }
+        let sessionStatus: String
+        if let createdSession {
+            sessionStatus = createdSession.status
+        } else {
+            sessionStatus = try await client.fetchSession(id: sessionID).status
+        }
+        switch sessionStatus.uppercased() {
+        case "COMPLETED":
+            clearCommittedIntake(committedCount: pending.requestItems.count)
+        case "DRAFT":
+            await submitPendingCommit(pending)
+        case "CANCELLED":
+            clearCancelledPendingCommit()
+        default:
+            errorMessage = "Previous intake session #\(sessionID) has status '\(sessionStatus)'. No new session was created."
+        }
+    }
+
+    private func resolvePendingSession(
+        _ pending: PendingIntakeCommit
+    ) async throws -> (pending: PendingIntakeCommit, createdSession: GrocerySession?) {
+        guard pending.sessionID == nil else { return (pending, nil) }
+        guard let creationRequest = pending.creationRequest,
+              creationRequest.idempotency_key != nil else {
+            throw IntakeCommitError.unidentifiedSession
+        }
+        let createdSession = try await client.createSession(creationRequest)
+        let identifiedPending = pending.attaching(sessionID: createdSession.id)
+        try persistPendingCommit(identifiedPending)
+        return (identifiedPending, createdSession)
+    }
+
     private func submitPendingCommit(_ pending: PendingIntakeCommit) async {
+        guard let sessionID = pending.sessionID else {
+            errorMessage = IntakeCommitError.unidentifiedSession.localizedDescription
+            return
+        }
         do {
-            let committed = try await client.commitSession(id: pending.sessionID, items: pending.requestItems)
+            let committed = try await client.commitSession(id: sessionID, items: pending.requestItems)
             guard committed.status.uppercased() == "COMPLETED" else {
-                errorMessage = "Session #\(pending.sessionID) returned status '\(committed.status)'. Its saved submission remains locked for reconciliation."
+                errorMessage = "Session #\(sessionID) returned status '\(committed.status)'. Its saved submission remains locked for reconciliation."
                 return
             }
             clearCommittedIntake(committedCount: pending.requestItems.count)
             HapticFeedback.success()
         } catch {
-            errorMessage = "Could not confirm intake session #\(pending.sessionID): \(error.localizedDescription). Retry reconciliation before editing or creating another session."
+            errorMessage = "Could not confirm intake session #\(sessionID): \(error.localizedDescription). Retry reconciliation before editing or creating another session."
             HapticFeedback.warning()
         }
     }
@@ -1167,8 +1218,14 @@ public class ScanViewModel: ObservableObject {
 
 private enum IntakeCommitError: LocalizedError {
     case invalidItem
+    case unidentifiedSession
 
     var errorDescription: String? {
-        "An intake item has no product or storage location."
+        switch self {
+        case .invalidItem:
+            return "An intake item has no product or storage location."
+        case .unidentifiedSession:
+            return "Saved session creation cannot be replayed safely because its idempotency key is unavailable."
+        }
     }
 }

@@ -1,0 +1,35 @@
+name: Provision tests
+
+on:
+  push:
+    branches: [main, fix/apple-design-ux-refinement]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ios:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show Xcode and simulator runtimes
+        run: xcodebuild -version && xcrun simctl list devices available
+      - name: Run scanner XCTest suite
+        run: >-
+          xcodebuild test
+          -project frontend/frontend.xcodeproj
+          -scheme frontend
+          -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
+          CODE_SIGNING_ALLOWED=NO
+
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+          python-version: "3.13"
+      - name: Run backend tests
+        working-directory: backend
+        run: uv run pytest

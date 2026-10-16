@@ -101,6 +101,12 @@ public struct ScanViewModelProductionTests {
 
         print("[Test 23] Changed intake is locked until the pending draft is cancelled...")
         try await testModifiedIntakeRequiresSafeDraftCancellation()
+
+        print("[Test 24] Lost initial draft response retries with the same idempotency key...")
+        try await testLostInitialSessionResponseReplaysIdempotentlyAfterRestart()
+
+        print("[Test 25] Explicit pause resumes without clearing unrelated suspensions...")
+        try await testUserPauseResumesIndependently()
         print("=== ALL PROVISION PRODUCTION TESTS PASSED SUCCESSFULLY ===")
     }
 
@@ -1026,6 +1032,119 @@ public struct ScanViewModelProductionTests {
         vm.updateItemLocation(id: item.id, locationId: 9)
         try assertEquals(vm.scannedItems[0].storageLocationId, 9, "Editing is safe after the old draft is confirmed cancelled")
         try assertEquals(server.value("creates"), "1", "Cancellation must not create a replacement session")
+    }
+
+    // 24. The first draft is created server-side but its response is lost; restart retries the same key.
+    public static func testLostInitialSessionResponseReplaysIdempotentlyAfterRestart() async throws {
+        let server = ScannerTestServer()
+        defer { server.clear(); ScannerTestURLProtocol.install(nil) }
+        let defaults = makeTestDefaults()
+        server.setValue("sessionStatus", "DRAFT")
+        server.setHandler { request, stub in
+            let path = request.url?.path ?? ""
+            if request.httpMethod == "POST", server.pathEndsWith(request, component: "grocery-sessions") {
+                let attempt = server.increment("createAttempts")
+                guard let body = server.requestBodies(method: "POST", pathSuffix: "/grocery-sessions").last,
+                      let createRequest = try? JSONDecoder().decode(GrocerySessionCreate.self, from: body),
+                      let key = createRequest.idempotency_key else {
+                    stub.respond(status: 400, data: Data(#"{"detail":"Missing idempotency key"}"#.utf8))
+                    return
+                }
+                if let storedKey = server.value("storedIdempotencyKey") {
+                    guard storedKey == key else {
+                        stub.respond(status: 409, data: Data(#"{"detail":"Idempotency key changed"}"#.utf8))
+                        return
+                    }
+                    stub.respond(status: 201, data: sessionResponse(id: 704, status: "DRAFT"))
+                } else {
+                    server.setValue("storedIdempotencyKey", key)
+                    _ = server.increment("createdSessions")
+                    if attempt == 1 {
+                        stub.fail(URLError(.networkConnectionLost))
+                    } else {
+                        stub.respond(status: 201, data: sessionResponse(id: 704, status: "DRAFT"))
+                    }
+                }
+            } else if request.httpMethod == "GET", path.hasSuffix("/704") {
+                stub.respond(status: 200, data: sessionResponse(id: 704, status: server.value("sessionStatus") ?? "DRAFT"))
+            } else if request.httpMethod == "POST", path.hasSuffix("/704/commit") {
+                _ = server.increment("commits")
+                server.setValue("sessionStatus", "COMPLETED")
+                stub.respond(status: 200, data: sessionResponse(id: 704, status: "COMPLETED"))
+            } else {
+                stub.respond(status: 500, data: Data(#"{"detail":"Unexpected test request"}"#.utf8))
+            }
+        }
+
+        let firstProcess = ScanViewModel(
+            client: makeTestClient(server: server),
+            isPreview: false,
+            pendingCommitDefaults: defaults
+        )
+        let item = makeConfirmedItem(productID: 51, locationID: 12)
+        firstProcess.scannedItems = [item]
+        firstProcess.storeName = "Stable Store"
+        await firstProcess.commitIntakeSession()
+        try assertEquals(firstProcess.pendingDraftSessionId, nil, "A lost create response must not fabricate a draft ID")
+        try assertTrue(firstProcess.hasPendingCommitRecovery, "The creation key and payload must remain durably recoverable")
+        try assertEquals(firstProcess.scannedItems, [item], "The original queue must remain locked after an uncertain create")
+
+        let relaunchedProcess = ScanViewModel(
+            client: makeTestClient(server: server),
+            isPreview: false,
+            pendingCommitDefaults: defaults
+        )
+        try assertEquals(relaunchedProcess.pendingDraftSessionId, nil, "Relaunch must preserve the unresolved server-generated ID state")
+        try assertEquals(relaunchedProcess.scannedItems, [item], "Relaunch must restore the original intake snapshot")
+        await relaunchedProcess.commitIntakeSession()
+
+        try assertEquals(server.value("createdSessions"), "1", "Idempotent replay must leave only one server draft")
+        try assertEquals(server.value("createAttempts"), "2", "Recovery must replay the initial creation request")
+        try assertEquals(server.value("commits"), "1", "The recovered draft must be committed exactly once")
+        try assertEquals(relaunchedProcess.pendingDraftSessionId, nil, "Successful reconciliation must clear the pending draft ID")
+        try assertTrue(relaunchedProcess.scannedItems.isEmpty, "Successful reconciliation must clear the committed queue")
+
+        let creationBodies = server.requestBodies(method: "POST", pathSuffix: "/grocery-sessions")
+        try assertEquals(creationBodies.count, 2, "Initial create and recovery must both reach the server")
+        let canonicalCreationBodies = try creationBodies.map { body in
+            let payload = try JSONSerialization.jsonObject(with: body)
+            return try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        }
+        try assertEquals(canonicalCreationBodies[0], canonicalCreationBodies[1], "Retry must replay the same canonical creation payload and idempotency key")
+        let firstRequest = try JSONDecoder().decode(GrocerySessionCreate.self, from: creationBodies[0])
+        let retryRequest = try JSONDecoder().decode(GrocerySessionCreate.self, from: creationBodies[1])
+        try assertTrue(firstRequest.idempotency_key != nil, "Session creation must carry a client-generated idempotency key")
+        try assertEquals(firstRequest.store_name, retryRequest.store_name, "Store name must survive retry")
+        try assertEquals(firstRequest.purchase_date, retryRequest.purchase_date, "Purchase timestamp must survive retry")
+        try assertEquals(firstRequest.total_amount, retryRequest.total_amount, "Total must survive retry")
+        try assertEquals(firstRequest.notes, retryRequest.notes, "Notes must survive retry")
+        try assertEquals(firstRequest.idempotency_key, retryRequest.idempotency_key, "The idempotency key must survive process relaunch")
+    }
+
+    // 25. Resume removes only the user-owned reason and arms scanning after all other holds clear.
+    public static func testUserPauseResumesIndependently() async throws {
+        let vm = ScanViewModel(isPreview: false, pendingCommitDefaults: makeTestDefaults())
+        let startingGeneration = vm.currentScanGeneration
+        vm.pauseScanning(reason: "Manual pause")
+        vm.suspendScanning(for: .receiptMode)
+
+        try assertTrue(vm.activeSuspensions.contains(.userPaused), "Pause must own a user-pause suspension")
+        try assertTrue(!vm.scannerManager.acceptanceGate.isArmed, "Paused scanning must reject barcode frames")
+        vm.resumeScanning(releasing: .userPaused)
+
+        try assertTrue(!vm.activeSuspensions.contains(.userPaused), "Resume must release the user-pause suspension")
+        try assertTrue(vm.activeSuspensions.contains(.receiptMode), "Resume must preserve unrelated Receipt-mode suspension")
+        try assertTrue(vm.scannerState == .ready, "Resume must leave the scanner ready for the next permitted start")
+        try assertEquals(vm.currentScanGeneration, startingGeneration + 1, "Resume must invalidate frames captured before the pause")
+        try assertTrue(!vm.scannerManager.acceptanceGate.isArmed, "Other active suspensions must continue to block capture")
+
+        vm.resumeScanning(releasing: .navigatedAway)
+        try assertTrue(vm.activeSuspensions == [.receiptMode], "Navigation release must not clear Receipt mode")
+        try assertTrue(!vm.scannerManager.acceptanceGate.isArmed, "Receipt mode must still prevent scanner rearming")
+        vm.resumeScanning(releasing: .receiptMode)
+        try assertTrue(vm.activeSuspensions.isEmpty, "All independent suspension reasons must be released")
+        try assertTrue(vm.scannerManager.acceptanceGate.isArmed, "The scanner must rearm when the final hold is removed")
+        try assertEquals(vm.scannerManager.acceptanceGate.generation, vm.currentScanGeneration, "The active manager generation must match the resumed ViewModel")
     }
 
     private static func makeTestClient(server: ScannerTestServer) -> APIClient {

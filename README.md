@@ -71,7 +71,7 @@ open frontend/frontend.xcodeproj
 - **Simulator Development:** Connects by default to `http://127.0.0.1:8000/api/v1`.
 - **Physical Device Testing:** Set your development Mac's LAN IP in `APIEnvironment.localDeviceHost` (`frontend/frontend/Core/APIClient.swift`). Local HTTP traffic is permitted via `NSAllowsLocalNetworking`.
 
-- **Intake scanning:** Camera capture starts only after permission is granted; receipt capture suspends barcode delivery independently. Failed grocery-session submissions retain their exact request for server reconciliation or confirmed draft cancellation before the intake can be changed.
+- **Intake scanning:** Camera capture starts only after permission is granted; receipt-camera presentation has independent barcode suspension; explicit Resume releases only the user-pause hold. Pending grocery-session creation and commit requests persist their exact payload and idempotency key for safe replay after a lost response; editing remains locked until server reconciliation or confirmed draft cancellation.
 
 ---
 
