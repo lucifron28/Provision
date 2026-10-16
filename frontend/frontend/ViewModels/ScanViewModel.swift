@@ -55,6 +55,22 @@ public struct ScannedIntakeItem: Identifiable, Hashable, Sendable {
     }
 }
 
+// MARK: - Coordinated Suspension Ownership
+
+public enum SuspensionReason: String, CaseIterable, Hashable, Sendable {
+    case receiptMode = "Receipt mode active"
+    case receiptOCR = "Processing receipt OCR"
+    case quickAddSheet = "Product resolution sheet open"
+    case manualEntrySheet = "Manual entry sheet open"
+    case expirationSheet = "Expiration date scanner open"
+    case priceEditing = "Price editing active"
+    case background = "App in background or inactive"
+    case navigatedAway = "Navigated away from Scan tab"
+    case committing = "Committing grocery intake"
+    case cameraInterrupted = "Camera capture interrupted"
+    case userPaused = "User explicitly paused"
+}
+
 @MainActor
 public class ScanViewModel: ObservableObject {
     @Published public var storeName: String
@@ -74,9 +90,16 @@ public class ScanViewModel: ObservableObject {
     @Published public var isProcessingReceipt: Bool = false
     @Published public var showingReceiptCamera: Bool = false
     @Published public private(set) var currentScanGeneration: Int = 1
-    @Published public private(set) var isSuspended: Bool = false
-    @Published public private(set) var suspensionReason: String? = nil
+    @Published public private(set) var activeSuspensions: Set<SuspensionReason> = []
+    @Published public private(set) var lastCapturedReceiptLines: [String] = []
+
+    public var isSuspended: Bool { !activeSuspensions.isEmpty }
+    public var currentSuspensionReason: String? { activeSuspensions.first?.rawValue }
+    public var suspensionReason: String? { currentSuspensionReason }
+
     public private(set) var pendingDraftSessionId: Int? = nil
+    private var lastCommittedIntakeHash: Int? = nil
+    private var postCommitDeferredItems: [ScannedIntakeItem] = []
     public var isPreview: Bool
     public let scannerManager: BarcodeScannerManager
     private let client: APIClient
@@ -107,10 +130,17 @@ public class ScanViewModel: ObservableObject {
             self?.onBarcodeScanned(code, generation: gen)
         }
         self.scannerManager.onSessionInterrupted = { [weak self] in
-            self?.suspendScanning(reason: "Camera interrupted")
+            self?.suspendScanning(for: .cameraInterrupted)
         }
         self.scannerManager.onSessionInterruptionEnded = { [weak self] in
-            self?.resumeScanningAfterSuspension()
+            self?.resumeScanning(releasing: .cameraInterrupted)
+        }
+        self.scannerManager.onPermissionGranted = { [weak self] in
+            guard let self = self else { return }
+            DiagnosticLogger.log("Camera permission granted: starting capture if active")
+            if !self.isSuspended {
+                self.resumeScanningAfterSuspension()
+            }
         }
     }
 
@@ -170,36 +200,45 @@ public class ScanViewModel: ObservableObject {
         return true
     }
 
-    public func suspendScanning(reason: String = "Suspended") {
-        self.isSuspended = true
-        self.suspensionReason = reason
-        self.scannerManager.lockAcceptance()
-        self.scannerManager.stopScanning()
+    public func suspendScanning(for reason: SuspensionReason) {
+        activeSuspensions.insert(reason)
+        scannerManager.lockAcceptance()
+        scannerManager.stopScanning()
         #if DEBUG
-        DiagnosticLogger.log("Scanning suspended: \(reason) (preserved state=\(scannerState))")
+        DiagnosticLogger.log("Scanning suspended for [\(reason.rawValue)]. Active suspensions count: \(activeSuspensions.count) (state=\(scannerState))")
         #endif
     }
 
-    public func resumeScanningAfterSuspension() {
-        self.isSuspended = false
-        self.suspensionReason = nil
+    public func resumeScanning(releasing reason: SuspensionReason) {
+        guard activeSuspensions.contains(reason) else { return }
+        activeSuspensions.remove(reason)
         #if DEBUG
-        DiagnosticLogger.log("Scanning resumed from suspension (preserved state=\(scannerState))")
+        DiagnosticLogger.log("Released suspension [\(reason.rawValue)]. Remaining suspensions count: \(activeSuspensions.count)")
         #endif
-        guard !isPreview else { return }
 
-        // Start capture hardware without mutating the user's acceptance state
+        // Only start hardware when ALL suspension reasons are cleared!
+        guard activeSuspensions.isEmpty else { return }
+
+        guard !isPreview else { return }
         scannerManager.startScanning()
         if case .ready = scannerState {
             scannerManager.rearm(generation: currentScanGeneration)
         } else {
-            // Acceptance remains locked; user must explicitly press "Scan Next Barcode"
             scannerManager.lockAcceptance()
         }
     }
 
+    // Convenience backward-compatibility helpers
+    public func suspendScanning(reason: String = "Suspended") {
+        suspendScanning(for: .quickAddSheet)
+    }
+
+    public func resumeScanningAfterSuspension() {
+        resumeScanning(releasing: .quickAddSheet)
+    }
+
     public func pauseScanning(reason: String = "User paused") {
-        self.scannerManager.lockAcceptance()
+        suspendScanning(for: .userPaused)
         self.scannerState = .paused(reason: reason)
         #if DEBUG
         DiagnosticLogger.log("Scanner paused by user: \(reason)")
@@ -239,7 +278,7 @@ public class ScanViewModel: ObservableObject {
 
         guard !isSuspended else {
             #if DEBUG
-            DiagnosticLogger.logRejected(barcode: trimmed, reason: "Scanning is suspended (\(suspensionReason ?? "overlay active"))")
+            DiagnosticLogger.logRejected(barcode: trimmed, reason: "Scanning is suspended (\(currentSuspensionReason ?? "overlay active"))")
             #endif
             return
         }
@@ -322,6 +361,29 @@ public class ScanViewModel: ObservableObject {
         }
 
         guard generation == self.currentScanGeneration else { return }
+
+        // Defect 4 Fix: Prevent delayed lookups from modifying queue during an active commit
+        if isCommitting || activeSuspensions.contains(.committing) {
+            #if DEBUG
+            DiagnosticLogger.log("Lookup returned for \(barcode) while commit in progress: deferring to post-commit queue")
+            #endif
+            if let prod = resolvedProduct {
+                let deferred = ScannedIntakeItem(
+                    name: prod.name,
+                    brand: prod.brand,
+                    barcode: barcode,
+                    quantity: 1.0,
+                    unit: prod.unit ?? "pcs",
+                    expirationDate: nil,
+                    status: .recognized,
+                    productId: prod.id,
+                    storageLocationId: nil,
+                    isConfirmed: false
+                )
+                self.postCommitDeferredItems.append(deferred)
+            }
+            return
+        }
 
         // Priority 3: Do not treat network/auth errors as unknown products
         if let err = lookupErrorText {
@@ -543,11 +605,11 @@ public class ScanViewModel: ObservableObject {
             return
         }
         isProcessingReceipt = true
-        suspendScanning(reason: "Processing receipt")
+        suspendScanning(for: .receiptOCR)
         toastMessage = "Processing receipt OCR..."
         defer {
             isProcessingReceipt = false
-            resumeScanningAfterSuspension()
+            resumeScanning(releasing: .receiptOCR)
         }
 
         var allLines: [String] = []
@@ -555,13 +617,33 @@ public class ScanViewModel: ObservableObject {
             let lines = await ReceiptOCRService.shared.recognizeText(from: image)
             allLines.append(contentsOf: lines)
         }
+        self.lastCapturedReceiptLines = allLines
 
         guard !allLines.isEmpty else {
             self.errorMessage = "No text could be recognized from receipt image. Please ensure the receipt is well-lit and legible."
             return
         }
 
-        // Requirement 8: Never silently substitute PreviewData.products in production!
+        await matchReceiptLines(allLines)
+    }
+
+    public func retryReceiptMatching() async {
+        guard !isProcessingReceipt else { return }
+        guard !lastCapturedReceiptLines.isEmpty else {
+            self.errorMessage = "No captured receipt lines available to retry."
+            return
+        }
+        isProcessingReceipt = true
+        suspendScanning(for: .receiptOCR)
+        toastMessage = "Retrying receipt product matching..."
+        defer {
+            isProcessingReceipt = false
+            resumeScanning(releasing: .receiptOCR)
+        }
+        await matchReceiptLines(lastCapturedReceiptLines)
+    }
+
+    private func matchReceiptLines(_ lines: [String]) async {
         let catalog: [Product]
         if isPreview {
             catalog = PreviewData.products
@@ -569,12 +651,11 @@ public class ScanViewModel: ObservableObject {
             do {
                 catalog = try await client.fetchProducts(limit: 500)
             } catch {
-                self.errorMessage = "Failed to load product catalog for receipt matching: \(error.localizedDescription). Please retry."
+                self.errorMessage = "Failed to load product catalog for receipt matching: \(error.localizedDescription). Tap 'Retry Matching' to retry without recapturing."
                 return
             }
         }
-
-        let parsedItems = ReceiptOCRService.shared.parseReceiptLines(allLines, catalog: catalog)
+        let parsedItems = ReceiptOCRService.shared.parseReceiptLines(lines, catalog: catalog)
         integrateReceiptItems(parsedItems)
     }
 
@@ -819,7 +900,11 @@ public class ScanViewModel: ObservableObject {
         }
         isCommitting = true
         errorMessage = nil
-        suspendScanning(reason: "Committing intake")
+        suspendScanning(for: .committing)
+        defer {
+            isCommitting = false
+            resumeScanning(releasing: .committing)
+        }
 
         // 1. Immutable snapshot of all items
         let itemsSnapshot = self.scannedItems
@@ -828,32 +913,22 @@ public class ScanViewModel: ObservableObject {
         for item in itemsSnapshot {
             guard item.conflictingReceiptQuantity == nil else {
                 self.errorMessage = "Cannot commit: '\(item.name)' has an unresolved quantity conflict (scanned \(Int(item.quantity)) vs receipt \(Int(item.conflictingReceiptQuantity!))). Please resolve before committing."
-                isCommitting = false
-                resumeScanningAfterSuspension()
                 return
             }
             guard item.productId != nil && item.status != .needsReview else {
                 self.errorMessage = "Cannot commit: '\(item.name)' is unresolved. Please link or register the product first."
-                isCommitting = false
-                resumeScanningAfterSuspension()
                 return
             }
             guard item.storageLocationId != nil else {
                 self.errorMessage = "Cannot commit: Please select a storage location for '\(item.name)'."
-                isCommitting = false
-                resumeScanningAfterSuspension()
                 return
             }
             guard item.quantity > 0 && !item.unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 self.errorMessage = "Cannot commit: '\(item.name)' must have a valid quantity and unit."
-                isCommitting = false
-                resumeScanningAfterSuspension()
                 return
             }
             guard item.isConfirmed else {
                 self.errorMessage = "Cannot commit: Please confirm details for '\(item.name)' before committing."
-                isCommitting = false
-                resumeScanningAfterSuspension()
                 return
             }
         }
@@ -861,11 +936,7 @@ public class ScanViewModel: ObservableObject {
         if isPreview {
             try? await Task.sleep(nanoseconds: 300_000_000)
             self.toastMessage = "Committed intake of \(itemsSnapshot.count) items (Preview)"
-            self.scannedItems.removeAll()
-            self.lastScannedBarcode = ""
-            self.pendingDraftSessionId = nil
-            isCommitting = false
-            resumeScanningAfterSuspension()
+            self.clearCommittedIntake(committedCount: itemsSnapshot.count)
             return
         }
 
@@ -877,8 +948,6 @@ public class ScanViewModel: ObservableObject {
             for item in itemsSnapshot {
                 guard let pid = item.productId, let locId = item.storageLocationId else {
                     self.errorMessage = "Cannot commit: Invalid product or location."
-                    isCommitting = false
-                    resumeScanningAfterSuspension()
                     return
                 }
 
@@ -893,9 +962,19 @@ public class ScanViewModel: ObservableObject {
                 itemsToCommit.append(sessionItem)
             }
 
-            // 3. Create or reuse draft grocery session (retry safety: reuse pendingDraftSessionId if created earlier)
+            // 3. Complete safe retry handling & reconciliation
+            let currentIntakeHash = itemsSnapshot.map { "\($0.barcode):\($0.quantity):\($0.unitPrice ?? 0)" }.joined(separator: "|").hashValue
+
             let sessionId: Int
-            if let existingDraftId = self.pendingDraftSessionId {
+            if let existingDraftId = self.pendingDraftSessionId, self.lastCommittedIntakeHash == currentIntakeHash {
+                // Check if existing session was already completed on server (lost client response recovery)
+                if let sessionInfo = try? await client.fetchSession(id: existingDraftId), sessionInfo.status == "COMPLETED" {
+                    #if DEBUG
+                    DiagnosticLogger.log("Draft session #\(existingDraftId) was already completed on server. Reconciling client without duplicate batches.")
+                    #endif
+                    self.clearCommittedIntake(committedCount: itemsToCommit.count)
+                    return
+                }
                 DiagnosticLogger.log("Reusing existing draft session #\(existingDraftId) on commit retry")
                 sessionId = existingDraftId
             } else {
@@ -913,23 +992,37 @@ public class ScanViewModel: ObservableObject {
                 )
                 let session = try await client.createSession(sessionCreate)
                 self.pendingDraftSessionId = session.id
+                self.lastCommittedIntakeHash = currentIntakeHash
                 sessionId = session.id
             }
 
             // 4. Commit session to generate batches and ledger events
             _ = try await client.commitSession(id: sessionId, items: itemsToCommit)
 
-            // Successfully committed! Clear pending draft session and queue
-            self.pendingDraftSessionId = nil
-            self.toastMessage = "Committed \(itemsToCommit.count) items to household inventory!"
-            self.scannedItems.removeAll()
-            self.lastScannedBarcode = ""
+            // Successfully committed!
+            self.clearCommittedIntake(committedCount: itemsToCommit.count)
             HapticFeedback.success()
         } catch {
             self.errorMessage = "Failed to commit intake session: \(error.localizedDescription). You can safely retry without losing draft session."
             HapticFeedback.warning()
+            // Restore any deferred lookups that arrived during failed commit
+            if !postCommitDeferredItems.isEmpty {
+                self.scannedItems.insert(contentsOf: postCommitDeferredItems, at: 0)
+                self.postCommitDeferredItems.removeAll()
+            }
         }
-        isCommitting = false
-        resumeScanningAfterSuspension()
+    }
+
+    private func clearCommittedIntake(committedCount: Int) {
+        self.pendingDraftSessionId = nil
+        self.lastCommittedIntakeHash = nil
+        self.toastMessage = "Committed \(committedCount) items to household inventory!"
+        // Retain any items scanned while commit was in progress
+        self.scannedItems = self.postCommitDeferredItems
+        self.postCommitDeferredItems.removeAll()
+        self.lastScannedBarcode = ""
+        if let first = self.scannedItems.first {
+            self.scannerState = .detected(barcode: first.barcode, productName: first.name)
+        }
     }
 }

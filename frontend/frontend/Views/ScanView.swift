@@ -57,32 +57,34 @@ public struct ScanView: View {
             .navigationTitle("Intake Scanner")
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
-                if scanMode == 0 && !isScanningSuspended {
-                    viewModel.resumeScanningAfterSuspension()
+                viewModel.resumeScanning(releasing: .navigatedAway)
+                if scanMode == 1 {
+                    viewModel.suspendScanning(for: .receiptMode)
                 }
             }
             .onDisappear {
-                viewModel.suspendScanning(reason: "Navigated away from Scan")
+                viewModel.suspendScanning(for: .navigatedAway)
             }
             .onChange(of: scanMode) { _, newMode in
-                if newMode == 0 && !isScanningSuspended {
-                    viewModel.resumeScanningAfterSuspension()
+                if newMode == 1 {
+                    viewModel.suspendScanning(for: .receiptMode)
                 } else {
-                    viewModel.suspendScanning(reason: "Receipt mode active")
+                    viewModel.resumeScanning(releasing: .receiptMode)
                 }
             }
             .onChange(of: scenePhase) { _, newPhase in
-                if newPhase == .active && scanMode == 0 && !isScanningSuspended {
-                    viewModel.resumeScanningAfterSuspension()
+                if newPhase == .active {
+                    viewModel.resumeScanning(releasing: .background)
                 } else {
-                    viewModel.suspendScanning(reason: "App backgrounded")
+                    viewModel.suspendScanning(for: .background)
                 }
             }
-            .onChange(of: isScanningSuspended) { _, shouldSuspend in
-                if shouldSuspend {
-                    viewModel.suspendScanning(reason: "Active modal overlay or inactive")
-                } else if scanMode == 0 && scenePhase == .active {
-                    viewModel.resumeScanningAfterSuspension()
+            .onChange(of: activeModalSuspension) { oldReason, newReason in
+                if let old = oldReason {
+                    viewModel.resumeScanning(releasing: old)
+                }
+                if let new = newReason {
+                    viewModel.suspendScanning(for: new)
                 }
             }
             .sheet(isPresented: $showingAddManualSheet) {
@@ -131,7 +133,7 @@ public struct ScanView: View {
                 }
                 .presentationDetents([.medium])
             }
-            .alert("Edit Unit Price", isPresented: Binding(get: { editingPriceItem != nil }, set: { if !$0 { editingPriceItem = nil } })) {
+            .alert("Edit Unit Price", isPresented: isEditingPriceBinding) {
                 TextField("Price in PHP (e.g. 45.00)", text: $editingPriceText)
                     .keyboardType(.decimalPad)
                 Button("Cancel", role: .cancel) { editingPriceItem = nil }
@@ -178,9 +180,7 @@ public struct ScanView: View {
         ZStack {
             if scanMode == 0 {
                 // Real camera scanner in Rapid Barcode mode
-                BarcodeScannerView(manager: viewModel.scannerManager) { detectedBarcode in
-                    viewModel.onBarcodeScanned(detectedBarcode)
-                }
+                BarcodeScannerView(manager: viewModel.scannerManager)
                 .frame(height: 200)
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             } else {
@@ -218,7 +218,24 @@ public struct ScanView: View {
                                 }
                             }
                             #endif
-
+                            if !viewModel.lastCapturedReceiptLines.isEmpty {
+                                Button {
+                                    Task {
+                                        await viewModel.retryReceiptMatching()
+                                    }
+                                } label: {
+                                    HStack(spacing: 5) {
+                                        Image(systemName: "arrow.clockwise")
+                                        Text("Retry Matching")
+                                    }
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 7)
+                                    .background(ProvisionTheme.provisionGreenLight)
+                                    .foregroundStyle(ProvisionTheme.provisionGreen)
+                                    .clipShape(Capsule())
+                                }
+                            }
                             #if DEBUG
                             if viewModel.isPreview {
                                 Button {
@@ -448,17 +465,21 @@ public struct ScanView: View {
         }
     }
 
-    private var isScanningSuspended: Bool {
-        viewModel.showingQuickAddSheet ||
-        showingAddManualSheet ||
-        viewModel.showingReceiptCamera ||
-        viewModel.isProcessingReceipt ||
-        editingItemForOCR != nil ||
-        manualDatePickerItem != nil ||
-        editingPriceItem != nil ||
-        viewModel.isCommitting ||
-        scanMode == 1 ||
-        scenePhase != .active
+    private var isEditingPriceBinding: Binding<Bool> {
+        Binding(
+            get: { editingPriceItem != nil },
+            set: { if !$0 { editingPriceItem = nil } }
+        )
+    }
+
+    private var activeModalSuspension: SuspensionReason? {
+        if showingAddManualSheet { return .manualEntrySheet }
+        if viewModel.showingQuickAddSheet { return .quickAddSheet }
+        if viewModel.showingReceiptCamera { return .receiptMode }
+        if editingItemForOCR != nil { return .expirationSheet }
+        if manualDatePickerItem != nil { return .priceEditing }
+        if editingPriceItem != nil { return .priceEditing }
+        return nil
     }
     private var intakeReviewSection: some View {
         VStack(alignment: .leading, spacing: 14) {
