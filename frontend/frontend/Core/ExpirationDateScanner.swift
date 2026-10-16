@@ -548,7 +548,7 @@ public struct ExpirationDateScannerSheet: View {
                                 HStack(spacing: 8) {
                                     Image(systemName: "exclamationmark.circle")
                                         .foregroundStyle(ProvisionTheme.amberWarning)
-                                    Text("No recognized date stamp. Please set date manually below.")
+                                    Text(hasExplicitDate ? "No date recognized in photo. Your current selection is preserved below." : "No recognized date stamp. Please set date manually below.")
                                         .font(.system(size: 12, weight: .medium))
                                         .foregroundStyle(ProvisionTheme.textSecondary)
                                 }
@@ -584,6 +584,10 @@ public struct ExpirationDateScannerSheet: View {
                             displayedComponents: .date
                         )
                         .font(.system(size: 15, weight: .medium))
+                        .onChange(of: selectedDate) { _, newDate in
+                            dateSource = .manualSelected(newDate)
+                            hasExplicitDate = true
+                        }
 
                         HStack {
                             Text("Source: \(dateSource.description)")
@@ -730,10 +734,22 @@ public struct ExpirationDateScannerSheet: View {
                         self.detectedText = "No readable text detected in photo"
                     }
                     // Priority 5: Preserve existing date if present; do not misrepresent as newly recognized
-                    if let initial = self.initialDate {
-                        self.selectedDate = initial
+                    switch self.dateSource {
+                    case .previouslySaved(let saved):
+                        self.selectedDate = saved
                         self.hasExplicitDate = true
-                        self.dateSource = .previouslySaved(initial)
+                    case .manualSelected(let manual):
+                        self.selectedDate = manual
+                        self.hasExplicitDate = true
+                    default:
+                        if let initial = self.initialDate {
+                            self.selectedDate = initial
+                            self.hasExplicitDate = true
+                            self.dateSource = .previouslySaved(initial)
+                        } else {
+                            self.hasExplicitDate = false
+                            self.dateSource = .none
+                        }
                     }
                 }
             }
