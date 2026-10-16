@@ -14,7 +14,7 @@ public struct ScannedIntakeItem: Identifiable, Hashable, Sendable {
     public var storageLocationId: Int?
     public var unitPrice: Double?
     public var isConfirmed: Bool
-
+    public var conflictingReceiptQuantity: Double? = nil
     public enum IntakeStatus: String, Sendable {
         case autoLogged = "Auto-logged"
         case recognized = "Recognized"
@@ -34,7 +34,8 @@ public struct ScannedIntakeItem: Identifiable, Hashable, Sendable {
         productId: Int? = nil,
         storageLocationId: Int? = nil,
         unitPrice: Double? = nil,
-        isConfirmed: Bool = false
+        isConfirmed: Bool = false,
+        conflictingReceiptQuantity: Double? = nil
     ) {
         self.id = id
         self.name = name
@@ -48,6 +49,7 @@ public struct ScannedIntakeItem: Identifiable, Hashable, Sendable {
         self.storageLocationId = storageLocationId
         self.unitPrice = unitPrice
         self.isConfirmed = isConfirmed
+        self.conflictingReceiptQuantity = conflictingReceiptQuantity
     }
 }
 
@@ -98,11 +100,28 @@ do {
         }
     }
 
-    // A. Quantity mutation invalidates confirmation
+    // Bounded decrement simulation (stops at 1.0, does NOT delete item)
+    func decrement(_ item: inout ScannedIntakeItem) {
+        if item.quantity > 1.0 {
+            item.quantity -= 1.0
+            invalidate(&item)
+        }
+    }
+
+    // A. Bounded decrement when quantity is 1.0 -> must NOT delete item, stays 1.0
+    decrement(&item)
+    try assertEquals(item.quantity, 1.0, "Quantity must remain 1.0 and not delete item")
+
+    // B. Increment and then decrement
     item.quantity += 1.0
     invalidate(&item)
+    try assertEquals(item.quantity, 2.0, "Quantity should be 2.0")
     try assertTrue(!item.isConfirmed, "Quantity change must invalidate confirmation")
     try assertEquals(item.status, .recognized, "Status must revert to recognized")
+
+    decrement(&item)
+    try assertEquals(item.quantity, 1.0, "Quantity should decrement to 1.0")
+    try assertTrue(!item.isConfirmed, "Decrement must invalidate confirmation")
 
     // Re-confirm
     item.isConfirmed = true
@@ -234,15 +253,30 @@ do {
     // Helper mirror of ScanViewModel.reconcileExistingItem
     func reconcile(existingIdx: Int, receiptQty: Double, receiptPrice: Double?, isReceiptUncertain: Bool) {
         let existing = items[existingIdx]
-        let finalQty = max(existing.quantity, receiptQty)
-        let changed = (existing.quantity != finalQty)
-        items[existingIdx].quantity = finalQty
-
-        if let price = receiptPrice {
-            items[existingIdx].unitPrice = price
-        }
-        if changed || existing.isConfirmed || isReceiptUncertain {
+        if existing.quantity == receiptQty {
+            // Quantities match: no conflict, attach price
+            if let price = receiptPrice {
+                items[existingIdx].unitPrice = price
+            }
+            if isReceiptUncertain {
+                items[existingIdx].status = .needsReview
+            }
+        } else {
+            // Quantities conflict: flag explicitly instead of blind max()
+            items[existingIdx].conflictingReceiptQuantity = receiptQty
+            if let price = receiptPrice {
+                items[existingIdx].unitPrice = price
+            }
             items[existingIdx].status = .needsReview
+        }
+        items[existingIdx].isConfirmed = false
+    }
+
+    func resolveConflict(existingIdx: Int, keepQty: Double) {
+        items[existingIdx].quantity = max(1.0, keepQty)
+        items[existingIdx].conflictingReceiptQuantity = nil
+        if items[existingIdx].productId != nil {
+            items[existingIdx].status = .recognized
         }
         items[existingIdx].isConfirmed = false
     }
@@ -267,17 +301,21 @@ do {
     reconcile(existingIdx: 0, receiptQty: 1.0, receiptPrice: 40.50, isReceiptUncertain: false)
     try assertEquals(items[0].quantity, 1.0, "Quantity must NOT double-count 1 + 1 = 2; must remain 1.0")
     try assertEquals(items[0].unitPrice, 40.50, "Unit price from receipt must be attached")
-    try assertTrue(!items[0].isConfirmed, "Confirmation must be reset")
-    try assertEquals(items[0].status, .needsReview, "Confirmed item modified by receipt must be flagged for review")
+    try assertTrue(items[0].conflictingReceiptQuantity == nil, "No conflict when quantities agree")
+    try assertTrue(!items[0].isConfirmed, "Confirmation must be reset on reconciliation")
 
-    // B. Re-importing same receipt a second time -> Quantity must stay 1.0
-    reconcile(existingIdx: 0, receiptQty: 1.0, receiptPrice: 40.50, isReceiptUncertain: false)
-    try assertEquals(items[0].quantity, 1.0, "Repeated receipt import must not increase quantity")
-
-    // C. Conflicting quantities: user scanned 1 can, receipt shows basket has 3 cans
+    // B. Conflicting quantities: user scanned 1 can, receipt shows basket has 3 cans
     reconcile(existingIdx: 0, receiptQty: 3.0, receiptPrice: 40.50, isReceiptUncertain: false)
-    try assertEquals(items[0].quantity, 3.0, "Reconciled quantity must take max verified basket count (3.0)")
+    try assertEquals(items[0].quantity, 1.0, "Quantity must NOT automatically jump to 3.0 before user decision")
+    try assertEquals(items[0].conflictingReceiptQuantity, 3.0, "Must explicitly record conflicting receipt quantity (3.0)")
     try assertEquals(items[0].status, .needsReview, "Conflicting quantity must require review")
+    try assertTrue(!items[0].isConfirmed, "Item with conflict cannot be confirmed")
+
+    // User resolves conflict by choosing to use receipt count (3)
+    resolveConflict(existingIdx: 0, keepQty: 3.0)
+    try assertEquals(items[0].quantity, 3.0, "Quantity must update to user chosen 3.0")
+    try assertTrue(items[0].conflictingReceiptQuantity == nil, "Conflict must be cleared")
+    try assertEquals(items[0].status, .recognized, "Status must revert to recognized")
 
     print("  -> Passed!")
 }
