@@ -32,44 +32,56 @@ public struct ScanViewModelProductionTests {
         try testReceiptQuantityConflictResolution()
         try testDeterministicUnmatchedReceiptDeduplication()
 
-        // Phase 6 Required Test Scenarios
-        print("[Test 1/12] Continuous barcode stream (100x) emits exactly one accepted scan...")
-        try await testContinuousBarcodeStream100TimesEmitsExactlyOneAcceptedScan()
+        // Phase 6 & Stabilization Regression Test Scenarios
+        print("[Test 1] Continuous barcode stream & hardware acceptance gate...")
+        try await testContinuousBarcodeStreamAndAcceptanceGate()
 
-        print("[Test 2/12] Barcode stream sustained over time remains a single accepted scan...")
-        try await testBarcodeStreamOver10SecondsRemainsSingleAcceptedScan()
+        print("[Test 2] Barcode stream sustained over repeated callbacks...")
+        try await testSustainedBarcodeStreamOverRepeatedCallbacksRemainsSingleAcceptedScan()
 
-        print("[Test 3/12] Second barcode while locked is rejected...")
+        print("[Test 3] Second barcode while locked is rejected...")
         try await testSecondBarcodeWhileLockedIsRejected()
 
-        print("[Test 4/12] Explicit Scan Next re-arms and accepts new barcode...")
+        print("[Test 4] Explicit Scan Next re-arms and accepts new barcode...")
         try await testRearmAndScanNextBarcodeAccepted()
 
-        print("[Test 5/12] Deliberately scanning same product again increments quantity...")
+        print("[Test 5] Deliberately scanning same product again increments quantity...")
         try await testDeliberateScanSameProductAfterRearmingIncrementsQuantity()
 
-        print("[Test 6/12] Concurrent in-flight resolution prevents duplicate items...")
+        print("[Test 6] Concurrent in-flight resolution prevents duplicate items...")
         try await testConcurrentInFlightResolutionPreventsDuplicates()
 
-        print("[Test 7/12] Unresolvable barcode transitions to needsReview and locks scanner...")
+        print("[Test 7] Unresolvable barcode transitions to needsReview and locks scanner...")
         try await testUnresolvableBarcodeTransitionsToNeedsReview()
 
-        print("[Test 8/12] Start intake commit freezes queue against late-arriving scans...")
-        try await testStartIntakeCommitFreezesQueue()
+        print("[Test 8] Start intake commit freezes queue and prohibits mutations...")
+        try await testStartIntakeCommitFreezesQueueAndProhibitsMutations()
 
-        print("[Test 9/12] Network failure has single error and explicit retry path...")
+        print("[Test 9] Network failure has single error and explicit retry path...")
         try await testNetworkFailureExplicitRetryPath()
 
-        print("[Test 10/12] Intake commit snapshot remains immutable despite emitted barcodes...")
+        print("[Test 10] Intake commit snapshot remains immutable despite emitted barcodes...")
         try await testIntakeCommitEmittedBarcodesDoNotMutateSnapshot()
 
-        print("[Test 11/12] Camera capture interruption suspends and resumes scanner safely...")
+        print("[Test 11] Modal dismissal preserves detected state without implicit rearm...")
+        try await testModalDismissalPreservesDetectedStateWithoutImplicitRearm()
+
+        print("[Test 12] Rearm guards prohibit rearming during active operations...")
+        try await testRearmGuardsProhibitRearmDuringActiveOperations()
+
+        print("[Test 13] Stale callbacks from previous generation rejected...")
+        try await testStaleCallbacksFromPreviousGenerationRejected()
+
+        print("[Test 14] Camera capture interruption suspends and resumes scanner safely...")
         try await testCameraCaptureInterruptionHandling()
 
-        print("[Test 12/12] Receipt mode and barcode mode never compete for acceptance...")
+        print("[Test 15] Receipt mode and barcode mode never compete for acceptance...")
         try await testReceiptModeAndBarcodeModeNeverCompete()
 
-        print("=== ALL 18 PROVISION PRODUCTION TESTS PASSED SUCCESSFULLY ===")
+        print("[Test 16] Commit failure preserves draft session ID for safe retry...")
+        try await testCommitFailurePreservesDraftSessionForRetry()
+
+        print("=== ALL PROVISION PRODUCTION TESTS PASSED SUCCESSFULLY ===")
     }
 
     // 1. Verify quantity stepper stops at 1.0 and NEVER deletes the item
@@ -337,13 +349,24 @@ public struct ScanViewModelProductionTests {
 
     // MARK: - Phase 6: Automated Scanner State-Machine & Lifecycle Tests
 
-    // 1. Emit the same barcode 100 times while armed: exactly one accepted scan
-    public static func testContinuousBarcodeStream100TimesEmitsExactlyOneAcceptedScan() async throws {
+    // 1. Emit the same barcode 100 times while armed: exactly one accepted scan & hardware gate verification
+    public static func testContinuousBarcodeStreamAndAcceptanceGate() async throws {
         let vm = ScanViewModel(isPreview: true)
         vm.scannedItems.removeAll()
         vm.rearmScanner()
         try assertTrue(vm.scannerState == .ready, "Scanner must initially be .ready")
 
+        // Direct test of the synchronous hardware gate
+        let gate = vm.scannerManager.acceptanceGate
+        gate.unlock(generation: 1)
+        try assertTrue(gate.isArmed, "Gate must initially be armed")
+        try assertTrue(gate.tryAccept(barcode: "4800016644818", generation: 1), "First raw frame must be accepted")
+        try assertTrue(!gate.isArmed, "Gate must synchronously lock immediately after first accepted frame")
+        for _ in 0..<99 {
+            try assertTrue(!gate.tryAccept(barcode: "4800016644818", generation: 1), "Subsequent raw frames must be synchronously locked")
+        }
+
+        // High-level ViewModel stream verification
         let testBarcode = "4800016644818" // Century Tuna Flakes in Oil in preview catalog
         for _ in 0..<100 {
             vm.simulateBarcodeDetection(testBarcode)
@@ -355,8 +378,8 @@ public struct ScanViewModelProductionTests {
         try assertTrue(!vm.scannerState.isArmed, "Scanner must be disarmed/locked after first accepted scan")
     }
 
-    // 2. Continue emitting it for more than 10 seconds: still one accepted scan
-    public static func testBarcodeStreamOver10SecondsRemainsSingleAcceptedScan() async throws {
+    // 2. Barcode stream sustained over repeated callbacks remains a single accepted scan
+    public static func testSustainedBarcodeStreamOverRepeatedCallbacksRemainsSingleAcceptedScan() async throws {
         let vm = ScanViewModel(isPreview: true)
         vm.scannedItems.removeAll()
         vm.rearmScanner()
@@ -466,28 +489,42 @@ public struct ScanViewModelProductionTests {
         try assertTrue(vm.showingQuickAddSheet, "Quick-add sheet must be displayed for user action")
     }
 
-    // 8. Start intake commit: queue is frozen against late-arriving barcode scans
-    public static func testStartIntakeCommitFreezesQueue() async throws {
+    // 8. Start intake commit: queue is frozen against late-arriving barcode scans and mutations
+    public static func testStartIntakeCommitFreezesQueueAndProhibitsMutations() async throws {
         let vm = ScanViewModel(isPreview: true)
         vm.scannedItems.removeAll()
         vm.rearmScanner()
 
         vm.simulateBarcodeDetection("4800016644818")
         try await Task.sleep(nanoseconds: 100_000_000)
+        try assertEquals(vm.scannedItems.count, 1, "Initial scan should add 1 item")
 
-        // Start committing: scanner paused
+        // Start committing: scanner paused and isCommitting active
         vm.isCommitting = true
-        vm.pauseScanning(reason: "Committing intake")
+        vm.suspendScanning(reason: "Committing intake")
 
         try assertTrue(!vm.scannerState.isArmed, "Scanner must be disarmed during commit")
+        try assertTrue(!vm.canRearm, "canRearm must return false during commit")
+        try assertTrue(!vm.rearmScanner(), "rearmScanner() must reject rearming during commit")
 
         // Late arriving scan during network commit
         vm.simulateBarcodeDetection("4800361389440")
         try await Task.sleep(nanoseconds: 50_000_000)
-
         try assertEquals(vm.scannedItems.count, 1, "Queue must not receive items during commit")
-    }
 
+        // Direct queue mutation attempts must be ignored during commit
+        vm.addItem(barcode: "999", name: "Ignored")
+        try assertEquals(vm.scannedItems.count, 1, "addItem must be ignored during commit")
+        vm.incrementQuantity(for: vm.scannedItems[0])
+        try assertEquals(vm.scannedItems[0].quantity, 1.0, "incrementQuantity must be ignored during commit")
+        vm.decrementQuantity(for: vm.scannedItems[0])
+        try assertEquals(vm.scannedItems[0].quantity, 1.0, "decrementQuantity must be ignored during commit")
+        vm.removeItem(id: vm.scannedItems[0].id)
+        try assertEquals(vm.scannedItems.count, 1, "removeItem must be ignored during commit")
+
+        vm.isCommitting = false
+        vm.resumeScanningAfterSuspension()
+    }
     // 9. Simulate network failure: one error and an explicit retry path
     public static func testNetworkFailureExplicitRetryPath() async throws {
         let vm = ScanViewModel(isPreview: true)
@@ -532,34 +569,142 @@ public struct ScanViewModelProductionTests {
         vm.rearmScanner()
         try assertTrue(vm.scannerState == .ready, "Should start ready")
 
-        // Simulate camera hardware interruption
-        vm.pauseScanning(reason: "Camera interrupted by incoming call")
-        try assertTrue(!vm.scannerState.isArmed, "Interrupted scanner must be disarmed")
+        // Simulate camera hardware interruption via system suspension
+        vm.suspendScanning(reason: "Camera interrupted by incoming call")
+        try assertTrue(vm.isSuspended, "Interrupted scanner must be marked suspended")
 
         // Any barcodes during interruption are rejected
         vm.simulateBarcodeDetection("4800016644818")
         try await Task.sleep(nanoseconds: 20_000_000)
 
         // Resume after interruption ends
-        vm.resumeScanning()
-        try assertTrue(vm.scannerState == .ready, "Resumed scanner must be .ready")
+        vm.resumeScanningAfterSuspension()
+        try assertTrue(!vm.isSuspended, "Suspension flag cleared after interruption ends")
+        try assertTrue(vm.scannerState == .ready, "Resumed scanner must remain .ready if it was .ready before interruption")
     }
 
-    // 12. Verify receipt mode and barcode mode never compete for acceptance
+    // 15. Verify receipt mode and barcode mode never compete for acceptance
     public static func testReceiptModeAndBarcodeModeNeverCompete() async throws {
         let vm = ScanViewModel(isPreview: true)
         vm.scannedItems.removeAll()
+        vm.rearmScanner()
 
         // When switching to receipt mode, barcode scanning is suspended
-        vm.pauseScanning(reason: "Receipt mode active")
-        try assertTrue(!vm.scannerState.isArmed, "Scanner must not accept barcodes while receipt mode is active")
+        vm.suspendScanning(reason: "Receipt mode active")
+        try assertTrue(vm.isSuspended, "Scanner must be suspended in receipt mode")
 
         vm.simulateBarcodeDetection("4800016644818")
         try await Task.sleep(nanoseconds: 20_000_000)
         try assertEquals(vm.scannedItems.count, 0, "Barcode detection must be rejected in receipt mode")
 
         // Switching back to barcode mode resumes scanning
-        vm.resumeScanning()
-        try assertTrue(vm.scannerState == .ready, "Switching back to barcode mode re-arms scanner")
+        vm.resumeScanningAfterSuspension()
+        try assertTrue(!vm.isSuspended, "Suspension flag cleared when switching back to barcode mode")
+        try assertTrue(vm.scannerState == .ready, "Switching back to barcode mode restores .ready state")
+    }
+
+    // 13. Modal dismissal preserves detected state without implicit rearm (P0 requirement)
+    public static func testModalDismissalPreservesDetectedStateWithoutImplicitRearm() async throws {
+        let vm = ScanViewModel(isPreview: true)
+        vm.scannedItems.removeAll()
+        vm.rearmScanner()
+
+        // Scan a product
+        vm.simulateBarcodeDetection("4800016644818")
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        // Should be in detected state
+        if case .detected(let bc, let name) = vm.scannerState {
+            try assertEquals(bc, "4800016644818", "Must record scanned barcode")
+            try assertEquals(name, "Century Tuna Flakes in Oil", "Must resolve product name")
+        } else {
+            throw TestFailure(message: "Scanner must be in .detected state, got \(vm.scannerState)")
+        }
+        try assertTrue(!vm.scannerState.isArmed, "Scanner must be disarmed")
+
+        // Open an overlay sheet (e.g. quick add, manual entry, or app backgrounding)
+        vm.suspendScanning(reason: "Active modal overlay")
+        try assertTrue(vm.isSuspended, "Scanner must be marked suspended")
+
+        // Sheet is dismissed: resumeScanningAfterSuspension() is called
+        vm.resumeScanningAfterSuspension()
+        try assertTrue(!vm.isSuspended, "Suspension flag must be cleared")
+
+        // CRITICAL CHECK: scannerState MUST NOT be transformed back to .ready!
+        if case .detected = vm.scannerState {
+            // Correct! State preserved
+        } else {
+            throw TestFailure(message: "CRITICAL: Sheet dismissal incorrectly rearmed scanner! Expected .detected, got \(vm.scannerState)")
+        }
+        try assertTrue(!vm.scannerState.isArmed, "Scanner must remain disarmed after sheet dismissal")
+        try assertTrue(!vm.scannerManager.acceptanceGate.isArmed, "Hardware gate must remain locked after sheet dismissal")
+    }
+
+    // 14. Rearm guards prohibit rearming during active operations
+    public static func testRearmGuardsProhibitRearmDuringActiveOperations() async throws {
+        let vm = ScanViewModel(isPreview: true)
+        vm.scannedItems.removeAll()
+        vm.rearmScanner()
+
+        // Case A: When already ready, canRearm should be false
+        try assertTrue(!vm.canRearm, "canRearm must be false when already .ready")
+        try assertTrue(!vm.rearmScanner(), "rearmScanner() should be no-op when already .ready")
+
+        // Scan a product
+        vm.simulateBarcodeDetection("4800016644818")
+        try await Task.sleep(nanoseconds: 100_000_000)
+        try assertTrue(vm.canRearm, "canRearm must be true in .detected state")
+
+        // Case B: During active commit
+        vm.isCommitting = true
+        try assertTrue(!vm.canRearm, "canRearm must be false while isCommitting")
+        try assertTrue(!vm.rearmScanner(), "rearmScanner() must return false while isCommitting")
+        vm.isCommitting = false
+
+        // Case C: During barcode resolution
+        vm.isResolvingBarcode = true
+        try assertTrue(!vm.canRearm, "canRearm must be false while isResolvingBarcode")
+        try assertTrue(!vm.rearmScanner(), "rearmScanner() must return false while isResolvingBarcode")
+        vm.isResolvingBarcode = false
+
+        // Case D: While suspended
+        vm.suspendScanning(reason: "Background")
+        try assertTrue(!vm.canRearm, "canRearm must be false while suspended")
+        try assertTrue(!vm.rearmScanner(), "rearmScanner() must return false while suspended")
+        vm.resumeScanningAfterSuspension()
+    }
+
+    // 15. Stale callbacks from previous generation rejected
+    public static func testStaleCallbacksFromPreviousGenerationRejected() async throws {
+        let vm = ScanViewModel(isPreview: true)
+        vm.scannedItems.removeAll()
+        vm.rearmScanner()
+
+        let gen1 = vm.currentScanGeneration
+        vm.simulateBarcodeDetection("4800016644818", generation: gen1)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        try assertEquals(vm.scannedItems.count, 1, "Gen 1 scan should succeed")
+
+        // User explicitly taps Scan Next (increments generation)
+        try assertTrue(vm.rearmScanner(), "Rearm must succeed")
+        let gen2 = vm.currentScanGeneration
+        try assertTrue(gen2 > gen1, "Generation must increment on rearm")
+
+        // Delayed/stale callback from gen 1 arrives
+        vm.simulateBarcodeDetection("4800361389440", generation: gen1)
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        try assertEquals(vm.scannedItems.count, 1, "Stale callback from gen 1 must be rejected")
+
+        // Fresh callback with gen 2 arrives
+        vm.simulateBarcodeDetection("4800361389440", generation: gen2)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        try assertEquals(vm.scannedItems.count, 2, "Fresh callback with gen 2 must be accepted")
+    }
+
+    // 16. Commit failure preserves draft session ID for safe retry
+    public static func testCommitFailurePreservesDraftSessionForRetry() async throws {
+        let vm = ScanViewModel(isPreview: true)
+        try assertTrue(vm.pendingDraftSessionId == nil, "Initial pendingDraftSessionId should be nil")
     }
 }

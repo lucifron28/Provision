@@ -16,7 +16,7 @@ struct ProvisionApp: App {
                 do {
                     print("=== STARTING PROVISION AUTOMATED TEST SUITE ===")
                     try await ScanViewModelProductionTests.runAllTests()
-                    print("=== PROVISION TEST SUITE COMPLETE: 18/18 TESTS PASSED ===")
+                    print("=== PROVISION TEST SUITE COMPLETE: ALL TESTS PASSED ===")
                     fflush(stdout)
                     exit(0)
                 } catch {
