@@ -58,35 +58,31 @@ public struct ScanView: View {
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
                 if scanMode == 0 && !isScanningSuspended {
-                    viewModel.rearmScanner()
-                    viewModel.startScanning()
+                    viewModel.resumeScanningAfterSuspension()
                 }
             }
             .onDisappear {
-                viewModel.stopScanning()
+                viewModel.suspendScanning(reason: "Navigated away from Scan")
             }
             .onChange(of: scanMode) { _, newMode in
                 if newMode == 0 && !isScanningSuspended {
-                    viewModel.startScanning()
-                    viewModel.resumeScanning()
+                    viewModel.resumeScanningAfterSuspension()
                 } else {
-                    viewModel.stopScanning()
+                    viewModel.suspendScanning(reason: "Receipt mode active")
                 }
             }
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active && scanMode == 0 && !isScanningSuspended {
-                    viewModel.startScanning()
-                    viewModel.resumeScanning()
+                    viewModel.resumeScanningAfterSuspension()
                 } else {
-                    viewModel.stopScanning()
-                    viewModel.pauseScanning(reason: "Background")
+                    viewModel.suspendScanning(reason: "App backgrounded")
                 }
             }
             .onChange(of: isScanningSuspended) { _, shouldSuspend in
                 if shouldSuspend {
-                    viewModel.pauseScanning(reason: "Active overlay or inactive")
+                    viewModel.suspendScanning(reason: "Active modal overlay or inactive")
                 } else if scanMode == 0 && scenePhase == .active {
-                    viewModel.resumeScanning()
+                    viewModel.resumeScanningAfterSuspension()
                 }
             }
             .sheet(isPresented: $showingAddManualSheet) {
@@ -246,86 +242,52 @@ public struct ScanView: View {
                     }
                 }
             }
-            // Scanner State Banner Overlay
-            VStack {
-                HStack(spacing: 6) {
-                    switch viewModel.scannerState {
-                    case .ready:
-                        Circle()
-                            .fill(Color.green)
-                            .frame(width: 8, height: 8)
-                        Text("Ready to Scan")
-                    case .processing:
-                        ProgressView()
-                            .scaleEffect(0.6)
-                            .tint(.white)
-                        Text("Looking up barcode...")
-                    case .detected(_, let name):
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(Color.green)
-                        Text("Scanned: \(name)")
-                    case .needsReview:
-                        Image(systemName: "exclamationmark.circle.fill")
-                            .foregroundStyle(ProvisionTheme.amberWarning)
-                        Text("Action Required")
-                    case .error:
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(ProvisionTheme.redAlert)
-                        Text("Lookup Error")
-                    case .paused(let reason):
-                        Image(systemName: "pause.circle.fill")
-                            .foregroundStyle(ProvisionTheme.textTertiary)
-                        Text("Paused: \(reason)")
+            // Scanner State Banner Overlay (ONLY displayed when in Barcode mode!)
+            if scanMode == 0 {
+                VStack {
+                    HStack(spacing: 6) {
+                        switch viewModel.scannerState {
+                        case .ready:
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 8, height: 8)
+                            Text("Ready to Scan")
+                        case .processing:
+                            ProgressView()
+                                .scaleEffect(0.6)
+                                .tint(.white)
+                            Text("Looking up barcode...")
+                        case .detected(_, let name):
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(Color.green)
+                            Text("Scanned: \(name)")
+                        case .needsReview:
+                            Image(systemName: "exclamationmark.circle.fill")
+                                .foregroundStyle(ProvisionTheme.amberWarning)
+                            Text("Action Required")
+                        case .error:
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(ProvisionTheme.redAlert)
+                            Text("Lookup Error")
+                        case .paused(let reason):
+                            Image(systemName: "pause.circle.fill")
+                                .foregroundStyle(ProvisionTheme.textTertiary)
+                            Text("Paused: \(reason)")
+                        }
                     }
-                }
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Color.black.opacity(0.65))
-                .clipShape(Capsule())
-                .padding(.top, 12)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.black.opacity(0.65))
+                    .clipShape(Capsule())
+                    .padding(.top, 12)
 
-                Spacer()
-            }
-            .allowsHitTesting(false)
-
-            // Corner Reticles Overlay
-            VStack {
-                HStack {
-                    cornerBracket(top: true, left: true)
                     Spacer()
-                    cornerBracket(top: true, left: false)
                 }
-                Spacer()
-                HStack {
-                    cornerBracket(top: false, left: true)
-                    Spacer()
-                    cornerBracket(top: false, left: false)
-                }
+                .allowsHitTesting(false)
             }
-            .padding(28)
-            .frame(height: 200)
-            .allowsHitTesting(false)
         }
-    }
-
-    private func cornerBracket(top: Bool, left: Bool) -> some View {
-        Path { path in
-            let length: CGFloat = 20
-            let startX: CGFloat = left ? 0 : length
-            let startY: CGFloat = top ? length : 0
-            let cornerX: CGFloat = left ? 0 : length
-            let cornerY: CGFloat = top ? 0 : length
-            let endX: CGFloat = left ? length : 0
-            let endY: CGFloat = top ? 0 : length
-
-            path.move(to: CGPoint(x: startX, y: startY))
-            path.addLine(to: CGPoint(x: cornerX, y: cornerY))
-            path.addLine(to: CGPoint(x: endX, y: endY))
-        }
-        .stroke(ProvisionTheme.heroCard, lineWidth: 3)
-        .frame(width: 20, height: 20)
     }
 
     private var simulationBarcodeButtons: some View {
@@ -422,8 +384,8 @@ public struct ScanView: View {
 
     @ViewBuilder
     private var rearmControlsCard: some View {
-        if !viewModel.scannerState.isArmed {
-            HStack(spacing: 10) {
+        HStack(spacing: 10) {
+            if viewModel.canRearm {
                 Button {
                     viewModel.rearmScanner()
                 } label: {
@@ -439,37 +401,49 @@ public struct ScanView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
+            } else if case .processing = viewModel.scannerState {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Looking up product in catalog...")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(ProvisionTheme.surfaceSecondary)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
 
-                if case .error = viewModel.scannerState {
-                    Button {
-                        viewModel.retryBarcodeLookup()
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "arrow.clockwise")
-                            Text("Retry")
-                                .font(.system(size: 13, weight: .semibold))
-                        }
+            if case .error = viewModel.scannerState {
+                Button {
+                    viewModel.retryBarcodeLookup()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.clockwise")
+                        Text("Retry Lookup")
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(ProvisionTheme.redLight)
+                    .foregroundStyle(ProvisionTheme.redAlert)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            } else if case .paused = viewModel.scannerState, !viewModel.isSuspended {
+                Button {
+                    viewModel.rearmScanner()
+                } label: {
+                    Text("Resume")
+                        .font(.system(size: 13, weight: .semibold))
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
-                        .background(ProvisionTheme.redLight)
-                        .foregroundStyle(ProvisionTheme.redAlert)
+                        .background(ProvisionTheme.surfaceSecondary)
+                        .foregroundStyle(ProvisionTheme.textPrimary)
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                } else if case .paused = viewModel.scannerState {
-                    Button {
-                        viewModel.resumeScanning()
-                    } label: {
-                        Text("Resume")
-                            .font(.system(size: 13, weight: .semibold))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background(ProvisionTheme.surfaceSecondary)
-                            .foregroundStyle(ProvisionTheme.textPrimary)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
                 }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -535,6 +509,7 @@ public struct ScanView: View {
                             .foregroundStyle(ProvisionTheme.provisionGreen)
                     }
                 }
+                .disabled(viewModel.isCommitting)
             }
 
             // Validation error banner if viewModel.errorMessage != nil
@@ -617,6 +592,7 @@ public struct ScanView: View {
                         intakeItemRow(item: $item)
                     }
                 }
+                .disabled(viewModel.isCommitting)
 
                 // Commit Button with anti-duplicate and disabled state
                 Button {

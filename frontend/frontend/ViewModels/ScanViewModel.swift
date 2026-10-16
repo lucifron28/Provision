@@ -73,6 +73,10 @@ public class ScanViewModel: ObservableObject {
     @Published public var isResolvingBarcode: Bool = false
     @Published public var isProcessingReceipt: Bool = false
     @Published public var showingReceiptCamera: Bool = false
+    @Published public private(set) var currentScanGeneration: Int = 1
+    @Published public private(set) var isSuspended: Bool = false
+    @Published public private(set) var suspensionReason: String? = nil
+    public private(set) var pendingDraftSessionId: Int? = nil
     public var isPreview: Bool
     public let scannerManager: BarcodeScannerManager
     private let client: APIClient
@@ -99,8 +103,14 @@ public class ScanViewModel: ObservableObject {
             setupSampleIntake()
         }
 
-        self.scannerManager.onBarcodeDetected = { [weak self] code in
-            self?.onBarcodeScanned(code)
+        self.scannerManager.onBarcodeDetected = { [weak self] code, gen in
+            self?.onBarcodeScanned(code, generation: gen)
+        }
+        self.scannerManager.onSessionInterrupted = { [weak self] in
+            self?.suspendScanning(reason: "Camera interrupted")
+        }
+        self.scannerManager.onSessionInterruptionEnded = { [weak self] in
+            self?.resumeScanningAfterSuspension()
         }
     }
 
@@ -120,62 +130,131 @@ public class ScanViewModel: ObservableObject {
             return
         }
         do {
-            self.availableCatalog = try await client.fetchProducts()
+            self.availableCatalog = try await client.fetchProducts(limit: 500)
         } catch {
             // Keep existing or empty
         }
     }
 
-    public func rearmScanner() {
+    public var canRearm: Bool {
+        guard !isCommitting else { return false }
+        guard !isResolvingBarcode else { return false }
+        guard !isProcessingReceipt else { return false }
+        guard !showingQuickAddSheet else { return false }
+        guard !isSuspended else { return false }
+        switch scannerState {
+        case .ready:
+            return false // Already armed and waiting
+        case .processing:
+            return false // Lookup in flight
+        case .detected, .needsReview, .error, .paused:
+            return true
+        }
+    }
+
+    @discardableResult
+    public func rearmScanner() -> Bool {
+        guard canRearm else {
+            #if DEBUG
+            DiagnosticLogger.log("rearmScanner() ignored: canRearm is false (state=\(scannerState), isCommitting=\(isCommitting), isResolving=\(isResolvingBarcode), isSuspended=\(isSuspended))")
+            #endif
+            return false
+        }
+        currentScanGeneration += 1
         self.scannerState = .ready
         self.lastScannedBarcode = ""
-        self.scannerManager.rearm()
+        self.scannerManager.rearm(generation: currentScanGeneration)
         #if DEBUG
-        DiagnosticLogger.log("Scanner rearmed to .ready")
+        DiagnosticLogger.log("Scanner rearmed to .ready (generation=\(currentScanGeneration))")
         #endif
+        return true
+    }
+
+    public func suspendScanning(reason: String = "Suspended") {
+        self.isSuspended = true
+        self.suspensionReason = reason
+        self.scannerManager.lockAcceptance()
+        self.scannerManager.stopScanning()
+        #if DEBUG
+        DiagnosticLogger.log("Scanning suspended: \(reason) (preserved state=\(scannerState))")
+        #endif
+    }
+
+    public func resumeScanningAfterSuspension() {
+        self.isSuspended = false
+        self.suspensionReason = nil
+        #if DEBUG
+        DiagnosticLogger.log("Scanning resumed from suspension (preserved state=\(scannerState))")
+        #endif
+        guard !isPreview else { return }
+
+        // Start capture hardware without mutating the user's acceptance state
+        scannerManager.startScanning()
+        if case .ready = scannerState {
+            scannerManager.rearm(generation: currentScanGeneration)
+        } else {
+            // Acceptance remains locked; user must explicitly press "Scan Next Barcode"
+            scannerManager.lockAcceptance()
+        }
     }
 
     public func pauseScanning(reason: String = "User paused") {
         self.scannerManager.lockAcceptance()
         self.scannerState = .paused(reason: reason)
         #if DEBUG
-        DiagnosticLogger.log("Scanner paused: \(reason)")
+        DiagnosticLogger.log("Scanner paused by user: \(reason)")
         #endif
     }
 
     public func resumeScanning() {
-        rearmScanner()
+        resumeScanningAfterSuspension()
     }
 
     public func retryBarcodeLookup() {
         guard case .error(let barcode, _) = scannerState else { return }
+        guard !isResolvingBarcode && !isCommitting else { return }
         self.errorMessage = nil
         self.scannerState = .processing(barcode)
+        let gen = currentScanGeneration
         Task {
-            await resolveScannedBarcode(barcode)
+            await resolveScannedBarcode(barcode, generation: gen)
         }
     }
 
-    public func simulateBarcodeDetection(_ barcode: String) {
-        onBarcodeScanned(barcode)
+    public func simulateBarcodeDetection(_ barcode: String, generation: Int? = nil) {
+        onBarcodeScanned(barcode, generation: generation ?? currentScanGeneration)
     }
 
     public func startScanning() {
         guard !isPreview else { return }
-        scannerManager.startScanning()
+        resumeScanningAfterSuspension()
     }
 
     public func stopScanning() {
-        scannerManager.stopScanning()
+        suspendScanning(reason: "Stopped")
     }
-    public func onBarcodeScanned(_ barcode: String) {
+    public func onBarcodeScanned(_ barcode: String, generation: Int = 1) {
         let trimmed = barcode.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+
+        guard !isSuspended else {
+            #if DEBUG
+            DiagnosticLogger.logRejected(barcode: trimmed, reason: "Scanning is suspended (\(suspensionReason ?? "overlay active"))")
+            #endif
+            return
+        }
 
         // Phase 1 Requirement: Controlled single-scan acceptance state machine
         guard scannerState.isArmed else {
             #if DEBUG
             DiagnosticLogger.logRejected(barcode: trimmed, reason: "ScannerState is \(scannerState) (not armed/ready)")
+            #endif
+            return
+        }
+
+        guard generation == currentScanGeneration else {
+            #if DEBUG
+            DiagnosticLogger.logRejected(barcode: trimmed, reason: "Stale generation (got \(generation), expected \(currentScanGeneration))")
             #endif
             return
         }
@@ -186,11 +265,17 @@ public class ScanViewModel: ObservableObject {
         HapticFeedback.medium()
 
         Task {
-            await resolveScannedBarcode(trimmed)
+            await resolveScannedBarcode(trimmed, generation: generation)
         }
     }
 
-    public func resolveScannedBarcode(_ barcode: String) async {
+    public func resolveScannedBarcode(_ barcode: String, generation: Int = 1) async {
+        guard generation == self.currentScanGeneration else {
+            #if DEBUG
+            DiagnosticLogger.log("Discarding resolution for \(barcode): generation changed (active=\(self.currentScanGeneration), request=\(generation))")
+            #endif
+            return
+        }
         // Check if barcode is already being resolved
         if inFlightResolutions.contains(barcode) {
             return
@@ -236,6 +321,8 @@ public class ScanViewModel: ObservableObject {
             }
         }
 
+        guard generation == self.currentScanGeneration else { return }
+
         // Priority 3: Do not treat network/auth errors as unknown products
         if let err = lookupErrorText {
             self.errorMessage = err
@@ -269,6 +356,11 @@ public class ScanViewModel: ObservableObject {
         }
     }
 
+    // Wrapper for legacy callers/tests without generation
+    public func resolveScannedBarcode(_ barcode: String) async {
+        await resolveScannedBarcode(barcode, generation: currentScanGeneration)
+    }
+
     public func registerProductAndAddToQueue(
         name: String,
         brand: String?,
@@ -276,6 +368,7 @@ public class ScanViewModel: ObservableObject {
         unit: String,
         packageSize: Double?
     ) async -> Bool {
+        guard !isCommitting else { return false }
         guard let barcode = unresolvedBarcode else { return false }
         let create = ProductCreate(
             name: name,
@@ -353,6 +446,7 @@ public class ScanViewModel: ObservableObject {
     }
 
     public func incrementQuantity(for item: ScannedIntakeItem) {
+        guard !isCommitting else { return }
         if let idx = scannedItems.firstIndex(where: { $0.id == item.id }) {
             scannedItems[idx].quantity += 1.0
             invalidateConfirmation(at: idx)
@@ -360,6 +454,7 @@ public class ScanViewModel: ObservableObject {
     }
 
     public func decrementQuantity(for item: ScannedIntakeItem) {
+        guard !isCommitting else { return }
         if let idx = scannedItems.firstIndex(where: { $0.id == item.id }) {
             if scannedItems[idx].quantity > 1.0 {
                 scannedItems[idx].quantity -= 1.0
@@ -370,15 +465,16 @@ public class ScanViewModel: ObservableObject {
     }
 
     public func removeItem(id: UUID) {
+        guard !isCommitting else { return }
         if let idx = scannedItems.firstIndex(where: { $0.id == id }) {
             let name = scannedItems[idx].name
             scannedItems.remove(at: idx)
             showToast("Removed \(name) from intake")
         }
     }
-
     // Case 2A: Unknown barcode -> existing product resolution (handles both existing & nil resolvingItemId)
     public func resolveProductWithCatalog(product: Product) {
+        guard !isCommitting else { return }
         if let targetId = resolvingItemId, let idx = scannedItems.firstIndex(where: { $0.id == targetId }) {
             scannedItems[idx].productId = product.id
             scannedItems[idx].name = product.name
@@ -415,36 +511,54 @@ public class ScanViewModel: ObservableObject {
     }
 
     public func resolveItemWithCatalogProduct(itemId: UUID, product: Product) {
+        guard !isCommitting else { return }
         resolvingItemId = itemId
         resolveProductWithCatalog(product: product)
     }
 
     public func updateItemQuantity(id: UUID, quantity: Double) {
+        guard !isCommitting else { return }
         guard let idx = scannedItems.firstIndex(where: { $0.id == id }) else { return }
         scannedItems[idx].quantity = max(1.0, quantity)
         invalidateConfirmation(at: idx)
     }
 
     public func updateItemLocation(id: UUID, locationId: Int?) {
+        guard !isCommitting else { return }
         guard let idx = scannedItems.firstIndex(where: { $0.id == id }) else { return }
         scannedItems[idx].storageLocationId = locationId
         invalidateConfirmation(at: idx)
     }
 
     public func updateItemExpirationDate(id: UUID, date: Date?) {
+        guard !isCommitting else { return }
         guard let idx = scannedItems.firstIndex(where: { $0.id == id }) else { return }
         scannedItems[idx].expirationDate = date
         invalidateConfirmation(at: idx)
     }
-
     public func processScannedReceipt(images: [UIImage]) async {
+        guard !isProcessingReceipt else { return }
+        guard !images.isEmpty else {
+            self.errorMessage = "No receipt images were provided."
+            return
+        }
         isProcessingReceipt = true
+        suspendScanning(reason: "Processing receipt")
         toastMessage = "Processing receipt OCR..."
+        defer {
+            isProcessingReceipt = false
+            resumeScanningAfterSuspension()
+        }
 
         var allLines: [String] = []
         for image in images {
             let lines = await ReceiptOCRService.shared.recognizeText(from: image)
             allLines.append(contentsOf: lines)
+        }
+
+        guard !allLines.isEmpty else {
+            self.errorMessage = "No text could be recognized from receipt image. Please ensure the receipt is well-lit and legible."
+            return
         }
 
         // Requirement 8: Never silently substitute PreviewData.products in production!
@@ -453,16 +567,15 @@ public class ScanViewModel: ObservableObject {
             catalog = PreviewData.products
         } else {
             do {
-                catalog = try await client.fetchProducts()
+                catalog = try await client.fetchProducts(limit: 500)
             } catch {
-                catalog = []
-                self.errorMessage = "Failed to load product catalog for receipt matching: \(error.localizedDescription)"
+                self.errorMessage = "Failed to load product catalog for receipt matching: \(error.localizedDescription). Please retry."
+                return
             }
         }
 
         let parsedItems = ReceiptOCRService.shared.parseReceiptLines(allLines, catalog: catalog)
         integrateReceiptItems(parsedItems)
-        isProcessingReceipt = false
     }
 
     public func simulateReceiptScan(receiptName: String = "SM Supermarket Megamall (Receipt #0994)") {
@@ -509,6 +622,7 @@ public class ScanViewModel: ObservableObject {
     }
 
     public func resolveQuantityConflict(id: UUID, keepQuantity: Double) {
+        guard !isCommitting else { return }
         guard let idx = scannedItems.firstIndex(where: { $0.id == id }) else { return }
         scannedItems[idx].quantity = max(1.0, keepQuantity)
         scannedItems[idx].conflictingReceiptQuantity = nil
@@ -525,7 +639,8 @@ public class ScanViewModel: ObservableObject {
             .filter { !$0.isEmpty }
             .joined(separator: "-")
         let key = normalized.isEmpty ? "unmatched-item" : normalized
-        return "RCPT-" + key.prefix(24)
+        let hashSuffix = String(abs(name.utf8.reduce(0) { ($0 &* 31) &+ Int($1) }))
+        return "RCPT-" + key.prefix(20) + "-" + hashSuffix.prefix(6)
     }
 
     private func integrateReceiptItems(_ parsedItems: [ReceiptLineItem]) {
@@ -572,14 +687,15 @@ public class ScanViewModel: ObservableObject {
             showToast("Extracted \(newCount) items from receipt")
         }
     }
-
     public func updateItemPrice(id: UUID, price: Double?) {
+        guard !isCommitting else { return }
         guard let idx = scannedItems.firstIndex(where: { $0.id == id }) else { return }
         scannedItems[idx].unitPrice = price
         invalidateConfirmation(at: idx)
     }
 
     public func updateItemProduct(id: UUID, product: Product) {
+        guard !isCommitting else { return }
         resolveItemWithCatalogProduct(itemId: id, product: product)
     }
     private func setupSampleIntake() {
@@ -658,6 +774,7 @@ public class ScanViewModel: ObservableObject {
     }
 
     public func confirmAllValid() {
+        guard !isCommitting else { return }
         for idx in scannedItems.indices {
             let item = scannedItems[idx]
             if item.productId != nil &&
@@ -673,6 +790,7 @@ public class ScanViewModel: ObservableObject {
     }
 
     public func addItem(barcode: String, name: String, brand: String? = nil, quantity: Double = 1, unit: String = "units", daysUntilExp: Int? = nil) {
+        guard !isCommitting else { return }
         let exp: Date? = daysUntilExp.flatMap { Calendar.current.date(byAdding: .day, value: $0, to: Date()) }
         let item = ScannedIntakeItem(
             name: name,
@@ -689,6 +807,7 @@ public class ScanViewModel: ObservableObject {
     }
 
     public func removeItem(at offsets: IndexSet) {
+        guard !isCommitting else { return }
         scannedItems.remove(atOffsets: offsets)
     }
 
@@ -700,42 +819,53 @@ public class ScanViewModel: ObservableObject {
         }
         isCommitting = true
         errorMessage = nil
-        pauseScanning(reason: "Committing intake")
+        suspendScanning(reason: "Committing intake")
+
+        // 1. Immutable snapshot of all items
         let itemsSnapshot = self.scannedItems
-        for item in scannedItems {
+
+        // 2. Validate using the immutable snapshot
+        for item in itemsSnapshot {
             guard item.conflictingReceiptQuantity == nil else {
                 self.errorMessage = "Cannot commit: '\(item.name)' has an unresolved quantity conflict (scanned \(Int(item.quantity)) vs receipt \(Int(item.conflictingReceiptQuantity!))). Please resolve before committing."
                 isCommitting = false
+                resumeScanningAfterSuspension()
                 return
             }
             guard item.productId != nil && item.status != .needsReview else {
                 self.errorMessage = "Cannot commit: '\(item.name)' is unresolved. Please link or register the product first."
                 isCommitting = false
+                resumeScanningAfterSuspension()
                 return
             }
             guard item.storageLocationId != nil else {
                 self.errorMessage = "Cannot commit: Please select a storage location for '\(item.name)'."
                 isCommitting = false
+                resumeScanningAfterSuspension()
                 return
             }
             guard item.quantity > 0 && !item.unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 self.errorMessage = "Cannot commit: '\(item.name)' must have a valid quantity and unit."
                 isCommitting = false
+                resumeScanningAfterSuspension()
                 return
             }
             guard item.isConfirmed else {
                 self.errorMessage = "Cannot commit: Please confirm details for '\(item.name)' before committing."
                 isCommitting = false
+                resumeScanningAfterSuspension()
                 return
             }
         }
 
         if isPreview {
             try? await Task.sleep(nanoseconds: 300_000_000)
-            self.toastMessage = "Committed intake of \(scannedItems.count) items (Preview)"
+            self.toastMessage = "Committed intake of \(itemsSnapshot.count) items (Preview)"
             self.scannedItems.removeAll()
             self.lastScannedBarcode = ""
+            self.pendingDraftSessionId = nil
             isCommitting = false
+            resumeScanningAfterSuspension()
             return
         }
 
@@ -745,14 +875,10 @@ public class ScanViewModel: ObservableObject {
 
             var itemsToCommit: [SessionItemCreate] = []
             for item in itemsSnapshot {
-                guard let pid = item.productId else {
-                    self.errorMessage = "Cannot commit: '\(item.name)' is unresolved. Please link or register the product first."
+                guard let pid = item.productId, let locId = item.storageLocationId else {
+                    self.errorMessage = "Cannot commit: Invalid product or location."
                     isCommitting = false
-                    return
-                }
-                guard let locId = item.storageLocationId else {
-                    self.errorMessage = "Cannot commit: Please select a storage location for '\(item.name)'."
-                    isCommitting = false
+                    resumeScanningAfterSuspension()
                     return
                 }
 
@@ -767,31 +893,43 @@ public class ScanViewModel: ObservableObject {
                 itemsToCommit.append(sessionItem)
             }
 
-            // Create the draft grocery session
-            let isoFormatter = ISO8601DateFormatter()
-            let trimmedStore = storeName.trimmingCharacters(in: .whitespaces)
-            let sessionName = trimmedStore.isEmpty ? "Grocery Intake" : trimmedStore
-            let computedTotal = scannedItems.compactMap { item in
-                item.unitPrice.map { $0 * item.quantity }
-            }.reduce(0.0, +)
-            let sessionCreate = GrocerySessionCreate(
-                store_name: sessionName,
-                purchase_date: isoFormatter.string(from: Date()),
-                total_amount: computedTotal > 0 ? computedTotal : nil,
-                notes: "Rapid intake session committed via Provision app"
-            )
-            let session = try await client.createSession(sessionCreate)
-            // Commit session to generate batches and ledger events
-            _ = try await client.commitSession(id: session.id, items: itemsToCommit)
+            // 3. Create or reuse draft grocery session (retry safety: reuse pendingDraftSessionId if created earlier)
+            let sessionId: Int
+            if let existingDraftId = self.pendingDraftSessionId {
+                DiagnosticLogger.log("Reusing existing draft session #\(existingDraftId) on commit retry")
+                sessionId = existingDraftId
+            } else {
+                let isoFormatter = ISO8601DateFormatter()
+                let trimmedStore = storeName.trimmingCharacters(in: .whitespaces)
+                let sessionName = trimmedStore.isEmpty ? "Grocery Intake" : trimmedStore
+                let computedTotal = itemsSnapshot.compactMap { item in
+                    item.unitPrice.map { $0 * item.quantity }
+                }.reduce(0.0, +)
+                let sessionCreate = GrocerySessionCreate(
+                    store_name: sessionName,
+                    purchase_date: isoFormatter.string(from: Date()),
+                    total_amount: computedTotal > 0 ? computedTotal : nil,
+                    notes: "Rapid intake session committed via Provision app"
+                )
+                let session = try await client.createSession(sessionCreate)
+                self.pendingDraftSessionId = session.id
+                sessionId = session.id
+            }
 
+            // 4. Commit session to generate batches and ledger events
+            _ = try await client.commitSession(id: sessionId, items: itemsToCommit)
+
+            // Successfully committed! Clear pending draft session and queue
+            self.pendingDraftSessionId = nil
             self.toastMessage = "Committed \(itemsToCommit.count) items to household inventory!"
             self.scannedItems.removeAll()
             self.lastScannedBarcode = ""
             HapticFeedback.success()
         } catch {
-            self.errorMessage = "Failed to commit intake session: \(error.localizedDescription)"
+            self.errorMessage = "Failed to commit intake session: \(error.localizedDescription). You can safely retry without losing draft session."
             HapticFeedback.warning()
         }
         isCommitting = false
+        resumeScanningAfterSuspension()
     }
 }
