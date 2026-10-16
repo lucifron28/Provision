@@ -9,6 +9,7 @@ public struct HomeView: View {
     @State private var showingProfileSheet: Bool = false
     @State private var notificationsEnabled: Bool = NotificationService.shared.isAlertsEnabled
     @State private var devBackendHost: String = APIEnvironment.localDeviceHost
+    @State private var hostUpdateMessage: String? = nil
     public init(
         viewModel: HomeViewModel,
         authVM: AuthViewModel,
@@ -453,8 +454,14 @@ public struct HomeView: View {
                             .autocorrectionDisabled()
                         Button("Save") {
                             let trimmed = devBackendHost.trimmingCharacters(in: .whitespacesAndNewlines)
-                            if !trimmed.isEmpty {
+                            if let validURL = APIEnvironment.validateHost(trimmed) {
                                 APIEnvironment.localDeviceHost = trimmed
+                                Task {
+                                    await APIClient.shared.setBaseURL(validURL)
+                                }
+                                hostUpdateMessage = "Host updated to \(trimmed)"
+                            } else {
+                                hostUpdateMessage = "Invalid host format. Enter a valid IP or hostname."
                             }
                         }
                         .font(.system(size: 13, weight: .bold))
@@ -462,6 +469,13 @@ public struct HomeView: View {
                     }
                     .padding(14)
                     .provisionCard()
+
+                    if let msg = hostUpdateMessage {
+                        Text(msg)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(msg.starts(with: "Host updated") ? ProvisionTheme.provisionGreen : ProvisionTheme.redAlert)
+                            .padding(.leading, 4)
+                    }
                 }
                 VStack(alignment: .leading, spacing: 10) {
                     Text("NOTIFICATIONS & ALERTS")

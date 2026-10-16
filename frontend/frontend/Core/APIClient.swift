@@ -45,7 +45,16 @@ public enum APIEnvironment {
     }
     nonisolated(unsafe) public static var port: Int = 8000
     nonisolated(unsafe) public static var apiVersionPath: String = "api/v1"
-    
+    nonisolated public static func validateHost(_ host: String) -> URL? {
+        let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard let url = URL(string: "http://\(trimmed):\(port)/\(apiVersionPath)"),
+              url.host != nil else {
+            return nil
+        }
+        return url
+    }
+
     nonisolated public static var defaultBaseURL: URL {
         #if targetEnvironment(simulator)
         return URL(string: "http://127.0.0.1:\(port)/\(apiVersionPath)")!
@@ -206,7 +215,7 @@ public actor APIClient {
     
     // MARK: - Products
     
-    public func fetchProducts(search: String? = nil, category: String? = nil) async throws -> [Product] {
+    public func fetchProducts(search: String? = nil, category: String? = nil, skip: Int = 0, limit: Int? = 500) async throws -> [Product] {
         var components = URLComponents(url: baseURL.appendingPathComponent("products/"), resolvingAgainstBaseURL: true)
         var queryItems: [URLQueryItem] = []
         if let search = search, !search.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -214,6 +223,12 @@ public actor APIClient {
         }
         if let category = category, !category.trimmingCharacters(in: .whitespaces).isEmpty {
             queryItems.append(URLQueryItem(name: "category", value: category))
+        }
+        if skip > 0 {
+            queryItems.append(URLQueryItem(name: "skip", value: String(skip)))
+        }
+        if let limit = limit {
+            queryItems.append(URLQueryItem(name: "limit", value: String(limit)))
         }
         if !queryItems.isEmpty {
             components?.queryItems = queryItems
