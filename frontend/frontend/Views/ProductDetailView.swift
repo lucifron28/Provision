@@ -28,7 +28,7 @@ public struct ProductDetailView: View {
     @State private var isConsuming: Bool = false
     @State private var isAdjusting: Bool = false
     @State private var showingAdjustConfirmation: Bool = false
-    @State private var isBatchListExpanded: Bool = true
+    @State private var isBatchListExpanded: Bool = false
     public init(viewModel: InventoryViewModel, product: Product) {
         self.viewModel = viewModel
         self.product = product
@@ -199,7 +199,7 @@ public struct ProductDetailView: View {
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
                             .background(isUnitValid ? ProvisionTheme.provisionGreen : ProvisionTheme.textTertiary)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(ProvisionTheme.onAccent)
                             .clipShape(Capsule())
                     }
                     .disabled(!isUnitValid)
@@ -245,7 +245,7 @@ public struct ProductDetailView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
                 .background(currentProduct.isOutOfStock || !isUnitValid ? ProvisionTheme.surfaceSecondary : ProvisionTheme.provisionGreen)
-                .foregroundStyle(currentProduct.isOutOfStock || !isUnitValid ? ProvisionTheme.textTertiary : .white)
+                .foregroundStyle(currentProduct.isOutOfStock || !isUnitValid ? ProvisionTheme.textTertiary : ProvisionTheme.onAccent)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .shadow(color: currentProduct.isOutOfStock || !isUnitValid ? .clear : ProvisionTheme.provisionGreen.opacity(0.25), radius: 6, y: 3)
             }
@@ -631,7 +631,7 @@ public struct ProductDetailView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(ProvisionTheme.provisionGreen)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(ProvisionTheme.onAccent)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .disabled(isConsuming)
@@ -725,7 +725,7 @@ public struct ProductDetailView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(ProvisionTheme.provisionGreen)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(ProvisionTheme.onAccent)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .disabled(isAdjusting)
