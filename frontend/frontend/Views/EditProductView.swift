@@ -50,17 +50,53 @@ public struct EditProductView: View {
                 }
                 
                 Section("Product Details") {
-                    TextField("Product Name (Required)", text: $name)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Product Name *")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                        TextField("e.g. Jasmine Rice", text: $name)
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+                            .tint(ProvisionTheme.provisionGreen)
+                    }
+                    .padding(.vertical, 2)
                     
                     Picker("Unit", selection: $unit) {
                         ForEach(ProductUnits.allUnits, id: \.self) { u in
                             Text(u).tag(u)
                         }
                     }
+                    .tint(ProvisionTheme.provisionGreen)
                     
-                    TextField("Brand (Optional)", text: $brand)
-                    TextField("Category (Optional)", text: $category)
-                    TextField("Barcode (Optional)", text: $barcode)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Brand (Optional)")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                        TextField("e.g. Royal Umbrella", text: $brand)
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+                            .tint(ProvisionTheme.provisionGreen)
+                    }
+                    .padding(.vertical, 2)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Category (Optional)")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                        TextField("e.g. Grains & Rice", text: $category)
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+                            .tint(ProvisionTheme.provisionGreen)
+                    }
+                    .padding(.vertical, 2)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Barcode (Optional)")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                        TextField("e.g. 4800016644814", text: $barcode)
+                            .keyboardType(.numberPad)
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+                            .tint(ProvisionTheme.provisionGreen)
+                    }
+                    .padding(.vertical, 2)
                 }
                 
                 Section {
@@ -69,18 +105,22 @@ public struct EditProductView: View {
                     } label: {
                         if isSubmitting {
                             ProgressView()
-                                .frame(maxWidth: .infinity)
+                                .tint(.white)
+                                .frame(maxWidth: .infinity, minHeight: 48)
                         } else {
                             Text("Save Changes")
                                 .font(.system(size: 16, weight: .bold))
-                                .frame(maxWidth: .infinity)
+                                .frame(maxWidth: .infinity, minHeight: 48)
                                 .foregroundStyle(.white)
                         }
                     }
-                    .listRowBackground(ProvisionTheme.provisionGreen)
+                    .listRowBackground(!isSubmitting && !name.trimmingCharacters(in: .whitespaces).isEmpty ? ProvisionTheme.provisionGreen : ProvisionTheme.provisionGreen.opacity(0.4))
                     .disabled(isSubmitting || name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(ProvisionTheme.background.ignoresSafeArea())
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Edit Product")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

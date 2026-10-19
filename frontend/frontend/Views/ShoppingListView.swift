@@ -43,6 +43,7 @@ public struct ShoppingListView: View {
                     shoppingItemsList
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .background(ProvisionTheme.background.ignoresSafeArea())
             .navigationTitle("Shopping List")
             .navigationBarTitleDisplayMode(.inline)
@@ -100,58 +101,75 @@ public struct ShoppingListView: View {
         Button {
             Task { await viewModel.autoGenerateSuggestions() }
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
                 if viewModel.isGenerating {
                     ProgressView()
                         .tint(ProvisionTheme.provisionGreen)
                 } else {
                     Image(systemName: "sparkles")
-                        .font(.system(size: 15))
+                        .font(.system(size: 16))
                         .foregroundStyle(ProvisionTheme.provisionGreen)
                 }
                 
                 Text(viewModel.isGenerating ? "Analyzing inventory stock..." : "Auto-Generate from Low Stock")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(ProvisionTheme.provisionGreen)
                 
                 Spacer()
                 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(ProvisionTheme.provisionGreen.opacity(0.6))
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(ProvisionTheme.provisionGreen.opacity(0.7))
             }
+            .frame(minHeight: 44)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .background(ProvisionTheme.provisionGreenLight)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(ProvisionTheme.provisionGreen.opacity(0.25), lineWidth: 1)
+            )
         }
         .disabled(viewModel.isGenerating)
+        .accessibleTouchTarget()
     }
     
     private var addItemBar: some View {
         HStack(spacing: 8) {
-            TextField("Add grocery item...", text: $viewModel.newItemName)
-                .font(.system(size: 14))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(ProvisionTheme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(ProvisionTheme.border, lineWidth: 1))
-                .onSubmit {
-                    Task { await viewModel.addItem() }
-                }
+            HStack(spacing: 8) {
+                Image(systemName: "plus.circle")
+                    .font(.system(size: 15))
+                    .foregroundStyle(ProvisionTheme.textTertiary)
+                TextField("Add grocery item...", text: $viewModel.newItemName)
+                    .font(.system(size: 15))
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+                    .tint(ProvisionTheme.provisionGreen)
+                    .onSubmit {
+                        Task { await viewModel.addItem() }
+                    }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(ProvisionTheme.inputBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(ProvisionTheme.border, lineWidth: 1)
+            )
             
             Button {
                 Task { await viewModel.addItem() }
             } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(.white)
-                    .frame(width: 40, height: 40)
-                    .background(ProvisionTheme.provisionGreen)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .frame(width: 44, height: 44)
+                    .background(viewModel.newItemName.trimmingCharacters(in: .whitespaces).isEmpty ? ProvisionTheme.provisionGreen.opacity(0.4) : ProvisionTheme.provisionGreen)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
             .disabled(viewModel.newItemName.trimmingCharacters(in: .whitespaces).isEmpty)
+            .accessibleTouchTarget()
         }
     }
     
@@ -211,6 +229,7 @@ public struct ShoppingListView: View {
                     } label: {
                         Label("Delete", systemImage: "trash")
                     }
+                    .tint(ProvisionTheme.redAlert)
                 }
             }
         }
@@ -224,16 +243,24 @@ public struct ShoppingListView: View {
     private var emptyShoppingList: some View {
         VStack(spacing: 16) {
             Spacer()
-            Image(systemName: emptyStateIcon)
-                .font(.system(size: 48))
-                .foregroundStyle(ProvisionTheme.textTertiary)
+            if viewModel.filter == .all {
+                Image("pip_grocery")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 110, height: 110)
+                    .accessibilityHidden(true)
+            } else {
+                Image(systemName: emptyStateIcon)
+                    .font(.system(size: 48))
+                    .foregroundStyle(ProvisionTheme.textTertiary)
+            }
             
             Text(emptyStateTitle)
-                .font(.system(size: 18, weight: .bold, design: .serif))
+                .font(ProvisionTypography.sectionSerif)
                 .foregroundStyle(ProvisionTheme.textPrimary)
             
             Text(emptyStateSubtitle)
-                .font(.system(size: 14))
+                .font(ProvisionTypography.subheadline)
                 .foregroundStyle(ProvisionTheme.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)

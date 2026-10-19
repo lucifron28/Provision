@@ -27,6 +27,8 @@ public struct ProductDetailView: View {
     @State private var isDiscarding: Bool = false
     @State private var isConsuming: Bool = false
     @State private var isAdjusting: Bool = false
+    @State private var showingAdjustConfirmation: Bool = false
+    @State private var isBatchListExpanded: Bool = true
     public init(viewModel: InventoryViewModel, product: Product) {
         self.viewModel = viewModel
         self.product = product
@@ -227,73 +229,84 @@ public struct ProductDetailView: View {
     }
     
     private var actionButtonsRow: some View {
-        HStack(spacing: 10) {
-            // Consume Button
+        VStack(spacing: 10) {
+            // Primary Prominent Button: Log Consumption
             Button {
                 consumeAmountText = "1"
                 consumeErrorMessage = nil
                 showingConsumeSheet = true
             } label: {
-                VStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Image(systemName: "minus.circle.fill")
-                        .font(.system(size: 18))
-                    Text("CONSUME")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.system(size: 18, weight: .bold))
+                    Text("Log Consumption")
+                        .font(.system(size: 16, weight: .bold))
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(currentProduct.isOutOfStock || !isUnitValid ? ProvisionTheme.surfaceSecondary : ProvisionTheme.provisionGreenLight)
-                .foregroundStyle(currentProduct.isOutOfStock || !isUnitValid ? ProvisionTheme.textTertiary : ProvisionTheme.provisionGreen)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(currentProduct.isOutOfStock || !isUnitValid ? ProvisionTheme.surfaceSecondary : ProvisionTheme.provisionGreen)
+                .foregroundStyle(currentProduct.isOutOfStock || !isUnitValid ? ProvisionTheme.textTertiary : .white)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .shadow(color: currentProduct.isOutOfStock || !isUnitValid ? .clear : ProvisionTheme.provisionGreen.opacity(0.25), radius: 6, y: 3)
             }
             .disabled(currentProduct.isOutOfStock || !isUnitValid)
             
-            // Discard Button
-            Button {
-                if viewModel.productBatches.count == 1, let only = viewModel.productBatches.first {
-                    selectedBatchForDiscard = only
-                    showingDiscardAlert = true
-                } else if viewModel.productBatches.count > 1 {
-                    showingDiscardBatchSelection = true
+            // Secondary Actions: Discard and Adjust
+            HStack(spacing: 10) {
+                // Discard Button
+                Button {
+                    if viewModel.productBatches.count == 1, let only = viewModel.productBatches.first {
+                        selectedBatchForDiscard = only
+                        showingDiscardAlert = true
+                    } else if viewModel.productBatches.count > 1 {
+                        showingDiscardBatchSelection = true
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "trash.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("Discard")
+                            .font(.system(size: 13, weight: .bold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(ProvisionTheme.surface)
+                    .foregroundStyle(ProvisionTheme.redAlert)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(ProvisionTheme.border, lineWidth: 1)
+                    )
                 }
-            } label: {
-                VStack(spacing: 6) {
-                    Image(systemName: "trash.fill")
-                        .font(.system(size: 18))
-                    Text("DISCARD")
-                        .font(.system(size: 12, weight: .bold))
+                .disabled(viewModel.productBatches.isEmpty || isDiscarding)
+                
+                // Adjust Button
+                Button {
+                    if let earliest = viewModel.productBatches.first {
+                        adjustBatchId = earliest.id
+                        adjustAmountText = formatQuantity(earliest.remaining_quantity)
+                        adjustErrorMessage = nil
+                        showingAdjustSheet = true
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("Adjust")
+                            .font(.system(size: 13, weight: .bold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(ProvisionTheme.surface)
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(ProvisionTheme.border, lineWidth: 1)
+                    )
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(ProvisionTheme.surface)
-                .foregroundStyle(ProvisionTheme.redAlert)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(ProvisionTheme.border, lineWidth: 1))
+                .disabled(viewModel.productBatches.isEmpty)
             }
-            .disabled(viewModel.productBatches.isEmpty || isDiscarding)
-            // Adjust Button
-            Button {
-                if let earliest = viewModel.productBatches.first {
-                    adjustBatchId = earliest.id
-                    adjustAmountText = formatQuantity(earliest.remaining_quantity)
-                    adjustErrorMessage = nil
-                    showingAdjustSheet = true
-                }
-            } label: {
-                VStack(spacing: 6) {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 18))
-                    Text("ADJUST")
-                        .font(.system(size: 12, weight: .bold))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(ProvisionTheme.surface)
-                .foregroundStyle(ProvisionTheme.textPrimary)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(ProvisionTheme.border, lineWidth: 1))
-            }
-            .disabled(viewModel.productBatches.isEmpty)
         }
     }
     
@@ -333,17 +346,35 @@ public struct ProductDetailView: View {
                 }
                 
                 // Rest of batches
+                // Collapsible Rest of Stock Batches (FEFO order)
                 if viewModel.productBatches.count > 1 {
-                    Text("REST OF STOCK")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(ProvisionTheme.textTertiary)
-                        .tracking(0.6)
-                        .padding(.top, 6)
-                    
-                    VStack(spacing: 8) {
-                        ForEach(viewModel.productBatches.dropFirst()) { batch in
-                            batchRow(batch: batch)
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isBatchListExpanded.toggle()
                         }
+                    } label: {
+                        HStack {
+                            Text("REST OF STOCK (\(viewModel.productBatches.count - 1))")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(ProvisionTheme.textTertiary)
+                                .tracking(0.6)
+                            Spacer()
+                            Image(systemName: isBatchListExpanded ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(ProvisionTheme.textTertiary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 6)
+                    
+                    if isBatchListExpanded {
+                        VStack(spacing: 8) {
+                            ForEach(viewModel.productBatches.dropFirst()) { batch in
+                                batchRow(batch: batch)
+                            }
+                        }
+                        .transition(.opacity)
                     }
                 }
             }
@@ -680,21 +711,7 @@ public struct ProductDetailView: View {
                         return
                     }
                     
-                    Task {
-                        guard !isAdjusting else { return }
-                        isAdjusting = true
-                        let success = await viewModel.adjustBatch(
-                            batchId: adjustBatchId,
-                            newQuantity: newAmount,
-                            reason: adjustReason
-                        )
-                        isAdjusting = false
-                        if success {
-                            showingAdjustSheet = false
-                        } else {
-                            adjustErrorMessage = viewModel.errorMessage
-                        }
-                    }
+                    showingAdjustConfirmation = true
                 } label: {
                     HStack {
                         if isAdjusting {
@@ -712,6 +729,30 @@ public struct ProductDetailView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .disabled(isAdjusting)
+            }
+            .alert("Confirm Stock Adjustment", isPresented: $showingAdjustConfirmation) {
+                Button("Confirm Adjustment") {
+                    let parsed = Double(adjustAmountText.replacingOccurrences(of: ",", with: ".")) ?? 0
+                    Task {
+                        guard !isAdjusting else { return }
+                        isAdjusting = true
+                        let success = await viewModel.adjustBatch(
+                            batchId: adjustBatchId,
+                            newQuantity: parsed,
+                            reason: adjustReason
+                        )
+                        isAdjusting = false
+                        if success {
+                            showingAdjustSheet = false
+                            HapticFeedback.success()
+                        } else {
+                            adjustErrorMessage = viewModel.errorMessage
+                        }
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Are you sure you want to adjust the batch quantity to \(adjustAmountText) \(currentProduct.displayUnit)?")
             }
             .padding(20)
             .background(ProvisionTheme.background.ignoresSafeArea())
