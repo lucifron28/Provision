@@ -267,6 +267,12 @@ public struct ScanViewModelProductionTests {
 
         vm.scannedItems = [item1, itemNoLoc, itemUnresolved, itemConflict]
 
+        // Authoritative IntakeItemValidationState checks
+        try assertEquals(vm.validationState(for: item1), .ready, "Item 1 must be in .ready state initially")
+        try assertEquals(vm.validationState(for: itemNoLoc), .needsDetails, "Item without location must be in .needsDetails state, NEVER .ready")
+        try assertEquals(vm.validationState(for: itemUnresolved), .needsReview, "Unresolved item must be in .needsReview state")
+        try assertEquals(vm.validationState(for: itemConflict), .needsReview, "Conflicted item must be in .needsReview state")
+
         // Check counts before confirmation
         try assertEquals(vm.itemsNeedingReviewCount, 2, "Items 3 and 4 need review")
         try assertEquals(vm.itemsNeedingLocationCount, 1, "Item 2 needs location")
@@ -298,13 +304,29 @@ public struct ScanViewModelProductionTests {
         try assertTrue(!vm.scannedItems[0].isConfirmed, "Unconfirm must clear isConfirmed")
         try assertEquals(vm.scannedItems[0].status, .recognized, "Status must revert to recognized")
 
+        // Re-confirm item 1 and verify state transition to .confirmed
+        _ = vm.confirmItem(id: item1.id)
+        try assertEquals(vm.validationState(for: vm.scannedItems[0]), .confirmed, "Confirmed item must be in .confirmed state")
+
+        // Invalidate on edit: updating location of confirmed item invalidates confirmation
+        vm.updateItemLocation(id: item1.id, locationId: 20)
+        try assertEquals(vm.validationState(for: vm.scannedItems[0]), .ready, "Editing confirmed item must invalidate confirmation and revert state to .ready")
+        try assertTrue(!vm.scannedItems[0].isConfirmed, "isConfirmed must be false after edit")
+
+        // Clearing location of item reverts state to .needsDetails
+        vm.updateItemLocation(id: item1.id, locationId: nil)
+        try assertEquals(vm.validationState(for: vm.scannedItems[0]), .needsDetails, "Clearing location must transition state to .needsDetails")
+
+        // Restore location for subsequent tests
+        vm.updateItemLocation(id: item1.id, locationId: 10)
+        try assertEquals(vm.validationState(for: vm.scannedItems[0]), .ready, "Restoring location must return state to .ready")
+
         // Test confirmAllReady()
         vm.confirmAllReady()
         try assertTrue(vm.scannedItems[0].isConfirmed, "Item 1 must be confirmed by confirmAllReady")
         try assertTrue(!vm.scannedItems[1].isConfirmed, "Item without location must NOT be confirmed")
         try assertTrue(!vm.scannedItems[2].isConfirmed, "Unresolved item must NOT be confirmed")
         try assertTrue(!vm.scannedItems[3].isConfirmed, "Conflicted item must NOT be confirmed")
-
         // Test isIntakeMutationLocked guards
         vm.isCommitting = true
         let lockedConfirm = vm.confirmItem(id: itemNoLoc.id)
