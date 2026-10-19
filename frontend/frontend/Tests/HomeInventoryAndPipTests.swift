@@ -149,12 +149,12 @@ public struct HomeInventoryAndPipTests {
         )
         vm.expiringSoonItems = [expiredMilk]
 
-        // Chef Pip must NOT suggest recipes with Expired Whole Milk!
+        // When ONLY expired items exist, Chef Pip must return NO recipe suggestions (empty array)
         let ideas = vm.chefPipRecipeIdeas
-        try assertTrue(ideas.count == 1, "Should fall back to general pantry guidance when only expired items exist")
-        try assertTrue(!ideas[0].contains("Expired Whole Milk"), "Must NEVER recommend expired items in recipe suggestions")
+        try assertTrue(ideas.isEmpty, "Chef Pip must return no recipe suggestions when only expired items exist")
         try assertTrue(vm.chefPipDateSafetyNotice != nil, "Must provide date safety notice for expired items")
         try assertTrue(vm.chefPipDateSafetyNotice!.contains("past its recorded date"), "Notice warns about past dates")
+        try assertTrue(!vm.chefPipDateSafetyNotice!.contains("odor") && !vm.chefPipDateSafetyNotice!.contains("smell"), "Must avoid claiming smell or appearance confirms safety")
     }
 
     public static func testChefPipEmptyPantryDoesNotClaimWellStocked() throws {

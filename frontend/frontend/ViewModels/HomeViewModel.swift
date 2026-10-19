@@ -169,9 +169,9 @@ public class HomeViewModel: ObservableObject {
             return "Your pantry has no active stock. Scan grocery receipts or barcodes to begin tracking freshness."
         } else if expiredCount > 0 {
             if expiredCount == 1 {
-                return "1 item has passed its recorded date. Inspect condition and packaging before deciding to use or discard."
+                return "1 item has passed its recorded date. Review date labeling and safety guidelines before use."
             } else {
-                return "\(expiredCount) items have passed their recorded dates. Check packaging and condition before use."
+                return "\(expiredCount) items have passed their recorded dates. Review date labeling and safety guidelines before use."
             }
         } else if approachingCount > 0 {
             if approachingCount == 1 {
@@ -199,14 +199,18 @@ public class HomeViewModel: ObservableObject {
             return []
         }
         
+        // When only expired items exist, never claim all items are in date; return no recipe suggestions
+        if !expiredItems.isEmpty && approachingExpirationItems.isEmpty {
+            return []
+        }
+        
         let usableExpiring = approachingExpirationItems
         guard !usableExpiring.isEmpty else {
             // Stocked pantry with no expiring items
             return [
-                "All items are well within date. Plan your meals using ingredients currently on hand."
+                "All tracked items are well within date. Plan your meals using ingredients currently on hand."
             ]
         }
-        
         var ideas: [String] = []
         let topExpiring = Array(usableExpiring.prefix(2))
         
@@ -245,9 +249,9 @@ public class HomeViewModel: ObservableObject {
         guard !expiredItems.isEmpty else { return nil }
         let count = expiredItems.count
         if count == 1 {
-            return "1 item is past its recorded date. Inspect packaging integrity, odor, and appearance before deciding whether to use or discard."
+            return "1 item is past its recorded date. Check package labeling, date code, and storage guidelines. When in doubt regarding perishables, discard safely."
         } else {
-            return "\(count) items are past their recorded dates. Evaluate package condition and date labeling before deciding to use or discard."
+            return "\(count) items are past their recorded dates. Verify date labeling and food safety guidelines before deciding whether to use or discard."
         }
     }
 

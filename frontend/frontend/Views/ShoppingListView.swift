@@ -193,7 +193,7 @@ public struct ShoppingListView: View {
                                     .frame(width: 16, height: 16)
                                 Image(systemName: "checkmark")
                                     .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(ProvisionTheme.onAccent)
                             }
                         }
                         .accessibleTouchTarget()

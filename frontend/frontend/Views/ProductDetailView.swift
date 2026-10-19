@@ -150,7 +150,7 @@ public struct ProductDetailView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(ProvisionTheme.amberWarning)
-            .foregroundStyle(.white)
+            .foregroundStyle(ProvisionTheme.onAccent)
             .clipShape(Capsule())
         }
         .padding(14)

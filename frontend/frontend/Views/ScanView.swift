@@ -177,8 +177,8 @@ public struct ScanView: View {
             .overlay(alignment: .bottom) {
                 if let msg = viewModel.toastMessage {
                     Text(msg)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.white)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(ProvisionTheme.onAccent)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
                         .background(ProvisionTheme.provisionGreen)
@@ -433,7 +433,7 @@ public struct ScanView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
                     .background(ProvisionTheme.provisionGreen)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(ProvisionTheme.onAccent)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
@@ -1480,11 +1480,11 @@ public struct IntakeItemReviewSheet: View {
                         }
                     } label: {
                         if isRegistering {
-                            ProgressView().tint(.white)
+                            ProgressView().tint(ProvisionTheme.onAccent)
                         } else {
                             Text("Register & Link Product")
                                 .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(newProductName.trimmingCharacters(in: .whitespaces).isEmpty ? ProvisionTheme.textPrimary : ProvisionTheme.onAccent)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
                                 .background(newProductName.trimmingCharacters(in: .whitespaces).isEmpty ? ProvisionTheme.textTertiary : ProvisionTheme.provisionGreen)
