@@ -6,4 +6,8 @@ final class ScannerRecoveryTests: XCTestCase {
     func testProductionScannerBehaviorSuite() async throws {
         try await ScanViewModelProductionTests.runAllTests()
     }
+    @MainActor
+    func testHomeInventoryAndPipSuite() async throws {
+        try await HomeInventoryAndPipTests.runAllTests()
+    }
 }
