@@ -665,26 +665,26 @@ public struct ScanView: View {
         Button {
             reviewingItem = item
         } label: {
+            let state = viewModel.validationState(for: item)
             let hasConflict = item.conflictingReceiptQuantity != nil
-            let needsReview = item.productId == nil || item.status == .needsReview
-            let hasException = hasConflict || needsReview
+            let hasException = (state == .needsReview || state == .needsDetails)
 
-            HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .center, spacing: 10) {
                 // Exception warning indicator
                 if hasException {
-                    Image(systemName: "exclamationmark.triangle.fill")
+                    Image(systemName: state == .needsReview ? "exclamationmark.triangle.fill" : "exclamationmark.circle.fill")
                         .font(.system(size: 15))
-                        .foregroundStyle(ProvisionTheme.amberWarning)
+                        .foregroundStyle(state == .needsReview ? ProvisionTheme.redAlert : ProvisionTheme.amberWarning)
                 }
 
-                // Main Details Column
+                // Main Details Column with adaptive multi-line wrapping
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(item.name)
                             .font(ProvisionTypography.headline)
                             .foregroundStyle(ProvisionTheme.textPrimary)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
 
                         if let brand = item.brand, !brand.isEmpty {
                             Text("(\(brand))")
@@ -694,59 +694,46 @@ public struct ScanView: View {
                         }
                     }
 
-                    HStack(spacing: 8) {
-                        // Quantity + Unit
-                        Text("\(formattedQuantity(item.quantity)) \(item.unit)")
-                            .font(ProvisionTypography.subheadline)
-                            .foregroundStyle(ProvisionTheme.textSecondary)
+                    // Adaptive metadata layout: wraps to 2 lines on small screens/Dynamic Type
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 6) {
+                            Text("\(formattedQuantity(item.quantity)) \(item.unit)")
+                                .font(ProvisionTypography.subheadline)
+                                .foregroundStyle(ProvisionTheme.textSecondary)
 
-                        Text("•")
-                            .font(ProvisionTypography.caption)
-                            .foregroundStyle(ProvisionTheme.textTertiary)
-
-                        // Storage Location or "No location" badge
-                        if let locId = item.storageLocationId,
-                           let loc = viewModel.availableLocations.first(where: { $0.id == locId }) {
-                            HStack(spacing: 3) {
-                                Image(systemName: "archivebox")
-                                    .font(.system(size: 10))
-                                Text(loc.name)
-                                    .font(ProvisionTypography.caption)
-                            }
-                            .foregroundStyle(ProvisionTheme.textSecondary)
-                        } else {
-                            HStack(spacing: 3) {
-                                Image(systemName: "exclamationmark.circle.fill")
-                                    .font(.system(size: 10))
-                                Text("No location")
-                                    .font(.system(size: 11, weight: .bold))
-                            }
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(ProvisionTheme.amberLight)
-                            .foregroundStyle(ProvisionTheme.amberWarning)
-                            .clipShape(Capsule())
-                        }
-
-                        if hasConflict {
                             Text("•")
                                 .font(ProvisionTypography.caption)
                                 .foregroundStyle(ProvisionTheme.textTertiary)
-                            Text("Conflict")
-                                .font(.system(size: 10, weight: .bold))
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1.5)
-                                .background(ProvisionTheme.amberLight)
-                                .foregroundStyle(ProvisionTheme.amberWarning)
-                                .clipShape(Capsule())
+
+                            locationBadge(for: item)
+
+                            if hasConflict {
+                                Text("•")
+                                    .font(ProvisionTypography.caption)
+                                    .foregroundStyle(ProvisionTheme.textTertiary)
+                                conflictBadge
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(formattedQuantity(item.quantity)) \(item.unit)")
+                                .font(ProvisionTypography.subheadline)
+                                .foregroundStyle(ProvisionTheme.textSecondary)
+
+                            HStack(spacing: 6) {
+                                locationBadge(for: item)
+                                if hasConflict {
+                                    conflictBadge
+                                }
+                            }
                         }
                     }
                 }
 
-                Spacer()
+                Spacer(minLength: 6)
 
                 // Status Pill & Chevron
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     statusPill(for: item)
 
                     Image(systemName: "chevron.right")
@@ -760,15 +747,56 @@ public struct ScanView: View {
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(hasException ? ProvisionTheme.amberWarning.opacity(0.4) : ProvisionTheme.border, lineWidth: 1)
+                    .stroke(hasException ? (state == .needsReview ? ProvisionTheme.redAlert.opacity(0.4) : ProvisionTheme.amberWarning.opacity(0.4)) : ProvisionTheme.border, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(item.name), \(formattedQuantity(item.quantity)) \(item.unit), \(item.storageLocationId != nil ? "location selected" : "no location selected"), status: \(viewModel.validationState(for: item).rawValue)")
+        .accessibilityHint("Double tap to inspect and edit item details")
+    }
+
+    @ViewBuilder
+    private func locationBadge(for item: ScannedIntakeItem) -> some View {
+        if let locId = item.storageLocationId,
+           let loc = viewModel.availableLocations.first(where: { $0.id == locId }) {
+            HStack(spacing: 3) {
+                Image(systemName: "archivebox")
+                    .font(.system(size: 10))
+                Text(loc.name)
+                    .font(ProvisionTypography.caption)
+            }
+            .foregroundStyle(ProvisionTheme.textSecondary)
+        } else {
+            HStack(spacing: 3) {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .font(.system(size: 10))
+                Text("No location")
+                    .font(.system(size: 11, weight: .bold))
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(ProvisionTheme.amberLight)
+            .foregroundStyle(ProvisionTheme.amberWarning)
+            .clipShape(Capsule())
+        }
+    }
+
+    private var conflictBadge: some View {
+        Text("Conflict")
+            .font(.system(size: 10, weight: .bold))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1.5)
+            .background(ProvisionTheme.redLight)
+            .foregroundStyle(ProvisionTheme.redAlert)
+            .clipShape(Capsule())
     }
 
     @ViewBuilder
     private func statusPill(for item: ScannedIntakeItem) -> some View {
-        if item.isConfirmed {
+        let state = viewModel.validationState(for: item)
+        switch state {
+        case .confirmed:
             HStack(spacing: 3) {
                 Image(systemName: "checkmark")
                     .font(.system(size: 9, weight: .bold))
@@ -780,7 +808,8 @@ public struct ScanView: View {
             .background(ProvisionTheme.provisionGreenLight)
             .foregroundStyle(ProvisionTheme.provisionGreen)
             .clipShape(Capsule())
-        } else if item.productId == nil || item.status == .needsReview || item.conflictingReceiptQuantity != nil {
+
+        case .needsReview:
             HStack(spacing: 3) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 9, weight: .bold))
@@ -789,17 +818,35 @@ public struct ScanView: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
+            .background(ProvisionTheme.redLight)
+            .foregroundStyle(ProvisionTheme.redAlert)
+            .clipShape(Capsule())
+
+        case .needsDetails:
+            HStack(spacing: 3) {
+                Image(systemName: "exclamationmark.circle")
+                    .font(.system(size: 9, weight: .bold))
+                Text("Needs Details")
+                    .font(.system(size: 11, weight: .bold))
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
             .background(ProvisionTheme.amberLight)
             .foregroundStyle(ProvisionTheme.amberWarning)
             .clipShape(Capsule())
-        } else {
-            Text("Ready")
-                .font(.system(size: 11, weight: .bold))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(ProvisionTheme.provisionGreenLight.opacity(0.6))
-                .foregroundStyle(ProvisionTheme.provisionGreen)
-                .clipShape(Capsule())
+
+        case .ready:
+            HStack(spacing: 3) {
+                Image(systemName: "circle")
+                    .font(.system(size: 9, weight: .bold))
+                Text("Ready")
+                    .font(.system(size: 11, weight: .bold))
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(ProvisionTheme.provisionGreenLight.opacity(0.6))
+            .foregroundStyle(ProvisionTheme.provisionGreen)
+            .clipShape(Capsule())
         }
     }
 
@@ -873,7 +920,7 @@ public struct ScanView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 13)
                 .background((allConfirmed || viewModel.hasPendingCommitRecovery) ? ProvisionTheme.provisionGreen : ProvisionTheme.surfaceSecondary)
-                .foregroundStyle((allConfirmed || viewModel.hasPendingCommitRecovery) ? Color.white : ProvisionTheme.textTertiary)
+                .foregroundStyle((allConfirmed || viewModel.hasPendingCommitRecovery) ? ProvisionTheme.onAccent : ProvisionTheme.textTertiary)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -1049,9 +1096,8 @@ public struct IntakeItemReviewSheet: View {
 
     @State private var showingOCRScanner: Bool = false
     @State private var priceText: String = ""
+    @State private var catalogSearchQuery: String = ""
     @State private var selectedCatalogProductId: Int? = nil
-
-    // Inline quick-add product registration
     @State private var newProductName: String = ""
     @State private var newProductBrand: String = ""
     @State private var newProductCategory: String = "Canned Goods"
@@ -1295,39 +1341,101 @@ public struct IntakeItemReviewSheet: View {
             Text("This barcode (\(targetItem.barcode)) is not linked to a verified catalog product. Link to an existing catalog product or register details below.")
                 .font(.system(size: 12))
                 .foregroundStyle(ProvisionTheme.textSecondary)
-
             if !viewModel.availableCatalog.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Match to Existing Catalog Product:")
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Search & Match Existing Catalog Product:")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(ProvisionTheme.textPrimary)
 
-                    Picker("Catalog Product", selection: $selectedCatalogProductId) {
-                        Text("Choose product...").tag(nil as Int?)
-                        ForEach(viewModel.availableCatalog) { prod in
-                            Text("\(prod.name) (\(prod.brand ?? "Pantry"))").tag(prod.id as Int?)
+                    HStack(spacing: 6) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 12))
+                            .foregroundStyle(ProvisionTheme.textTertiary)
+
+                        TextField("Search by name, brand, or barcode...", text: $catalogSearchQuery)
+                            .font(.system(size: 13))
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+
+                        if !catalogSearchQuery.isEmpty {
+                            Button {
+                                catalogSearchQuery = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(ProvisionTheme.textTertiary)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
-                    .pickerStyle(.menu)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(ProvisionTheme.inputBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(ProvisionTheme.border, lineWidth: 1)
+                    )
 
-                    if let selId = selectedCatalogProductId,
-                       let prod = viewModel.availableCatalog.first(where: { $0.id == selId }) {
-                        Button {
-                            viewModel.resolveItemWithCatalogProduct(itemId: targetItem.id, product: prod)
-                            selectedCatalogProductId = nil
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "link.circle.fill")
-                                Text("Link as \(prod.name)")
-                                    .font(.system(size: 13, weight: .bold))
+                    let query = catalogSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    let filteredCatalog = viewModel.availableCatalog.filter { prod in
+                        guard !query.isEmpty else { return true }
+                        let nameMatch = prod.name.lowercased().contains(query)
+                        let brandMatch = prod.brand?.lowercased().contains(query) == true
+                        let barcodeMatch = prod.barcode?.contains(query) == true
+                        let categoryMatch = prod.category?.lowercased().contains(query) == true
+                        return nameMatch || brandMatch || barcodeMatch || categoryMatch
+                    }
+
+                    if filteredCatalog.isEmpty {
+                        Text("No catalog products match '\(catalogSearchQuery)'. Register below.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                            .padding(.vertical, 4)
+                    } else {
+                        ScrollView(.vertical, showsIndicators: true) {
+                            LazyVStack(spacing: 6) {
+                                ForEach(Array(filteredCatalog.prefix(8))) { prod in
+                                    Button {
+                                        viewModel.resolveItemWithCatalogProduct(itemId: targetItem.id, product: prod)
+                                        catalogSearchQuery = ""
+                                    } label: {
+                                        HStack {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(prod.name)
+                                                    .font(.system(size: 13, weight: .semibold))
+                                                    .foregroundStyle(ProvisionTheme.textPrimary)
+                                                HStack(spacing: 4) {
+                                                    if let brand = prod.brand, !brand.isEmpty {
+                                                        Text(brand)
+                                                    }
+                                                    if let cat = prod.category {
+                                                        Text("• \(cat)")
+                                                    }
+                                                }
+                                                .font(.system(size: 11))
+                                                .foregroundStyle(ProvisionTheme.textSecondary)
+                                            }
+                                            Spacer()
+                                            HStack(spacing: 4) {
+                                                Image(systemName: "link.circle.fill")
+                                                Text("Link")
+                                                    .font(.system(size: 12, weight: .bold))
+                                            }
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 6)
+                                            .background(ProvisionTheme.provisionGreenLight)
+                                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                                            .clipShape(Capsule())
+                                        }
+                                        .padding(8)
+                                        .background(ProvisionTheme.surface)
+                                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 7)
-                            .background(ProvisionTheme.provisionGreenLight)
-                            .foregroundStyle(ProvisionTheme.provisionGreen)
-                            .clipShape(Capsule())
                         }
-                        .buttonStyle(.plain)
+                        .frame(maxHeight: 180)
                     }
                 }
             }
@@ -1600,9 +1708,8 @@ public struct IntakeItemReviewSheet: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
-                    .background(ProvisionTheme.provisionGreen)
-                    .foregroundStyle(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background(viewModel.isItemEligibleForConfirmation(targetItem) ? ProvisionTheme.provisionGreen : ProvisionTheme.surfaceSecondary)
+                    .foregroundStyle(viewModel.isItemEligibleForConfirmation(targetItem) ? ProvisionTheme.onAccent : ProvisionTheme.textTertiary)
                 }
                 .disabled(viewModel.isIntakeMutationLocked)
 
