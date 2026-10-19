@@ -112,7 +112,7 @@ public struct EditBatchView: View {
                             Text("Save Changes")
                                 .font(.system(size: 16, weight: .bold))
                                 .frame(maxWidth: .infinity, minHeight: 48)
-                                .foregroundStyle(.white)
+                                .foregroundStyle(ProvisionTheme.onAccent)
                         }
                     }
                     .listRowBackground(isSubmitting ? ProvisionTheme.provisionGreen.opacity(0.4) : ProvisionTheme.provisionGreen)

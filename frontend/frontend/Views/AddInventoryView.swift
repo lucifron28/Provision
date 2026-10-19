@@ -272,7 +272,7 @@ public struct AddInventoryView: View {
                             Text(isRestockMode ? "Add Stock" : "Add to Inventory")
                                 .font(.system(size: 16, weight: .bold))
                                 .frame(maxWidth: .infinity, minHeight: 48)
-                                .foregroundStyle(.white)
+                                .foregroundStyle(ProvisionTheme.onAccent)
                         }
                     }
                     .listRowBackground(isFormValid && !isSubmitting ? ProvisionTheme.provisionGreen : ProvisionTheme.provisionGreen.opacity(0.4))

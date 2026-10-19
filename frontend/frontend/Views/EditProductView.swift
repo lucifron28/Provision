@@ -111,7 +111,7 @@ public struct EditProductView: View {
                             Text("Save Changes")
                                 .font(.system(size: 16, weight: .bold))
                                 .frame(maxWidth: .infinity, minHeight: 48)
-                                .foregroundStyle(.white)
+                                .foregroundStyle(ProvisionTheme.onAccent)
                         }
                     }
                     .listRowBackground(!isSubmitting && !name.trimmingCharacters(in: .whitespaces).isEmpty ? ProvisionTheme.provisionGreen : ProvisionTheme.provisionGreen.opacity(0.4))

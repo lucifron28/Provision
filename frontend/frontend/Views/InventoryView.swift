@@ -156,7 +156,7 @@ public struct InventoryView: View {
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)
                         .background(isSelected ? ProvisionTheme.provisionGreen : ProvisionTheme.surface)
-                        .foregroundStyle(isSelected ? .white : ProvisionTheme.textPrimary)
+                        .foregroundStyle(isSelected ? ProvisionTheme.onAccent : ProvisionTheme.textPrimary)
                         .clipShape(Capsule())
                         .overlay(
                             Capsule()
@@ -221,9 +221,9 @@ public struct InventoryView: View {
                 .font(.system(size: 13, weight: isSelected ? .bold : .medium))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
-                .background(isSelected ? ProvisionTheme.provisionGreen : ProvisionTheme.surface)
-                .foregroundStyle(isSelected ? .white : ProvisionTheme.textPrimary)
-                .clipShape(Capsule())
+            .background(isSelected ? ProvisionTheme.provisionGreen : ProvisionTheme.surface)
+            .foregroundStyle(isSelected ? ProvisionTheme.onAccent : ProvisionTheme.textPrimary)
+            .clipShape(Capsule())
                 .overlay(
                     Capsule()
                         .stroke(isSelected ? ProvisionTheme.provisionGreen : ProvisionTheme.border, lineWidth: 1)

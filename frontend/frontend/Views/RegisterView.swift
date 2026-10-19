@@ -168,7 +168,7 @@ public struct RegisterView: View {
                             }
                             .frame(maxWidth: .infinity, minHeight: 48)
                             .background(isSubmitDisabled ? ProvisionTheme.provisionGreen.opacity(0.4) : ProvisionTheme.provisionGreen)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(ProvisionTheme.onAccent)
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
                         .disabled(isSubmitDisabled || authVM.isLoading)

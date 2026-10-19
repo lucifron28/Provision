@@ -42,11 +42,12 @@ public enum ProvisionTheme {
     // Crisp input field background
     public static let inputBackground = adaptive(light: (1.000, 1.000, 1.000), dark: (0.161, 0.180, 0.161))
 
-    // MARK: - Brand Forest Green
-    // Deep forest green (#336142) in light; brighter vibrant green (#529167) in dark for WCAG AA >= 4.5:1
-    public static let provisionGreen = adaptive(light: (0.200, 0.380, 0.259), dark: (0.322, 0.569, 0.404))
+    // MARK: - Brand Forest Green & High-Contrast Foreground
+    // Deep forest green (#336142) in light; brighter vibrant green (#529E6E) in dark
+    public static let provisionGreen = adaptive(light: (0.200, 0.380, 0.259), dark: (0.322, 0.620, 0.431))
     public static let provisionGreenLight = adaptive(light: (0.910, 0.949, 0.922), dark: (0.118, 0.188, 0.137))
-
+    // High-contrast foreground on green surfaces: Pure White in light (7.18:1), Dark Forest Charcoal in dark (5.86:1, WCAG AA >= 4.5:1)
+    public static let onAccent = adaptive(light: (1.000, 1.000, 1.000), dark: (0.045, 0.070, 0.050))
     // MARK: - Semantic Status Colors
     // Accessible warning amber with >= 4.5:1 contrast
     public static let amberWarning = adaptive(light: (0.678, 0.361, 0.051), dark: (0.898, 0.541, 0.180))

@@ -163,7 +163,7 @@ public struct ShoppingListView: View {
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(ProvisionTheme.onAccent)
                     .frame(width: 44, height: 44)
                     .background(viewModel.newItemName.trimmingCharacters(in: .whitespaces).isEmpty ? ProvisionTheme.provisionGreen.opacity(0.4) : ProvisionTheme.provisionGreen)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
