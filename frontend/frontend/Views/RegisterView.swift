@@ -56,11 +56,23 @@ public struct RegisterView: View {
                                 .foregroundStyle(ProvisionTheme.textSecondary)
                                 .tracking(0.6)
                             
-                            TextField("e.g. Alex", text: $displayName)
-                                .padding(14)
-                                .background(ProvisionTheme.surface)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(ProvisionTheme.border, lineWidth: 1))
+                            HStack(spacing: 10) {
+                                Image(systemName: "person.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(ProvisionTheme.textTertiary)
+                                    .frame(width: 20)
+                                TextField("e.g. Alex", text: $displayName)
+                                    .foregroundStyle(ProvisionTheme.textPrimary)
+                                    .tint(ProvisionTheme.provisionGreen)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .background(ProvisionTheme.inputBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(ProvisionTheme.border, lineWidth: 1)
+                            )
                         }
                         
                         VStack(alignment: .leading, spacing: 6) {
@@ -69,14 +81,26 @@ public struct RegisterView: View {
                                 .foregroundStyle(ProvisionTheme.textSecondary)
                                 .tracking(0.6)
                             
-                            TextField("name@example.com", text: $email)
-                                .keyboardType(.emailAddress)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .padding(14)
-                                .background(ProvisionTheme.surface)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(ProvisionTheme.border, lineWidth: 1))
+                            HStack(spacing: 10) {
+                                Image(systemName: "envelope.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(ProvisionTheme.textTertiary)
+                                    .frame(width: 20)
+                                TextField("name@example.com", text: $email)
+                                    .keyboardType(.emailAddress)
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
+                                    .foregroundStyle(ProvisionTheme.textPrimary)
+                                    .tint(ProvisionTheme.provisionGreen)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .background(ProvisionTheme.inputBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(ProvisionTheme.border, lineWidth: 1)
+                            )
                         }
                         
                         VStack(alignment: .leading, spacing: 6) {
@@ -85,11 +109,23 @@ public struct RegisterView: View {
                                 .foregroundStyle(ProvisionTheme.textSecondary)
                                 .tracking(0.6)
                             
-                            SecureField("Enter password", text: $password)
-                                .padding(14)
-                                .background(ProvisionTheme.surface)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(ProvisionTheme.border, lineWidth: 1))
+                            HStack(spacing: 10) {
+                                Image(systemName: "lock.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(ProvisionTheme.textTertiary)
+                                    .frame(width: 20)
+                                SecureField("Enter password", text: $password)
+                                    .foregroundStyle(ProvisionTheme.textPrimary)
+                                    .tint(ProvisionTheme.provisionGreen)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .background(ProvisionTheme.inputBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(ProvisionTheme.border, lineWidth: 1)
+                            )
                         }
                         
                         VStack(alignment: .leading, spacing: 6) {
@@ -98,11 +134,23 @@ public struct RegisterView: View {
                                 .foregroundStyle(ProvisionTheme.textSecondary)
                                 .tracking(0.6)
                             
-                            SecureField("Re-enter password", text: $confirmPassword)
-                                .padding(14)
-                                .background(ProvisionTheme.surface)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(ProvisionTheme.border, lineWidth: 1))
+                            HStack(spacing: 10) {
+                                Image(systemName: "lock.shield.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(ProvisionTheme.textTertiary)
+                                    .frame(width: 20)
+                                SecureField("Re-enter password", text: $confirmPassword)
+                                    .foregroundStyle(ProvisionTheme.textPrimary)
+                                    .tint(ProvisionTheme.provisionGreen)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .background(ProvisionTheme.inputBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(ProvisionTheme.border, lineWidth: 1)
+                            )
                         }
                         
                         // Submit Button
@@ -118,11 +166,10 @@ public struct RegisterView: View {
                                         .font(.system(size: 16, weight: .bold))
                                 }
                             }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(isSubmitDisabled ? ProvisionTheme.provisionGreen.opacity(0.5) : ProvisionTheme.provisionGreen)
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                            .background(isSubmitDisabled ? ProvisionTheme.provisionGreen.opacity(0.4) : ProvisionTheme.provisionGreen)
                             .foregroundStyle(.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
                         .disabled(isSubmitDisabled || authVM.isLoading)
                         .padding(.top, 6)
@@ -142,6 +189,8 @@ public struct RegisterView: View {
                                 .foregroundStyle(ProvisionTheme.provisionGreen)
                         }
                         .font(.system(size: 14))
+                        .padding(.vertical, 8)
+                        .accessibleTouchTarget()
                     }
                     .padding(.top, 4)
                     
@@ -149,6 +198,7 @@ public struct RegisterView: View {
                 }
                 .padding(.horizontal, 20)
             }
+            .scrollDismissesKeyboard(.interactively)
             .background(ProvisionTheme.background.ignoresSafeArea())
         }
     }
