@@ -886,7 +886,14 @@ public class ScanViewModel: ObservableObject {
         ]
     }
 
-    // MARK: - Centralized Confirmation Logic
+    // MARK: - Centralized Confirmation Logic & Authoritative Validation State
+
+    public enum IntakeItemValidationState: String, CaseIterable, Sendable {
+        case needsReview = "Needs Review"
+        case needsDetails = "Needs Details"
+        case ready = "Ready"
+        case confirmed = "Confirmed"
+    }
 
     /// Validates whether an intake item satisfies all confirmation requirements.
     public func isItemEligibleForConfirmation(_ item: ScannedIntakeItem) -> Bool {
@@ -898,6 +905,21 @@ public class ScanViewModel: ObservableObject {
         item.conflictingReceiptQuantity == nil
     }
 
+    /// Single authoritative function that determines the accurate validation and confirmation state of an intake item.
+    public func validationState(for item: ScannedIntakeItem) -> IntakeItemValidationState {
+        if item.isConfirmed {
+            if isItemEligibleForConfirmation(item) {
+                return .confirmed
+            }
+        }
+        if item.productId == nil || item.status == .needsReview || item.conflictingReceiptQuantity != nil {
+            return .needsReview
+        }
+        if item.storageLocationId == nil || item.quantity <= 0 || item.unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return .needsDetails
+        }
+        return .ready
+    }
     /// Confirms a specific intake item after validating all requirements.
     @discardableResult
     public func confirmItem(id: UUID) -> Bool {
