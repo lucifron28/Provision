@@ -109,6 +109,97 @@ public class HomeViewModel: ObservableObject {
         return .healthy
     }
 
+    // MARK: - Pip Mascot & Contextual Guidance
+    
+    public var pipMascotAssetName: String {
+        if !expiringSoonItems.isEmpty {
+            return "pip_concerned"
+        } else if !lowStockItems.isEmpty {
+            return "pip_grocery"
+        } else if valuation.total_active_batches == 0 && valuation.total_active_products == 0 {
+            return "pip_guardian"
+        } else {
+            return "pip_proud"
+        }
+    }
+    
+    public var pipGuidanceTitle: String {
+        if !expiringSoonItems.isEmpty {
+            return "Expiring Soon"
+        } else if !lowStockItems.isEmpty {
+            return "Restock Needed"
+        } else if valuation.total_active_batches == 0 && valuation.total_active_products == 0 {
+            return "Pantry Ready"
+        } else {
+            return "All Fresh"
+        }
+    }
+    
+    public var pipGuidanceMessage: String {
+        let expiringCount = expiringSoonItems.count
+        let lowStockCount = lowStockItems.count
+        
+        if expiringCount > 0 {
+            if expiringCount == 1 {
+                return "1 item expiring soon — check it before it spoils!"
+            } else {
+                return "\(expiringCount) items expiring soon — check them before they spoil!"
+            }
+        } else if lowStockCount > 0 {
+            if lowStockCount == 1 {
+                return "1 pantry essential is running low."
+            } else {
+                return "\(lowStockCount) pantry essentials are running low."
+            }
+        } else if valuation.total_active_batches == 0 && valuation.total_active_products == 0 {
+            return "Your pantry is empty. Scan grocery receipts or barcodes to begin tracking freshness."
+        } else {
+            return "All pantry stock is fresh! No urgent items need your attention."
+        }
+    }
+    
+    // MARK: - Chef Pip Recipe Suggestions
+    
+    public var chefPipRecipeIdeas: [String] {
+        guard !expiringSoonItems.isEmpty else {
+            return [
+                "Your pantry is well-stocked and fresh! Plan your week's meals with ingredients on hand."
+            ]
+        }
+        
+        var ideas: [String] = []
+        let topExpiring = Array(expiringSoonItems.prefix(2))
+        
+        for item in topExpiring {
+            let name = item.product_name
+            let lower = name.lowercased()
+            
+            if lower.contains("milk") {
+                ideas.append("Make breakfast oats, pancakes, or creamy champorado with \(name).")
+            } else if lower.contains("bread") {
+                ideas.append("Toast \(name) for french toast, cheesy garlic slices, or homemade croutons.")
+            } else if lower.contains("egg") {
+                ideas.append("Whip up a quick vegetable scramble, tortang talong, or soft-boiled topping using \(name).")
+            } else if lower.contains("tuna") {
+                ideas.append("Toss \(name) into garlic aglio olio pasta or prepare a savory tuna spread.")
+            } else if lower.contains("corned beef") || lower.contains("beef") {
+                ideas.append("Sauté \(name) with diced potatoes and onions for hearty morning sinangag.")
+            } else if lower.contains("cheese") {
+                ideas.append("Melt \(name) over toasted bread or fold into a warm pasta dish.")
+            } else if lower.contains("canton") || lower.contains("noodle") {
+                ideas.append("Pair \(name) with a fried egg and fresh greens for a quick lunch.")
+            } else if lower.contains("rice") {
+                ideas.append("Turn \(name) into flavorful garlic fried rice or comforting arroz caldo.")
+            } else if lower.contains("sauce") || lower.contains("soy") {
+                ideas.append("Use \(name) as a savory marinade base for your next stir-fry or adobo.")
+            } else {
+                ideas.append("Incorporate \(name) into tonight's skillet or meal prep before expiration.")
+            }
+        }
+        
+        return ideas
+    }
+
     public func addLowStockToShoppingList(_ item: LowStockItem) async {
         if isPreview {
             showToast("Added \(item.product_name) to Shopping List")

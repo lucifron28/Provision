@@ -3,23 +3,39 @@ import SwiftUI
 public struct HomeView: View {
     @ObservedObject var viewModel: HomeViewModel
     @ObservedObject var authVM: AuthViewModel
-    var onNavigateToInventory: () -> Void
+    var onNavigateToInventory: (InventoryQuickFilter?) -> Void
     var onNavigateToShopping: () -> Void
 
     @State private var showingProfileSheet: Bool = false
     @State private var notificationsEnabled: Bool = NotificationService.shared.isAlertsEnabled
     @State private var devBackendHost: String = APIEnvironment.localDeviceHost
     @State private var hostUpdateMessage: String? = nil
+    @State private var itemToConsume: ExpiringSoonItem? = nil
+
     public init(
         viewModel: HomeViewModel,
         authVM: AuthViewModel,
-        onNavigateToInventory: @escaping () -> Void = {},
+        onNavigateToInventory: @escaping (InventoryQuickFilter?) -> Void = { _ in },
         onNavigateToShopping: @escaping () -> Void = {}
     ) {
         self.viewModel = viewModel
         self.authVM = authVM
         self.onNavigateToInventory = onNavigateToInventory
         self.onNavigateToShopping = onNavigateToShopping
+    }
+
+    public init(
+        viewModel: HomeViewModel,
+        authVM: AuthViewModel,
+        onNavigateToInventory: @escaping () -> Void,
+        onNavigateToShopping: @escaping () -> Void = {}
+    ) {
+        self.init(
+            viewModel: viewModel,
+            authVM: authVM,
+            onNavigateToInventory: { _ in onNavigateToInventory() },
+            onNavigateToShopping: onNavigateToShopping
+        )
     }
 
     public var body: some View {
@@ -64,10 +80,16 @@ public struct HomeView: View {
                         // Pantry Health Hero Card
                         pantryHealthCard
 
-                        // Expiring Soon Section
+                        // Pip Contextual Card
+                        pipContextualCard
+
+                        // Chef Pip Kitchen Corner ("Use It First")
+                        chefPipKitchenCorner
+
+                        // Expiring Soon Section (Top 3)
                         expiringSoonSection
 
-                        // Restock Needed Section
+                        // Restock Needed Section (Top 3)
                         restockNeededSection
                     }
                 }
@@ -93,6 +115,28 @@ public struct HomeView: View {
             }
             .sheet(isPresented: $showingProfileSheet) {
                 profileSheet
+            }
+            .alert("Log Consumption", isPresented: Binding(
+                get: { itemToConsume != nil },
+                set: { if !$0 { itemToConsume = nil } }
+            )) {
+                if let item = itemToConsume {
+                    Button("Consume 1 \(item.unit ?? "unit")") {
+                        let target = item
+                        itemToConsume = nil
+                        Task {
+                            await viewModel.quickConsumeExpiringItem(target)
+                            HapticFeedback.success()
+                        }
+                    }
+                    Button("Cancel", role: .cancel) {
+                        itemToConsume = nil
+                    }
+                }
+            } message: {
+                if let item = itemToConsume {
+                    Text("Are you sure you want to log 1 \(item.unit ?? "unit") of \(item.product_name) as consumed?")
+                }
             }
         }
     }
@@ -202,6 +246,143 @@ public struct HomeView: View {
         )
     }
 
+    private var pipContextualCard: some View {
+        HStack(spacing: 14) {
+            Image(viewModel.pipMascotAssetName)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 58, height: 58)
+                .background(
+                    Circle()
+                        .fill(viewModel.pantryStatus.color.opacity(0.12))
+                        .frame(width: 64, height: 64)
+                )
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text("PIP'S PANTRY INSIGHT")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                        .tracking(0.6)
+
+                    Spacer()
+
+                    Text(viewModel.pipGuidanceTitle)
+                        .font(.system(size: 10, weight: .bold))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(viewModel.pantryStatus.color.opacity(0.15))
+                        .foregroundStyle(viewModel.pantryStatus.color)
+                        .clipShape(Capsule())
+                }
+
+                Text(viewModel.pipGuidanceMessage)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !viewModel.expiringSoonItems.isEmpty {
+                    Button {
+                        onNavigateToInventory(.expiringSoon)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text("Review Expiring Items")
+                                .font(.system(size: 12, weight: .semibold))
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 10, weight: .bold))
+                        }
+                        .foregroundStyle(ProvisionTheme.amberWarning)
+                        .padding(.top, 2)
+                    }
+                } else if !viewModel.lowStockItems.isEmpty {
+                    Button {
+                        onNavigateToInventory(.lowStock)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text("Check Low Stock")
+                                .font(.system(size: 12, weight: .semibold))
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 10, weight: .bold))
+                        }
+                        .foregroundStyle(ProvisionTheme.provisionGreen)
+                        .padding(.top, 2)
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .provisionCard(
+            backgroundColor: ProvisionTheme.surface,
+            cornerRadius: 16,
+            borderColor: ProvisionTheme.border.opacity(0.7)
+        )
+    }
+
+    private var chefPipKitchenCorner: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image("pip_chef")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 48, height: 48)
+                    .background(
+                        Circle()
+                            .fill(ProvisionTheme.provisionGreenLight)
+                            .frame(width: 54, height: 54)
+                    )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text("Chef Pip's Kitchen Corner")
+                            .font(.system(size: 16, weight: .bold, design: .serif))
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+                        Spacer()
+                        HStack(spacing: 3) {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 10, weight: .bold))
+                            Text("Use It First")
+                                .font(.system(size: 10, weight: .heavy))
+                        }
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(ProvisionTheme.amberLight)
+                        .foregroundStyle(ProvisionTheme.amberWarning)
+                        .clipShape(Capsule())
+                    }
+
+                    Text("Smart, zero-waste ideas for ingredients on hand")
+                        .font(.system(size: 11))
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                }
+            }
+
+            Divider()
+                .background(ProvisionTheme.border.opacity(0.6))
+
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(viewModel.chefPipRecipeIdeas, id: \.self) { idea in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "fork.knife")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                            .padding(.top, 2)
+
+                        Text(idea)
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .provisionCard(
+            backgroundColor: ProvisionTheme.surfaceSecondary.opacity(0.6),
+            cornerRadius: 16,
+            borderColor: ProvisionTheme.border.opacity(0.8)
+        )
+    }
+
     private var timeGreeting: String {
         let hour = Calendar.current.component(.hour, from: Date())
         if hour >= 5 && hour < 12 {
@@ -223,7 +404,7 @@ public struct HomeView: View {
                 Spacer()
 
                 Button("View All") {
-                    onNavigateToInventory()
+                    onNavigateToInventory(.expiringSoon)
                 }
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(ProvisionTheme.textSecondary)
@@ -254,7 +435,7 @@ public struct HomeView: View {
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
-                        ForEach(viewModel.expiringSoonItems) { item in
+                        ForEach(Array(viewModel.expiringSoonItems.prefix(3))) { item in
                             expiringItemCard(item: item)
                         }
                     }
@@ -299,9 +480,7 @@ public struct HomeView: View {
             }
 
             Button {
-                Task {
-                    await viewModel.quickConsumeExpiringItem(item)
-                }
+                itemToConsume = item
             } label: {
                 HStack {
                     Image(systemName: "checkmark")
@@ -324,9 +503,21 @@ public struct HomeView: View {
 
     private var restockNeededSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Restock Needed")
-                .font(.system(size: 18, weight: .bold, design: .serif))
-                .foregroundStyle(ProvisionTheme.textPrimary)
+            HStack {
+                Text("Restock Needed")
+                    .font(.system(size: 18, weight: .bold, design: .serif))
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+
+                Spacer()
+
+                if !viewModel.lowStockItems.isEmpty {
+                    Button("View All") {
+                        onNavigateToInventory(.lowStock)
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(ProvisionTheme.textSecondary)
+                }
+            }
 
             if viewModel.lowStockItems.isEmpty {
                 HStack(spacing: 12) {
@@ -351,7 +542,7 @@ public struct HomeView: View {
                 .provisionCard()
             } else {
                 VStack(spacing: 10) {
-                    ForEach(viewModel.lowStockItems) { item in
+                    ForEach(Array(viewModel.lowStockItems.prefix(3))) { item in
                         HStack(spacing: 12) {
                             ZStack {
                                 Circle()
@@ -396,151 +587,163 @@ public struct HomeView: View {
 
     private var profileSheet: some View {
         NavigationStack {
-            VStack(spacing: 24) {
-                VStack(spacing: 12) {
-                    ZStack {
-                        Circle()
-                            .fill(ProvisionTheme.provisionGreenLight)
-                            .frame(width: 72, height: 72)
-                        Image(systemName: "person.crop.circle.fill")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 64, height: 64)
-                            .foregroundStyle(ProvisionTheme.provisionGreen)
-                    }
-
-                    VStack(spacing: 4) {
-                        Text(authVM.currentUser?.displayNameOrEmail ?? "Household Member")
-                            .font(.system(size: 20, weight: .bold, design: .serif))
-                            .foregroundStyle(ProvisionTheme.textPrimary)
-
-                        Text(authVM.currentUser?.email ?? "user@provision.local")
-                            .font(.system(size: 14))
-                            .foregroundStyle(ProvisionTheme.textSecondary)
-                    }
-                }
-                .padding(.top, 24)
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("HOUSEHOLD PANTRY")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(ProvisionTheme.textSecondary)
-                        .tracking(0.6)
-
-                    HStack {
-                        Text("Pantry Access")
-                            .font(.system(size: 15))
-                        Spacer()
-                        Text("Shared Household")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(ProvisionTheme.provisionGreen)
-                    }
-                    .padding(14)
-                    .provisionCard()
-                }
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("DEVELOPMENT BACKEND HOST")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(ProvisionTheme.textSecondary)
-                        .tracking(0.6)
-
-                    HStack {
-                        Image(systemName: "network")
-                            .foregroundStyle(ProvisionTheme.provisionGreen)
-                        TextField("IP Address (e.g. 10.212.56.11)", text: $devBackendHost)
-                            .font(.system(size: 14, design: .monospaced))
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                        Button("Save") {
-                            let trimmed = devBackendHost.trimmingCharacters(in: .whitespacesAndNewlines)
-                            if let validURL = APIEnvironment.validateHost(trimmed) {
-                                APIEnvironment.localDeviceHost = trimmed
-                                Task {
-                                    await APIClient.shared.setBaseURL(validURL)
-                                }
-                                hostUpdateMessage = "Host updated to \(trimmed)"
-                            } else {
-                                hostUpdateMessage = "Invalid host format. Enter a valid IP or hostname."
-                            }
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Account Section
+                    VStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(ProvisionTheme.provisionGreenLight)
+                                .frame(width: 72, height: 72)
+                            Image(systemName: "person.crop.circle.fill")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 64, height: 64)
+                                .foregroundStyle(ProvisionTheme.provisionGreen)
                         }
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(ProvisionTheme.provisionGreen)
-                    }
-                    .padding(14)
-                    .provisionCard()
 
-                    if let msg = hostUpdateMessage {
-                        Text(msg)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(msg.starts(with: "Host updated") ? ProvisionTheme.provisionGreen : ProvisionTheme.redAlert)
-                            .padding(.leading, 4)
-                    }
-                }
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("NOTIFICATIONS & ALERTS")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(ProvisionTheme.textSecondary)
-                        .tracking(0.6)
+                        VStack(spacing: 4) {
+                            Text(authVM.currentUser?.displayNameOrEmail ?? "Household Member")
+                                .font(.system(size: 20, weight: .bold, design: .serif))
+                                .foregroundStyle(ProvisionTheme.textPrimary)
 
-                    Toggle(isOn: $notificationsEnabled) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Expiration Reminders")
-                                .font(.system(size: 15, weight: .medium))
-                            Text("Daily 8:00 AM alert for items expiring in ≤ 2 days")
-                                .font(.system(size: 11))
+                            Text(authVM.currentUser?.email ?? "user@provision.local")
+                                .font(.system(size: 14))
                                 .foregroundStyle(ProvisionTheme.textSecondary)
                         }
                     }
-                    .tint(ProvisionTheme.provisionGreen)
-                    .onChange(of: notificationsEnabled) { _, newValue in
-                        NotificationService.shared.isAlertsEnabled = newValue
-                        if newValue {
-                            Task {
-                                let granted = await NotificationService.shared.requestAuthorization()
-                                if granted {
-                                    await NotificationService.shared.syncExpirationAlerts(expiringSoon: viewModel.expiringSoonItems)
+                    .padding(.top, 16)
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("ACCOUNT")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                            .tracking(0.6)
+
+                        HStack {
+                            Text("Pantry Access")
+                                .font(.system(size: 15))
+                                .foregroundStyle(ProvisionTheme.textPrimary)
+                            Spacer()
+                            Text("Shared Household")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(ProvisionTheme.provisionGreen)
+                        }
+                        .padding(14)
+                        .provisionCard()
+                    }
+
+                    // Preferences Section
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("PREFERENCES & NOTIFICATIONS")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                            .tracking(0.6)
+
+                        Toggle(isOn: $notificationsEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Expiration Reminders")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundStyle(ProvisionTheme.textPrimary)
+                                Text("Daily 8:00 AM alert for items expiring in ≤ 2 days")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(ProvisionTheme.textSecondary)
+                            }
+                        }
+                        .tint(ProvisionTheme.provisionGreen)
+                        .onChange(of: notificationsEnabled) { _, newValue in
+                            NotificationService.shared.isAlertsEnabled = newValue
+                            if newValue {
+                                Task {
+                                    let granted = await NotificationService.shared.requestAuthorization()
+                                    if granted {
+                                        await NotificationService.shared.syncExpirationAlerts(expiringSoon: viewModel.expiringSoonItems)
+                                    }
+                                }
+                            } else {
+                                NotificationService.shared.cancelAllExpirationAlerts()
+                            }
+                        }
+                        .padding(14)
+                        .provisionCard()
+                    }
+
+                    // Development Server Host Section
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("DEVELOPMENT SERVER HOST")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                            .tracking(0.6)
+
+                        HStack {
+                            Image(systemName: "network")
+                                .foregroundStyle(ProvisionTheme.provisionGreen)
+                            TextField("IP Address (e.g. 10.212.56.11)", text: $devBackendHost)
+                                .font(.system(size: 14, design: .monospaced))
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .foregroundStyle(ProvisionTheme.textPrimary)
+                            Button("Save") {
+                                let trimmed = devBackendHost.trimmingCharacters(in: .whitespacesAndNewlines)
+                                if let validURL = APIEnvironment.validateHost(trimmed) {
+                                    APIEnvironment.localDeviceHost = trimmed
+                                    Task {
+                                        await APIClient.shared.setBaseURL(validURL)
+                                    }
+                                    hostUpdateMessage = "Host updated to \(trimmed)"
+                                } else {
+                                    hostUpdateMessage = "Invalid host format. Enter a valid IP or hostname."
                                 }
                             }
-                        } else {
-                            NotificationService.shared.cancelAllExpirationAlerts()
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                        }
+                        .padding(14)
+                        .provisionCard()
+
+                        if let msg = hostUpdateMessage {
+                            Text(msg)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(msg.starts(with: "Host updated") ? ProvisionTheme.provisionGreen : ProvisionTheme.redAlert)
+                                .padding(.leading, 4)
                         }
                     }
-                    .padding(14)
-                    .provisionCard()
-                }
-                Spacer()
 
-                Button(role: .destructive) {
-                    showingProfileSheet = false
-                    Task {
-                        await authVM.logout()
+                    // Sign Out Section
+                    Button(role: .destructive) {
+                        showingProfileSheet = false
+                        Task {
+                            await authVM.logout()
+                        }
+                    } label: {
+                        HStack {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                            Text("Log Out")
+                                .font(.system(size: 16, weight: .semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(ProvisionTheme.redLight)
+                        .foregroundStyle(ProvisionTheme.redAlert)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
-                } label: {
-                    HStack {
-                        Image(systemName: "rectangle.portrait.and.arrow.right")
-                        Text("Log Out")
-                            .font(.system(size: 16, weight: .semibold))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(ProvisionTheme.redLight)
-                    .foregroundStyle(ProvisionTheme.redAlert)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .padding(.top, 8)
+                    .padding(.bottom, 16)
                 }
-                .padding(.bottom, 16)
+                .padding(.horizontal, 20)
             }
-            .padding(.horizontal, 20)
             .background(ProvisionTheme.background.ignoresSafeArea())
-            .navigationTitle("Provision")
+            .navigationTitle("Settings & Account")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { showingProfileSheet = false }
+                        .foregroundStyle(ProvisionTheme.provisionGreen)
                 }
             }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 
     private func toastView(message: String, isError: Bool) -> some View {
