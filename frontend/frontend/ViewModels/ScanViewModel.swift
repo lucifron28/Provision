@@ -65,6 +65,7 @@ public enum SuspensionReason: String, CaseIterable, Hashable, Sendable {
     case receiptOCR = "Processing receipt OCR"
     case quickAddSheet = "Product resolution sheet open"
     case manualEntrySheet = "Manual entry sheet open"
+    case itemReviewSheet = "Intake item review sheet open"
     case expirationSheet = "Expiration date scanner open"
     case priceEditing = "Price editing active"
     case background = "App in background or inactive"
@@ -885,13 +886,26 @@ public class ScanViewModel: ObservableObject {
         ]
     }
 
-    @discardableResult
-    public func confirmItem(_ item: ScannedIntakeItem) -> Bool {
-        guard !isIntakeMutationLocked else { return false }
-        guard let idx = scannedItems.firstIndex(where: { $0.id == item.id }) else { return false }
-        var target = scannedItems[idx]
+    // MARK: - Centralized Confirmation Logic
 
-        // An item can only be confirmed if it has a productId, is not .needsReview, has storageLocationId, and valid quantity/unit
+    /// Validates whether an intake item satisfies all confirmation requirements.
+    public func isItemEligibleForConfirmation(_ item: ScannedIntakeItem) -> Bool {
+        item.productId != nil &&
+        item.status != .needsReview &&
+        item.storageLocationId != nil &&
+        item.quantity > 0 &&
+        !item.unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        item.conflictingReceiptQuantity == nil
+    }
+
+    /// Confirms a specific intake item after validating all requirements.
+    @discardableResult
+    public func confirmItem(id: UUID) -> Bool {
+        guard !isIntakeMutationLocked else { return false }
+        guard let idx = scannedItems.firstIndex(where: { $0.id == id }) else { return false }
+        let target = scannedItems[idx]
+
+        // An item can only be confirmed if it has no conflict, has a productId, is not .needsReview, has storageLocationId, and valid quantity/unit
         guard target.conflictingReceiptQuantity == nil else {
             self.errorMessage = "Cannot confirm: '\(target.name)' has an unresolved quantity conflict. Please choose the correct quantity first."
             return false
@@ -909,30 +923,65 @@ public class ScanViewModel: ObservableObject {
             return false
         }
 
-        target.isConfirmed.toggle()
-        if target.isConfirmed {
-            target.status = .confirmed
-        } else {
-            target.status = .recognized
-        }
-        scannedItems[idx] = target
-        return target.isConfirmed
+        scannedItems[idx].isConfirmed = true
+        scannedItems[idx].status = .confirmed
+        self.errorMessage = nil
+        return true
     }
 
-    public func confirmAllValid() {
+    /// Unconfirms a specific intake item, returning it to recognized state.
+    public func unconfirmItem(id: UUID) {
+        guard !isIntakeMutationLocked else { return }
+        guard let idx = scannedItems.firstIndex(where: { $0.id == id }) else { return }
+        invalidateConfirmation(at: idx)
+    }
+
+    /// Confirms all eligible ready items that satisfy validation rules.
+    public func confirmAllReady() {
         guard !isIntakeMutationLocked else { return }
         for idx in scannedItems.indices {
             let item = scannedItems[idx]
-            if item.productId != nil &&
-                item.status != .needsReview &&
-                item.conflictingReceiptQuantity == nil &&
-                item.storageLocationId != nil &&
-                item.quantity > 0 &&
-                !item.unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if isItemEligibleForConfirmation(item) {
                 scannedItems[idx].isConfirmed = true
                 scannedItems[idx].status = .confirmed
             }
         }
+    }
+
+    /// Compatibility overload for confirmItem(id:)
+    @discardableResult
+    public func confirmItem(_ item: ScannedIntakeItem) -> Bool {
+        confirmItem(id: item.id)
+    }
+
+    /// Compatibility alias for confirmAllReady()
+    public func confirmAllValid() {
+        confirmAllReady()
+    }
+
+    /// Count of items needing review (unresolved product or quantity conflict)
+    public var itemsNeedingReviewCount: Int {
+        scannedItems.filter { $0.productId == nil || $0.status == .needsReview || $0.conflictingReceiptQuantity != nil }.count
+    }
+
+    /// Count of items missing a storage location
+    public var itemsNeedingLocationCount: Int {
+        scannedItems.filter { $0.storageLocationId == nil }.count
+    }
+
+    /// Count of confirmed items
+    public var confirmedItemsCount: Int {
+        scannedItems.filter { $0.isConfirmed }.count
+    }
+
+    /// Count of items that satisfy validation rules (whether confirmed or ready to confirm)
+    public var readyItemsCount: Int {
+        scannedItems.filter { isItemEligibleForConfirmation($0) }.count
+    }
+
+    /// Count of items that satisfy validation rules and are waiting to be confirmed
+    public var readyToConfirmCount: Int {
+        scannedItems.filter { isItemEligibleForConfirmation($0) && !$0.isConfirmed }.count
     }
 
     public func addItem(barcode: String, name: String, brand: String? = nil, quantity: Double = 1, unit: String = "units", daysUntilExp: Int? = nil) {

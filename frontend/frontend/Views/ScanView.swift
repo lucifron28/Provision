@@ -19,6 +19,7 @@ public struct ScanView: View {
     @State private var editingPriceItem: ScannedIntakeItem? = nil
     @State private var editingPriceText: String = ""
     @State private var selectedCatalogProductId: Int? = nil
+    @State private var reviewingItem: ScannedIntakeItem? = nil
 
     public init(viewModel: ScanViewModel) {
         self.viewModel = viewModel
@@ -139,6 +140,17 @@ public struct ScanView: View {
                     }
                 }
                 .presentationDetents([.medium])
+            }
+            .sheet(item: $reviewingItem) { item in
+                IntakeItemReviewSheet(
+                    itemId: item.id,
+                    viewModel: viewModel
+                )
+            }
+            .safeAreaInset(edge: .bottom) {
+                if !viewModel.scannedItems.isEmpty {
+                    commitActionBar
+                }
             }
             .alert("Edit Unit Price", isPresented: isEditingPriceBinding) {
                 TextField("Price in PHP (e.g. 45.00)", text: $editingPriceText)
@@ -488,59 +500,13 @@ public struct ScanView: View {
         if editingItemForOCR != nil { return .expirationSheet }
         if manualDatePickerItem != nil { return .priceEditing }
         if editingPriceItem != nil { return .priceEditing }
+        if reviewingItem != nil { return .itemReviewSheet }
         return nil
     }
+
     private var intakeReviewSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Intake Review")
-                        .font(.system(size: 18, weight: .bold, design: .serif))
-                        .foregroundStyle(ProvisionTheme.textPrimary)
-                    Text("\(viewModel.scannedItems.count) items in current intake session")
-                        .font(.system(size: 12))
-                        .foregroundStyle(ProvisionTheme.textSecondary)
-                }
-
-                Spacer()
-
-                HStack(spacing: 8) {
-                    // "Confirm All" button if there are items ready to confirm
-                    let hasConfirmableItems = viewModel.scannedItems.contains { item in
-                        !item.isConfirmed &&
-                        item.productId != nil &&
-                        item.status != .needsReview &&
-                        item.storageLocationId != nil &&
-                        item.quantity > 0 &&
-                        !item.unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    }
-                    if hasConfirmableItems {
-                        Button {
-                            viewModel.confirmAllValid()
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "checkmark.circle.fill")
-                                Text("Confirm All")
-                            }
-                            .font(.system(size: 12, weight: .bold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(ProvisionTheme.provisionGreenLight)
-                            .foregroundStyle(ProvisionTheme.provisionGreen)
-                            .clipShape(Capsule())
-                        }
-                    }
-
-                    Button {
-                        showingAddManualSheet = true
-                    } label: {
-                        Text("+ Manual")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(ProvisionTheme.provisionGreen)
-                    }
-                }
-                .disabled(viewModel.isIntakeMutationLocked)
-            }
+            intakeSummaryHeader
 
             // Validation error banner if viewModel.errorMessage != nil
             if let errorMsg = viewModel.errorMessage {
@@ -587,437 +553,363 @@ public struct ScanView: View {
             }
 
             if viewModel.scannedItems.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "barcode")
-                        .font(.system(size: 36))
-                        .foregroundStyle(ProvisionTheme.textTertiary)
-                    Text("No items scanned in this session")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(ProvisionTheme.textSecondary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(32)
-                .provisionCard()
+                emptyIntakeView
             } else {
-                let totalCount = viewModel.scannedItems.count
-                let confirmedCount = viewModel.scannedItems.filter { $0.isConfirmed }.count
-                let allConfirmed = totalCount > 0 && confirmedCount == totalCount
-
-                // Requirement 7: Commit readiness banner
-                HStack(spacing: 8) {
-                    Image(systemName: allConfirmed ? "checkmark.circle.fill" : "info.circle.fill")
-                        .font(.system(size: 13))
-                    Text(allConfirmed ? "Ready to Commit • All \(totalCount) item(s) confirmed" : "\(confirmedCount) of \(totalCount) item(s) confirmed • Review & confirm all items to commit")
-                        .font(.system(size: 12, weight: .semibold))
-                    Spacer()
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(allConfirmed ? ProvisionTheme.provisionGreenLight : ProvisionTheme.amberLight)
-                .foregroundStyle(allConfirmed ? ProvisionTheme.provisionGreen : ProvisionTheme.amberWarning)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                VStack(spacing: 10) {
-                    ForEach($viewModel.scannedItems) { $item in
-                        intakeItemRow(item: $item)
+                LazyVStack(spacing: 8) {
+                    ForEach(viewModel.scannedItems) { item in
+                        compactIntakeRow(for: item)
                     }
                 }
                 .disabled(viewModel.isIntakeMutationLocked)
-
-                // Commit Button with anti-duplicate and disabled state
-                Button {
-                    Task {
-                        await viewModel.commitIntakeSession()
-                    }
-                } label: {
-                    HStack {
-                        if viewModel.isCommitting {
-                            ProgressView()
-                                .tint(.white)
-                        } else {
-                            Image(systemName: viewModel.hasPendingCommitRecovery ? "arrow.clockwise.circle.fill" : allConfirmed ? "checkmark.circle.fill" : "lock.fill")
-                            Text(viewModel.hasPendingCommitRecovery ? "Resolve Previous Submission" : allConfirmed ? "Commit \(totalCount) Item(s) to Pantry" : "Commit Intake (\(confirmedCount)/\(totalCount) Confirmed)")
-                                .font(.system(size: 16, weight: .bold))
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background((allConfirmed || viewModel.hasPendingCommitRecovery) ? ProvisionTheme.provisionGreen : ProvisionTheme.textTertiary)
-                    .foregroundStyle(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-                .disabled(viewModel.isCommitting || viewModel.pendingCommitRecoveryError != nil || (!viewModel.hasPendingCommitRecovery && !allConfirmed))
-                .padding(.top, 8)
-
-                if viewModel.hasPendingCommitRecovery {
-                    Button("Check Status / Cancel Previous Draft") {
-                        Task {
-                            await viewModel.cancelPendingCommitAndUnlock()
-                        }
-                    }
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(ProvisionTheme.redAlert)
-                    .disabled(viewModel.isCommitting || viewModel.pendingCommitRecoveryError != nil)
-                    .padding(.top, 4)
-                }
             }
         }
     }
 
-    private func intakeItemRow(item: Binding<ScannedIntakeItem>) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Header: Name, Brand, Barcode + Status Badge
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(item.wrappedValue.name)
-                        .font(.system(size: 15, weight: .bold, design: .serif))
-                        .foregroundStyle(ProvisionTheme.textPrimary)
+    private var intakeSummaryHeader: some View {
+        let totalCount = viewModel.scannedItems.count
+        let readyCount = viewModel.readyItemsCount
+        let needsReviewCount = viewModel.itemsNeedingReviewCount
+        let readyToConfirmCount = viewModel.readyToConfirmCount
 
-                    Text("\(item.wrappedValue.brand ?? "Pantry") • Barcode: \(item.wrappedValue.barcode)")
-                        .font(.system(size: 11))
+        return HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Intake Review")
+                    .font(ProvisionTypography.sectionSerif)
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+
+                HStack(spacing: 6) {
+                    Text("Total: \(totalCount)")
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(ProvisionTheme.textSecondary)
-                }
-
-                Spacer()
-
-                HStack(spacing: 8) {
-                    // Status Badge
-                    statusBadge(for: item.wrappedValue)
-
-                    // Explicit Delete Action
-                    Button(role: .destructive) {
-                        viewModel.removeItem(id: item.wrappedValue.id)
-                    } label: {
-                        Image(systemName: "trash")
-                            .font(.system(size: 13))
-                            .foregroundStyle(ProvisionTheme.redAlert)
-                            .padding(6)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Remove \(item.wrappedValue.name) from intake")
-                }
-            }
-
-            // Priority 4: Explicit Quantity Conflict Resolution Banner
-            if let conflictQty = item.wrappedValue.conflictingReceiptQuantity {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(ProvisionTheme.amberWarning)
-                            .font(.system(size: 13))
-                        Text("Quantity Conflict Detected")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(ProvisionTheme.amberWarning)
-                    }
-
-                    Text("Barcode count is \(Int(item.wrappedValue.quantity)), but receipt shows \(Int(conflictQty)). Choose which quantity is correct:")
-                        .font(.system(size: 12))
-                        .foregroundStyle(ProvisionTheme.textSecondary)
-
-                    HStack(spacing: 8) {
-                        Button {
-                            viewModel.resolveQuantityConflict(id: item.wrappedValue.id, keepQuantity: item.wrappedValue.quantity)
-                        } label: {
-                            Text("Keep Scanned (\(Int(item.wrappedValue.quantity)))")
-                                .font(.system(size: 12, weight: .semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(ProvisionTheme.surfaceSecondary)
-                                .foregroundStyle(ProvisionTheme.textPrimary)
-                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-
-                        Button {
-                            viewModel.resolveQuantityConflict(id: item.wrappedValue.id, keepQuantity: conflictQty)
-                        } label: {
-                            Text("Use Receipt (\(Int(conflictQty)))")
-                                .font(.system(size: 12, weight: .semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(ProvisionTheme.provisionGreenLight)
-                                .foregroundStyle(ProvisionTheme.provisionGreen)
-                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(10)
-                .background(ProvisionTheme.amberLight)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
-            // If productId == nil: prominent button/tag to trigger quick add
-            if item.wrappedValue.productId == nil || item.wrappedValue.status == .needsReview {
-                Button {
-                    viewModel.resolvingItemId = item.wrappedValue.id
-                    viewModel.unresolvedBarcode = item.wrappedValue.barcode
-                    quickAddName = item.wrappedValue.name
-                    quickAddBrand = item.wrappedValue.brand ?? ""
-                    selectedCatalogProductId = nil
-                    viewModel.showingQuickAddSheet = true
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "questionmark.circle.fill")
-                            .font(.system(size: 12))
-                        Text(item.wrappedValue.productId == nil ? "Unresolved Product • Tap to Match or Register" : "Uncertain Match • Tap to Review Product")
-                            .font(.system(size: 12, weight: .bold))
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 10, weight: .bold))
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(ProvisionTheme.amberLight)
-                    .foregroundStyle(ProvisionTheme.amberWarning)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(ProvisionTheme.amberWarning.opacity(0.4), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-
-            Divider()
-
-            // Price & Line Total Row
-            HStack(spacing: 8) {
-                if let price = item.wrappedValue.unitPrice {
-                    HStack(spacing: 4) {
-                        Image(systemName: "tag.fill")
-                            .font(.system(size: 10))
-                        Text(String(format: "₱%.2f ea", price))
-                            .font(.system(size: 12, weight: .semibold))
-                    }
-                    .foregroundStyle(ProvisionTheme.provisionGreen)
 
                     Text("•")
+                        .font(.system(size: 10))
                         .foregroundStyle(ProvisionTheme.textTertiary)
 
-                    Text(String(format: "Total: ₱%.2f", price * item.wrappedValue.quantity))
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(ProvisionTheme.textPrimary)
-                } else {
-                    Text("No price recorded")
-                        .font(.system(size: 11))
-                        .foregroundStyle(ProvisionTheme.textTertiary)
-                }
-
-                Spacer()
-
-                Button {
-                    editingPriceItem = item.wrappedValue
-                    editingPriceText = item.wrappedValue.unitPrice.map { String(format: "%.2f", $0) } ?? ""
-                } label: {
-                    Text(item.wrappedValue.unitPrice == nil ? "+ Set Price" : "Edit Price")
-                        .font(.system(size: 11, weight: .medium))
+                    Text("Ready: \(readyCount)")
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(ProvisionTheme.provisionGreen)
+
+                    if needsReviewCount > 0 {
+                        Text("•")
+                            .font(.system(size: 10))
+                            .foregroundStyle(ProvisionTheme.textTertiary)
+
+                        HStack(spacing: 2) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 9))
+                            Text("Needs Review: \(needsReviewCount)")
+                                .font(.system(size: 12, weight: .bold))
+                        }
+                        .foregroundStyle(ProvisionTheme.amberWarning)
+                    }
                 }
-                .buttonStyle(.plain)
             }
 
-            // Controls Row: Quantity, Location Selector, Expiration Date
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 12) {
-                    // Quantity Stepper
-                    HStack(spacing: 8) {
-                        Text("Qty: \(Int(item.wrappedValue.quantity)) \(item.wrappedValue.unit)")
-                            .font(.system(size: 13, weight: .semibold))
+            Spacer()
 
-                        Stepper("", onIncrement: {
-                            viewModel.incrementQuantity(for: item.wrappedValue)
-                        }, onDecrement: {
-                            viewModel.decrementQuantity(for: item.wrappedValue)
-                        })
-                        .labelsHidden()
-                    }
-                    Spacer()
-
-                    // Confirm/Unconfirm action button
+            HStack(spacing: 8) {
+                if readyToConfirmCount > 0 {
                     Button {
-                        if item.wrappedValue.isConfirmed {
-                            item.wrappedValue.isConfirmed = false
-                            item.wrappedValue.status = .recognized
-                        } else {
-                            if item.wrappedValue.storageLocationId == nil {
-                                viewModel.errorMessage = "Please select a storage location for '\(item.wrappedValue.name)'"
-                            } else if item.wrappedValue.productId == nil || item.wrappedValue.status == .needsReview {
-                                viewModel.errorMessage = "Cannot confirm: '\(item.wrappedValue.name)' is unresolved. Please register the product first."
-                            } else {
-                                item.wrappedValue.isConfirmed = true
-                                item.wrappedValue.status = .confirmed
-                                viewModel.errorMessage = nil
-                            }
-                        }
+                        viewModel.confirmAllReady()
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: item.wrappedValue.isConfirmed ? "checkmark.circle.fill" : "circle")
-                            Text(item.wrappedValue.isConfirmed ? "Confirmed" : "Confirm Details")
+                            Image(systemName: "checkmark.circle.fill")
+                            Text("Confirm All")
                         }
                         .font(.system(size: 12, weight: .bold))
                         .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(item.wrappedValue.isConfirmed ? ProvisionTheme.provisionGreen : ProvisionTheme.surfaceSecondary)
-                        .foregroundStyle(item.wrappedValue.isConfirmed ? .white : ProvisionTheme.textPrimary)
-                        .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                HStack(alignment: .center, spacing: 12) {
-                    // Storage Location Selector
-                    Menu {
-                        ForEach(viewModel.availableLocations) { loc in
-                            Button {
-                                viewModel.updateItemLocation(id: item.wrappedValue.id, locationId: loc.id)
-                            } label: {
-                                HStack {
-                                    Text(loc.name)
-                                    if item.wrappedValue.storageLocationId == loc.id {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "archivebox")
-                                .font(.system(size: 11))
-                            if let locId = item.wrappedValue.storageLocationId,
-                               let loc = viewModel.availableLocations.first(where: { $0.id == locId }) {
-                                Text(loc.name)
-                                    .font(.system(size: 12, weight: .medium))
-                            } else {
-                                Text("Select Location ⚠️")
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundStyle(ProvisionTheme.amberWarning)
-                            }
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 9))
-                        }
-                        .padding(.horizontal, 8)
                         .padding(.vertical, 5)
-                        .background(item.wrappedValue.storageLocationId == nil ? ProvisionTheme.amberLight : ProvisionTheme.surfaceSecondary)
-                        .foregroundStyle(item.wrappedValue.storageLocationId == nil ? ProvisionTheme.amberWarning : ProvisionTheme.textPrimary)
+                        .background(ProvisionTheme.provisionGreenLight)
+                        .foregroundStyle(ProvisionTheme.provisionGreen)
                         .clipShape(Capsule())
                     }
-                    .buttonStyle(.plain)
-
-                    Spacer()
-
-                    // Expiration Date Section
-                    if let expDate = item.wrappedValue.expirationDate {
-                        HStack(spacing: 4) {
-                            Button {
-                                editingItemForOCR = item.wrappedValue
-                            } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "calendar")
-                                        .font(.system(size: 11))
-                                    Text(expDate, format: .dateTime.month().day().year())
-                                        .font(.system(size: 12, weight: .medium))
-                                }
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 5)
-                                .background(ProvisionTheme.surfaceSecondary)
-                                .foregroundStyle(ProvisionTheme.textPrimary)
-                                .clipShape(Capsule())
-                            }
-                            .buttonStyle(.plain)
-
-                            Button {
-                                editingItemForOCR = item.wrappedValue
-                            } label: {
-                                Image(systemName: "camera.viewfinder")
-                                    .font(.system(size: 11))
-                                    .padding(6)
-                                    .background(ProvisionTheme.surfaceSecondary)
-                                    .foregroundStyle(ProvisionTheme.textPrimary)
-                                    .clipShape(Circle())
-                            }
-                            .buttonStyle(.plain)
-
-                            Button {
-                                viewModel.updateItemExpirationDate(id: item.wrappedValue.id, date: nil)
-                            } label: {
-                                Text("Clear")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(ProvisionTheme.redAlert)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 4)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    } else {
-                        HStack(spacing: 4) {
-                            Text("No Expiration (Optional)")
-                                .font(.system(size: 11))
-                                .foregroundStyle(ProvisionTheme.textSecondary)
-
-                            Button {
-                                manualDatePickerItem = item.wrappedValue
-                            } label: {
-                                Text("Pick")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(ProvisionTheme.provisionGreen)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 4)
-                                    .background(ProvisionTheme.provisionGreenLight)
-                                    .clipShape(Capsule())
-                            }
-                            .buttonStyle(.plain)
-
-                            Button {
-                                editingItemForOCR = item.wrappedValue
-                            } label: {
-                                HStack(spacing: 2) {
-                                    Image(systemName: "camera.viewfinder")
-                                        .font(.system(size: 10))
-                                    Text("OCR")
-                                        .font(.system(size: 11, weight: .semibold))
-                                }
-                                .foregroundStyle(ProvisionTheme.provisionGreen)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 4)
-                                .background(ProvisionTheme.provisionGreenLight)
-                                .clipShape(Capsule())
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
+                    .disabled(viewModel.isIntakeMutationLocked)
                 }
+
+                Button {
+                    showingAddManualSheet = true
+                } label: {
+                    Text("+ Manual")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(ProvisionTheme.provisionGreen)
+                }
+                .disabled(viewModel.isIntakeMutationLocked)
             }
         }
-        .padding(14)
+    }
+
+    private var emptyIntakeView: some View {
+        VStack(spacing: 12) {
+            Image("pip_grocery")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 80, height: 80)
+                .accessibilityHidden(true)
+
+            Text("No items scanned in this session")
+                .font(ProvisionTypography.headline)
+                .foregroundStyle(ProvisionTheme.textSecondary)
+
+            Text("Scan barcodes or receipts above, or add items manually.")
+                .font(ProvisionTypography.footnote)
+                .foregroundStyle(ProvisionTheme.textTertiary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(28)
         .provisionCard()
     }
 
+    private func compactIntakeRow(for item: ScannedIntakeItem) -> some View {
+        Button {
+            reviewingItem = item
+        } label: {
+            let hasConflict = item.conflictingReceiptQuantity != nil
+            let needsReview = item.productId == nil || item.status == .needsReview
+            let hasException = hasConflict || needsReview
+
+            HStack(alignment: .center, spacing: 12) {
+                // Exception warning indicator
+                if hasException {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 15))
+                        .foregroundStyle(ProvisionTheme.amberWarning)
+                }
+
+                // Main Details Column
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(item.name)
+                            .font(ProvisionTypography.headline)
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+
+                        if let brand = item.brand, !brand.isEmpty {
+                            Text("(\(brand))")
+                                .font(ProvisionTypography.caption)
+                                .foregroundStyle(ProvisionTheme.textSecondary)
+                                .lineLimit(1)
+                        }
+                    }
+
+                    HStack(spacing: 8) {
+                        // Quantity + Unit
+                        Text("\(formattedQuantity(item.quantity)) \(item.unit)")
+                            .font(ProvisionTypography.subheadline)
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+
+                        Text("•")
+                            .font(ProvisionTypography.caption)
+                            .foregroundStyle(ProvisionTheme.textTertiary)
+
+                        // Storage Location or "No location" badge
+                        if let locId = item.storageLocationId,
+                           let loc = viewModel.availableLocations.first(where: { $0.id == locId }) {
+                            HStack(spacing: 3) {
+                                Image(systemName: "archivebox")
+                                    .font(.system(size: 10))
+                                Text(loc.name)
+                                    .font(ProvisionTypography.caption)
+                            }
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                        } else {
+                            HStack(spacing: 3) {
+                                Image(systemName: "exclamationmark.circle.fill")
+                                    .font(.system(size: 10))
+                                Text("No location")
+                                    .font(.system(size: 11, weight: .bold))
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(ProvisionTheme.amberLight)
+                            .foregroundStyle(ProvisionTheme.amberWarning)
+                            .clipShape(Capsule())
+                        }
+
+                        if hasConflict {
+                            Text("•")
+                                .font(ProvisionTypography.caption)
+                                .foregroundStyle(ProvisionTheme.textTertiary)
+                            Text("Conflict")
+                                .font(.system(size: 10, weight: .bold))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1.5)
+                                .background(ProvisionTheme.amberLight)
+                                .foregroundStyle(ProvisionTheme.amberWarning)
+                                .clipShape(Capsule())
+                        }
+                    }
+                }
+
+                Spacer()
+
+                // Status Pill & Chevron
+                HStack(spacing: 8) {
+                    statusPill(for: item)
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(ProvisionTheme.textTertiary)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(ProvisionTheme.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(hasException ? ProvisionTheme.amberWarning.opacity(0.4) : ProvisionTheme.border, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
     @ViewBuilder
-    private func statusBadge(for item: ScannedIntakeItem) -> some View {
+    private func statusPill(for item: ScannedIntakeItem) -> some View {
         if item.isConfirmed {
-            Text("Confirmed")
-                .font(.system(size: 10, weight: .bold))
+            HStack(spacing: 3) {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 9, weight: .bold))
+                Text("Confirmed")
+                    .font(.system(size: 11, weight: .bold))
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(ProvisionTheme.provisionGreenLight)
+            .foregroundStyle(ProvisionTheme.provisionGreen)
+            .clipShape(Capsule())
+        } else if item.productId == nil || item.status == .needsReview || item.conflictingReceiptQuantity != nil {
+            HStack(spacing: 3) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 9, weight: .bold))
+                Text("Needs Review")
+                    .font(.system(size: 11, weight: .bold))
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(ProvisionTheme.amberLight)
+            .foregroundStyle(ProvisionTheme.amberWarning)
+            .clipShape(Capsule())
+        } else {
+            Text("Ready")
+                .font(.system(size: 11, weight: .bold))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(ProvisionTheme.provisionGreenLight)
+                .background(ProvisionTheme.provisionGreenLight.opacity(0.6))
                 .foregroundStyle(ProvisionTheme.provisionGreen)
                 .clipShape(Capsule())
-        } else if item.productId == nil || item.status == .needsReview {
-            Text("Needs Review")
-                .font(.system(size: 10, weight: .bold))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(ProvisionTheme.amberLight)
-                .foregroundStyle(ProvisionTheme.amberWarning)
-                .clipShape(Capsule())
+        }
+    }
+
+    private var commitActionBar: some View {
+        let totalCount = viewModel.scannedItems.count
+        let confirmedCount = viewModel.confirmedItemsCount
+        let allConfirmed = totalCount > 0 && confirmedCount == totalCount
+        let reviewCount = viewModel.itemsNeedingReviewCount
+        let locationCount = viewModel.itemsNeedingLocationCount
+        let unconfirmedCount = totalCount - confirmedCount
+
+        var reasons: [String] = []
+        if reviewCount > 0 {
+            reasons.append("\(reviewCount) item\(reviewCount == 1 ? "" : "s") need review")
+        }
+        if locationCount > 0 {
+            reasons.append("\(locationCount) item\(locationCount == 1 ? "" : "s") need location")
+        }
+        if reasons.isEmpty && unconfirmedCount > 0 {
+            reasons.append("\(unconfirmedCount) item\(unconfirmedCount == 1 ? "" : "s") need confirmation")
+        }
+        let reasonText = reasons.joined(separator: " • ")
+
+        return VStack(spacing: 8) {
+            // Clear status / reasons when disabled
+            HStack(spacing: 6) {
+                if allConfirmed {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(ProvisionTheme.provisionGreen)
+                    Text("Ready to Commit • All \(totalCount) items confirmed")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(ProvisionTheme.provisionGreen)
+                } else if viewModel.hasPendingCommitRecovery {
+                    Image(systemName: "arrow.clockwise.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(ProvisionTheme.amberWarning)
+                    Text("Unresolved previous submission pending")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(ProvisionTheme.amberWarning)
+                } else {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(ProvisionTheme.amberWarning)
+                    Text(reasonText)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(ProvisionTheme.amberWarning)
+                        .lineLimit(1)
+                }
+                Spacer()
+            }
+
+            // Commit Button
+            Button {
+                Task {
+                    await viewModel.commitIntakeSession()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    if viewModel.isCommitting {
+                        ProgressView()
+                            .tint(.white)
+                        Text("Committing Intake...")
+                            .font(.system(size: 15, weight: .bold))
+                    } else {
+                        Image(systemName: viewModel.hasPendingCommitRecovery ? "arrow.clockwise.circle.fill" : allConfirmed ? "checkmark.circle.fill" : "lock.fill")
+                        Text(viewModel.hasPendingCommitRecovery ? "Resolve Previous Submission" : allConfirmed ? "Commit \(totalCount) Item(s) to Pantry" : "Commit Intake (\(confirmedCount)/\(totalCount) Confirmed)")
+                            .font(.system(size: 15, weight: .bold))
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 13)
+                .background((allConfirmed || viewModel.hasPendingCommitRecovery) ? ProvisionTheme.provisionGreen : ProvisionTheme.surfaceSecondary)
+                .foregroundStyle((allConfirmed || viewModel.hasPendingCommitRecovery) ? Color.white : ProvisionTheme.textTertiary)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(allConfirmed ? Color.clear : ProvisionTheme.border.opacity(0.6), lineWidth: 1)
+                )
+            }
+            .disabled(viewModel.isCommitting || viewModel.pendingCommitRecoveryError != nil || (!viewModel.hasPendingCommitRecovery && !allConfirmed))
+
+            if viewModel.hasPendingCommitRecovery {
+                Button("Check Status / Cancel Previous Draft") {
+                    Task {
+                        await viewModel.cancelPendingCommitAndUnlock()
+                    }
+                }
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(ProvisionTheme.redAlert)
+                .disabled(viewModel.isCommitting || viewModel.pendingCommitRecoveryError != nil)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
+        .background(
+            ProvisionTheme.surface
+                .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: -4)
+        )
+        .overlay(alignment: .top) {
+            Divider()
+        }
+    }
+
+    private func formattedQuantity(_ qty: Double) -> String {
+        if qty.truncatingRemainder(dividingBy: 1) == 0 {
+            return "\(Int(qty))"
         } else {
-            Text("Recognized")
-                .font(.system(size: 10, weight: .bold))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.blue.opacity(0.12))
-                .foregroundStyle(Color.blue)
-                .clipShape(Capsule())
+            return String(format: "%.1f", qty)
         }
     }
 
@@ -1145,6 +1037,616 @@ public struct ScanView: View {
                     .disabled(quickAddName.trimmingCharacters(in: .whitespaces).isEmpty || isRegisteringProduct)
                 }
             }
+        }
+    }
+}
+// MARK: - Focused Intake Item Review Sheet
+
+public struct IntakeItemReviewSheet: View {
+    public let itemId: UUID
+    @ObservedObject public var viewModel: ScanViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var showingOCRScanner: Bool = false
+    @State private var priceText: String = ""
+    @State private var selectedCatalogProductId: Int? = nil
+
+    // Inline quick-add product registration
+    @State private var newProductName: String = ""
+    @State private var newProductBrand: String = ""
+    @State private var newProductCategory: String = "Canned Goods"
+    @State private var newProductUnit: String = "pcs"
+    @State private var isRegistering: Bool = false
+    @State private var showingInlineRegistration: Bool = false
+
+    private var item: ScannedIntakeItem? {
+        viewModel.scannedItems.first(where: { $0.id == itemId })
+    }
+
+    public init(itemId: UUID, viewModel: ScanViewModel) {
+        self.itemId = itemId
+        self.viewModel = viewModel
+    }
+
+    public var body: some View {
+        NavigationStack {
+            Group {
+                if let targetItem = item {
+                    ScrollView {
+                        VStack(spacing: 16) {
+                            // Header: Name, Brand, Barcode & Status Pill
+                            headerCard(for: targetItem)
+
+                            // Conflict Resolution Banner (if conflict exists)
+                            if let conflictQty = targetItem.conflictingReceiptQuantity {
+                                conflictCard(for: targetItem, conflictQty: conflictQty)
+                            }
+
+                            // Unresolved Product Banner / Resolution (if status == .needsReview or productId == nil)
+                            if targetItem.productId == nil || targetItem.status == .needsReview {
+                                productResolutionCard(for: targetItem)
+                            }
+
+                            // Core Properties Card
+                            VStack(spacing: 14) {
+                                // 1. Quantity Stepper with unit display (minimum 1.0 bounded)
+                                quantityRow(for: targetItem)
+
+                                Divider()
+
+                                // 2. Storage Location Picker
+                                locationRow(for: targetItem)
+
+                                Divider()
+
+                                // 3. Expiration Date Picker & Scanner Trigger
+                                expirationRow(for: targetItem)
+
+                                Divider()
+
+                                // 4. Unit Price Editor
+                                priceRow(for: targetItem)
+                            }
+                            .padding(14)
+                            .provisionCard()
+
+                            // Confirmation Section
+                            confirmationCard(for: targetItem)
+
+                            // Delete Action
+                            Button(role: .destructive) {
+                                viewModel.removeItem(id: targetItem.id)
+                                dismiss()
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "trash")
+                                    Text("Remove from Intake")
+                                }
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(ProvisionTheme.redAlert)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                            }
+                            .disabled(viewModel.isIntakeMutationLocked)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 16)
+                    }
+                    .background(ProvisionTheme.background.ignoresSafeArea())
+                } else {
+                    VStack(spacing: 12) {
+                        Text("Item no longer in intake queue")
+                            .font(ProvisionTypography.headline)
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                        Button("Done") {
+                            dismiss()
+                        }
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(ProvisionTheme.provisionGreen)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(ProvisionTheme.background.ignoresSafeArea())
+                }
+            }
+            .navigationTitle("Item Details")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(ProvisionTheme.provisionGreen)
+                }
+            }
+            .sheet(isPresented: $showingOCRScanner) {
+                if let targetItem = item {
+                    ExpirationDateScannerSheet(
+                        title: "Scan Expiry: \(targetItem.name)",
+                        initialDate: targetItem.expirationDate
+                    ) { scannedDate in
+                        viewModel.updateItemExpirationDate(id: targetItem.id, date: scannedDate)
+                        showingOCRScanner = false
+                    }
+                }
+            }
+            .onAppear {
+                if let target = item {
+                    if let p = target.unitPrice {
+                        priceText = String(format: "%.2f", p)
+                    }
+                    newProductName = target.name
+                    newProductBrand = target.brand ?? ""
+                    newProductUnit = target.unit
+                }
+            }
+        }
+    }
+
+    private func headerCard(for targetItem: ScannedIntakeItem) -> some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(targetItem.name)
+                    .font(ProvisionTypography.titleSerif)
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+
+                Text("\(targetItem.brand ?? "Pantry") • Barcode: \(targetItem.barcode)")
+                    .font(ProvisionTypography.caption)
+                    .foregroundStyle(ProvisionTheme.textSecondary)
+            }
+
+            Spacer()
+
+            if targetItem.isConfirmed {
+                Text("Confirmed")
+                    .font(.system(size: 11, weight: .bold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(ProvisionTheme.provisionGreenLight)
+                    .foregroundStyle(ProvisionTheme.provisionGreen)
+                    .clipShape(Capsule())
+            } else if targetItem.productId == nil || targetItem.status == .needsReview || targetItem.conflictingReceiptQuantity != nil {
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10))
+                    Text("Needs Review")
+                        .font(.system(size: 11, weight: .bold))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(ProvisionTheme.amberLight)
+                .foregroundStyle(ProvisionTheme.amberWarning)
+                .clipShape(Capsule())
+            } else {
+                Text("Ready")
+                    .font(.system(size: 11, weight: .bold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(ProvisionTheme.provisionGreenLight.opacity(0.6))
+                    .foregroundStyle(ProvisionTheme.provisionGreen)
+                    .clipShape(Capsule())
+            }
+        }
+        .padding(14)
+        .provisionCard()
+    }
+
+    private func conflictCard(for targetItem: ScannedIntakeItem, conflictQty: Double) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(ProvisionTheme.amberWarning)
+                Text("Quantity Conflict Detected")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(ProvisionTheme.amberWarning)
+            }
+
+            Text("Scanned barcode count is \(formattedQuantity(targetItem.quantity)), but receipt shows \(formattedQuantity(conflictQty)). Choose correct quantity:")
+                .font(.system(size: 12))
+                .foregroundStyle(ProvisionTheme.textSecondary)
+
+            HStack(spacing: 10) {
+                Button {
+                    viewModel.resolveQuantityConflict(id: targetItem.id, keepQuantity: targetItem.quantity)
+                } label: {
+                    Text("Keep Scanned (\(formattedQuantity(targetItem.quantity)))")
+                        .font(.system(size: 12, weight: .semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(ProvisionTheme.surfaceSecondary)
+                        .foregroundStyle(ProvisionTheme.textPrimary)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    viewModel.resolveQuantityConflict(id: targetItem.id, keepQuantity: conflictQty)
+                } label: {
+                    Text("Use Receipt (\(formattedQuantity(conflictQty)))")
+                        .font(.system(size: 12, weight: .semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(ProvisionTheme.provisionGreenLight)
+                        .foregroundStyle(ProvisionTheme.provisionGreen)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(12)
+        .background(ProvisionTheme.amberLight)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(ProvisionTheme.amberWarning.opacity(0.4), lineWidth: 1)
+        )
+    }
+
+    private func productResolutionCard(for targetItem: ScannedIntakeItem) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Image(systemName: "questionmark.circle.fill")
+                    .foregroundStyle(ProvisionTheme.amberWarning)
+                Text(targetItem.productId == nil ? "Unresolved Product" : "Needs Review")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(ProvisionTheme.amberWarning)
+            }
+
+            Text("This barcode (\(targetItem.barcode)) is not linked to a verified catalog product. Link to an existing catalog product or register details below.")
+                .font(.system(size: 12))
+                .foregroundStyle(ProvisionTheme.textSecondary)
+
+            if !viewModel.availableCatalog.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Match to Existing Catalog Product:")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(ProvisionTheme.textPrimary)
+
+                    Picker("Catalog Product", selection: $selectedCatalogProductId) {
+                        Text("Choose product...").tag(nil as Int?)
+                        ForEach(viewModel.availableCatalog) { prod in
+                            Text("\(prod.name) (\(prod.brand ?? "Pantry"))").tag(prod.id as Int?)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    if let selId = selectedCatalogProductId,
+                       let prod = viewModel.availableCatalog.first(where: { $0.id == selId }) {
+                        Button {
+                            viewModel.resolveItemWithCatalogProduct(itemId: targetItem.id, product: prod)
+                            selectedCatalogProductId = nil
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "link.circle.fill")
+                                Text("Link as \(prod.name)")
+                                    .font(.system(size: 13, weight: .bold))
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(ProvisionTheme.provisionGreenLight)
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            Divider()
+
+            DisclosureGroup(isExpanded: $showingInlineRegistration) {
+                VStack(spacing: 10) {
+                    TextField("Product Name (Required)", text: $newProductName)
+                        .provisionInputField()
+                    TextField("Brand (Optional)", text: $newProductBrand)
+                        .provisionInputField()
+                    Picker("Category", selection: $newProductCategory) {
+                        ForEach(["Canned Goods", "Dairy & Chilled", "Snacks & Bakery", "Beverages", "Grains & Staples", "Fresh Produce", "Condiments & Sauces", "Frozen & Meats"], id: \.self) { cat in
+                            Text(cat).tag(cat)
+                        }
+                    }
+                    Picker("Unit", selection: $newProductUnit) {
+                        ForEach(ProductUnits.allUnits, id: \.self) { u in
+                            Text(u).tag(u)
+                        }
+                    }
+
+                    Button {
+                        isRegistering = true
+                        Task {
+                            viewModel.resolvingItemId = targetItem.id
+                            viewModel.unresolvedBarcode = targetItem.barcode
+                            let success = await viewModel.registerProductAndAddToQueue(
+                                name: newProductName,
+                                brand: newProductBrand.isEmpty ? nil : newProductBrand,
+                                category: newProductCategory,
+                                unit: newProductUnit,
+                                packageSize: nil
+                            )
+                            if success {
+                                newProductName = ""
+                                newProductBrand = ""
+                                showingInlineRegistration = false
+                            }
+                            isRegistering = false
+                        }
+                    } label: {
+                        if isRegistering {
+                            ProgressView().tint(.white)
+                        } else {
+                            Text("Register & Link Product")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(newProductName.trimmingCharacters(in: .whitespaces).isEmpty ? ProvisionTheme.textTertiary : ProvisionTheme.provisionGreen)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+                    }
+                    .disabled(newProductName.trimmingCharacters(in: .whitespaces).isEmpty || isRegistering)
+                }
+                .padding(.top, 8)
+            } label: {
+                HStack {
+                    Image(systemName: "plus.circle.fill")
+                    Text("Register as New Product")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .foregroundStyle(ProvisionTheme.provisionGreen)
+            }
+        }
+        .padding(12)
+        .background(ProvisionTheme.amberLight)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(ProvisionTheme.amberWarning.opacity(0.4), lineWidth: 1)
+        )
+    }
+
+    private func quantityRow(for targetItem: ScannedIntakeItem) -> some View {
+        HStack {
+            Text("Quantity")
+                .font(ProvisionTypography.subheadline)
+                .foregroundStyle(ProvisionTheme.textSecondary)
+            Spacer()
+            HStack(spacing: 12) {
+                Text("\(formattedQuantity(targetItem.quantity)) \(targetItem.unit)")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+
+                Stepper("") {
+                    viewModel.incrementQuantity(for: targetItem)
+                } onDecrement: {
+                    viewModel.decrementQuantity(for: targetItem)
+                }
+                .labelsHidden()
+            }
+        }
+    }
+
+    private func locationRow(for targetItem: ScannedIntakeItem) -> some View {
+        HStack {
+            Text("Storage Location")
+                .font(ProvisionTypography.subheadline)
+                .foregroundStyle(ProvisionTheme.textSecondary)
+            Spacer()
+            Menu {
+                ForEach(viewModel.availableLocations) { loc in
+                    Button {
+                        viewModel.updateItemLocation(id: targetItem.id, locationId: loc.id)
+                    } label: {
+                        HStack {
+                            Text(loc.name)
+                            if targetItem.storageLocationId == loc.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "archivebox")
+                        .font(.system(size: 12))
+                    if let locId = targetItem.storageLocationId,
+                       let loc = viewModel.availableLocations.first(where: { $0.id == locId }) {
+                        Text(loc.name)
+                            .font(.system(size: 13, weight: .semibold))
+                    } else {
+                        Text("Select Location ⚠️")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(ProvisionTheme.amberWarning)
+                    }
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(targetItem.storageLocationId == nil ? ProvisionTheme.amberLight : ProvisionTheme.surfaceSecondary)
+                .foregroundStyle(targetItem.storageLocationId == nil ? ProvisionTheme.amberWarning : ProvisionTheme.textPrimary)
+                .clipShape(Capsule())
+            }
+        }
+    }
+
+    private func expirationRow(for targetItem: ScannedIntakeItem) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Expiration Date")
+                    .font(ProvisionTypography.subheadline)
+                    .foregroundStyle(ProvisionTheme.textSecondary)
+                Spacer()
+                Button {
+                    showingOCRScanner = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "camera.viewfinder")
+                        Text("Scan OCR")
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(ProvisionTheme.provisionGreenLight)
+                    .foregroundStyle(ProvisionTheme.provisionGreen)
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+
+            if let exp = targetItem.expirationDate {
+                HStack {
+                    DatePicker(
+                        "Date",
+                        selection: Binding(
+                            get: { exp },
+                            set: { viewModel.updateItemExpirationDate(id: targetItem.id, date: $0) }
+                        ),
+                        displayedComponents: .date
+                    )
+                    .labelsHidden()
+
+                    Spacer()
+
+                    Button("Clear") {
+                        viewModel.updateItemExpirationDate(id: targetItem.id, date: nil)
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(ProvisionTheme.redAlert)
+                    .buttonStyle(.plain)
+                }
+            } else {
+                HStack {
+                    Text("No expiration set")
+                        .font(.system(size: 13))
+                        .foregroundStyle(ProvisionTheme.textTertiary)
+                    Spacer()
+                    Button("+ Set Date") {
+                        viewModel.updateItemExpirationDate(id: targetItem.id, date: Calendar.current.date(byAdding: .day, value: 30, to: Date()))
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(ProvisionTheme.provisionGreen)
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private func priceRow(for targetItem: ScannedIntakeItem) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Unit Price (PHP)")
+                    .font(ProvisionTypography.subheadline)
+                    .foregroundStyle(ProvisionTheme.textSecondary)
+                Spacer()
+                HStack(spacing: 6) {
+                    Text("₱")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                    TextField("0.00", text: $priceText)
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 80)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(ProvisionTheme.surfaceSecondary)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .onChange(of: priceText) { _, newText in
+                            let trimmed = newText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if trimmed.isEmpty {
+                                viewModel.updateItemPrice(id: targetItem.id, price: nil)
+                            } else if let parsed = Double(trimmed.replacingOccurrences(of: ",", with: ".")), parsed >= 0 {
+                                viewModel.updateItemPrice(id: targetItem.id, price: parsed)
+                            }
+                        }
+                }
+            }
+
+            if let p = targetItem.unitPrice {
+                HStack {
+                    Spacer()
+                    Text(String(format: "Total: ₱%.2f", p * targetItem.quantity))
+                        .font(ProvisionTypography.caption)
+                        .foregroundStyle(ProvisionTheme.provisionGreen)
+                }
+            }
+        }
+    }
+
+    private func confirmationCard(for targetItem: ScannedIntakeItem) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if targetItem.isConfirmed {
+                Button {
+                    viewModel.unconfirmItem(id: targetItem.id)
+                } label: {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                        Text("Confirmed • Tap to Unconfirm")
+                            .font(.system(size: 14, weight: .bold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(ProvisionTheme.provisionGreenLight)
+                    .foregroundStyle(ProvisionTheme.provisionGreen)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+            } else {
+                Button {
+                    viewModel.confirmItem(id: targetItem.id)
+                } label: {
+                    HStack {
+                        Image(systemName: "checkmark.circle")
+                        Text("Confirm Details")
+                            .font(.system(size: 14, weight: .bold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(ProvisionTheme.provisionGreen)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .disabled(viewModel.isIntakeMutationLocked)
+
+                if !viewModel.isItemEligibleForConfirmation(targetItem) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 11))
+                        Text(unconfirmedReason(for: targetItem))
+                            .font(.system(size: 11))
+                    }
+                    .foregroundStyle(ProvisionTheme.amberWarning)
+                    .padding(.top, 2)
+                }
+            }
+
+            if let error = viewModel.errorMessage {
+                Text(error)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(ProvisionTheme.redAlert)
+            }
+        }
+    }
+
+    private func unconfirmedReason(for item: ScannedIntakeItem) -> String {
+        if item.conflictingReceiptQuantity != nil {
+            return "Resolve quantity conflict before confirming"
+        }
+        if item.productId == nil || item.status == .needsReview {
+            return "Link or register product before confirming"
+        }
+        if item.storageLocationId == nil {
+            return "Select a storage location before confirming"
+        }
+        if item.quantity <= 0 || item.unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Provide a valid quantity and unit before confirming"
+        }
+        return "Complete all required details before confirming"
+    }
+
+    private func formattedQuantity(_ qty: Double) -> String {
+        if qty.truncatingRemainder(dividingBy: 1) == 0 {
+            return "\(Int(qty))"
+        } else {
+            return String(format: "%.1f", qty)
         }
     }
 }

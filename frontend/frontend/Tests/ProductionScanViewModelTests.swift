@@ -28,6 +28,7 @@ public struct ScanViewModelProductionTests {
         try testBoundedDecrementDoesNotDeleteItem()
         try testExplicitItemRemoval()
         try testConfirmationInvalidationOnAllMutations()
+        try testCentralizedConfirmationLogicAndCounts()
         try testProductResolutionWorkflow()
         try testReceiptQuantityConflictResolution()
         try testDeterministicUnmatchedReceiptDeduplication()
@@ -219,6 +220,98 @@ public struct ScanViewModelProductionTests {
         // F. Clear expiration date
         vm.updateItemExpirationDate(id: vm.scannedItems[0].id, date: nil)
         try assertTrue(!vm.scannedItems[0].isConfirmed, "Clearing expiration date must invalidate confirmation")
+    }
+
+    // Centralized confirmation logic and summary counts
+    public static func testCentralizedConfirmationLogicAndCounts() throws {
+        let vm = ScanViewModel(isPreview: true)
+        vm.scannedItems.removeAll()
+
+        let item1 = ScannedIntakeItem(
+            name: "Item 1 Ready",
+            barcode: "111",
+            quantity: 2.0,
+            unit: "pcs",
+            status: .recognized,
+            productId: 1,
+            storageLocationId: 10
+        )
+        let itemNoLoc = ScannedIntakeItem(
+            name: "Item No Loc",
+            barcode: "222",
+            quantity: 1.0,
+            unit: "pcs",
+            status: .recognized,
+            productId: 2,
+            storageLocationId: nil
+        )
+        let itemUnresolved = ScannedIntakeItem(
+            name: "Item Unresolved",
+            barcode: "333",
+            quantity: 1.0,
+            unit: "pcs",
+            status: .needsReview,
+            productId: nil,
+            storageLocationId: 10
+        )
+        let itemConflict = ScannedIntakeItem(
+            name: "Item Conflict",
+            barcode: "444",
+            quantity: 1.0,
+            unit: "pcs",
+            status: .recognized,
+            productId: 4,
+            storageLocationId: 10,
+            conflictingReceiptQuantity: 3.0
+        )
+
+        vm.scannedItems = [item1, itemNoLoc, itemUnresolved, itemConflict]
+
+        // Check counts before confirmation
+        try assertEquals(vm.itemsNeedingReviewCount, 2, "Items 3 and 4 need review")
+        try assertEquals(vm.itemsNeedingLocationCount, 1, "Item 2 needs location")
+        try assertEquals(vm.readyItemsCount, 1, "Only Item 1 is ready")
+        try assertEquals(vm.readyToConfirmCount, 1, "Item 1 is waiting to confirm")
+        try assertEquals(vm.confirmedItemsCount, 0, "No items confirmed yet")
+
+        // Validation failures on confirmItem(id:)
+        let successNoLoc = vm.confirmItem(id: itemNoLoc.id)
+        try assertTrue(!successNoLoc, "Item without location must fail confirmation")
+        try assertTrue(vm.errorMessage != nil, "Error message must be set for missing location")
+
+        let successUnresolved = vm.confirmItem(id: itemUnresolved.id)
+        try assertTrue(!successUnresolved, "Unresolved item must fail confirmation")
+
+        let successConflict = vm.confirmItem(id: itemConflict.id)
+        try assertTrue(!successConflict, "Conflicted item must fail confirmation")
+
+        // Confirm eligible item
+        let success1 = vm.confirmItem(id: item1.id)
+        try assertTrue(success1, "Eligible item must confirm successfully")
+        try assertTrue(vm.scannedItems[0].isConfirmed, "Item 1 isConfirmed must be true")
+        try assertEquals(vm.scannedItems[0].status, .confirmed, "Status must be .confirmed")
+        try assertEquals(vm.confirmedItemsCount, 1, "1 item now confirmed")
+        try assertEquals(vm.readyToConfirmCount, 0, "0 items waiting to confirm")
+
+        // Unconfirm item
+        vm.unconfirmItem(id: item1.id)
+        try assertTrue(!vm.scannedItems[0].isConfirmed, "Unconfirm must clear isConfirmed")
+        try assertEquals(vm.scannedItems[0].status, .recognized, "Status must revert to recognized")
+
+        // Test confirmAllReady()
+        vm.confirmAllReady()
+        try assertTrue(vm.scannedItems[0].isConfirmed, "Item 1 must be confirmed by confirmAllReady")
+        try assertTrue(!vm.scannedItems[1].isConfirmed, "Item without location must NOT be confirmed")
+        try assertTrue(!vm.scannedItems[2].isConfirmed, "Unresolved item must NOT be confirmed")
+        try assertTrue(!vm.scannedItems[3].isConfirmed, "Conflicted item must NOT be confirmed")
+
+        // Test isIntakeMutationLocked guards
+        vm.isCommitting = true
+        let lockedConfirm = vm.confirmItem(id: itemNoLoc.id)
+        try assertTrue(!lockedConfirm, "confirmItem must reject during commit lock")
+        vm.unconfirmItem(id: item1.id)
+        try assertTrue(vm.scannedItems[0].isConfirmed, "unconfirmItem must reject during commit lock")
+        vm.isCommitting = false
     }
 
     // 4. Verify product resolution workflow (unknown barcode -> existing vs in-place resolution)
