@@ -21,6 +21,16 @@ public enum InventoryQuickFilter: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+public enum InventorySortOption: String, CaseIterable, Identifiable, Sendable {
+    case nameAsc = "Name (A–Z)"
+    case nameDesc = "Name (Z–A)"
+    case expirationSoonest = "Expiration (Soonest)"
+    case stockLowest = "Stock (Lowest)"
+    case stockHighest = "Stock (Highest)"
+
+    public var id: String { rawValue }
+}
+
 @MainActor
 public class InventoryViewModel: ObservableObject {
     @Published public var products: [Product] = []
@@ -30,9 +40,8 @@ public class InventoryViewModel: ObservableObject {
     @Published public var selectedCategory: String? = nil
     @Published public var selectedLocationId: Int? = nil
     @Published public var activeQuickFilter: InventoryQuickFilter = .all
+    @Published public var sortOption: InventorySortOption = .nameAsc
     @Published public var productExpirations: [Int: Int] = [:]
-    
-    
     // Detail view state
     @Published public var selectedProduct: Product? = nil
     @Published public var productBatches: [InventoryBatch] = []
@@ -56,7 +65,7 @@ public class InventoryViewModel: ObservableObject {
     }
     
     public var filteredProducts: [Product] {
-        products.filter { product in
+        let filtered = products.filter { product in
             let matchesSearch = searchText.isEmpty ||
                 product.name.localizedCaseInsensitiveContains(searchText) ||
                 (product.brand?.localizedCaseInsensitiveContains(searchText) ?? false) ||
@@ -81,6 +90,27 @@ public class InventoryViewModel: ObservableObject {
             }
             
             return matchesSearch && matchesCategory && matchesQuickFilter
+        }
+
+        return filtered.sorted { a, b in
+            switch sortOption {
+            case .nameAsc:
+                return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+            case .nameDesc:
+                return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedDescending
+            case .expirationSoonest:
+                let expA = a.daysUntilExpiration ?? productExpirations[a.id] ?? 9999
+                let expB = b.daysUntilExpiration ?? productExpirations[b.id] ?? 9999
+                return expA < expB
+            case .stockLowest:
+                let stockA = a.total_remaining_quantity ?? 0
+                let stockB = b.total_remaining_quantity ?? 0
+                return stockA < stockB
+            case .stockHighest:
+                let stockA = a.total_remaining_quantity ?? 0
+                let stockB = b.total_remaining_quantity ?? 0
+                return stockA > stockB
+            }
         }
     }
     

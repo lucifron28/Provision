@@ -3,9 +3,9 @@ import SwiftUI
 import Combine
 
 public enum ShoppingFilter: String, CaseIterable, Identifiable {
-    case all = "All"
     case pending = "To Buy"
     case completed = "Purchased"
+    case all = "All"
 
     public var id: String { rawValue }
 }
@@ -13,7 +13,7 @@ public enum ShoppingFilter: String, CaseIterable, Identifiable {
 @MainActor
 public class ShoppingViewModel: ObservableObject {
     @Published public var items: [ShoppingItem] = []
-    @Published public var filter: ShoppingFilter = .all
+    @Published public var filter: ShoppingFilter = .pending
     @Published public var newItemName: String = ""
     @Published public var newItemQuantity: Double = 1.0
 
@@ -54,6 +54,10 @@ public class ShoppingViewModel: ObservableObject {
 
     public var pendingCount: Int {
         items.filter { !$0.is_bought }.count
+    }
+
+    public var purchasedCount: Int {
+        items.filter { $0.is_bought }.count
     }
 
     public func loadItems() async {

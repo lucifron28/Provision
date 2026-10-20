@@ -24,14 +24,9 @@ public struct InventoryView: View {
                     .padding(.top, 8)
                     .padding(.bottom, 6)
 
-                // Quick Filter Chips (All, Expiring Soon, Low Stock, Out of Stock)
-                quickFilterChipsBar
+                // Filter & Sort Control Strip
+                filterAndSortControlsBar
                     .padding(.bottom, 6)
-
-                // Category Chips Scroll
-                categoryChipsBar
-                    .padding(.bottom, 6)
-
                 // Result Count Bar
                 resultCountBar
                     .padding(.horizontal, 16)
@@ -139,30 +134,98 @@ public struct InventoryView: View {
         }
     }
 
-    private var quickFilterChipsBar: some View {
+    private var filterAndSortControlsBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
+                // Category Filter Menu
+                Menu {
+                    Button("All Categories") {
+                        viewModel.selectedCategory = nil
+                    }
+                    Divider()
+                    let cats = viewModel.categories.isEmpty ? ["Canned Goods", "Dairy", "Snacks", "Produce", "Pantry"] : viewModel.categories
+                    ForEach(cats, id: \.self) { cat in
+                        Button(cat) {
+                            viewModel.selectedCategory = cat
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "line.3.horizontal.decrease.circle")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text(viewModel.selectedCategory ?? "All Categories")
+                            .font(.system(size: 12, weight: viewModel.selectedCategory != nil ? .bold : .medium))
+                            .lineLimit(1)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 8, weight: .bold))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(viewModel.selectedCategory != nil ? ProvisionTheme.provisionGreen : ProvisionTheme.surface)
+                    .foregroundStyle(viewModel.selectedCategory != nil ? ProvisionTheme.onAccent : ProvisionTheme.textPrimary)
+                    .clipShape(Capsule())
+                    .overlay(
+                        Capsule().stroke(viewModel.selectedCategory != nil ? ProvisionTheme.provisionGreen : ProvisionTheme.border, lineWidth: 1)
+                    )
+                }
+
+                // Sort Menu
+                Menu {
+                    ForEach(InventorySortOption.allCases) { opt in
+                        Button {
+                            viewModel.sortOption = opt
+                        } label: {
+                            HStack {
+                                Text(opt.rawValue)
+                                if viewModel.sortOption == opt {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.arrow.down")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text(viewModel.sortOption.rawValue)
+                            .font(.system(size: 12, weight: .medium))
+                            .lineLimit(1)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 8, weight: .bold))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(ProvisionTheme.surface)
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+                    .clipShape(Capsule())
+                    .overlay(
+                        Capsule().stroke(ProvisionTheme.border, lineWidth: 1)
+                    )
+                }
+
+                // Quick Status Filter Chips
                 ForEach(InventoryQuickFilter.allCases) { filter in
                     let isSelected = viewModel.activeQuickFilter == filter
                     Button {
                         viewModel.applyFilter(filter)
                     } label: {
-                        HStack(spacing: 5) {
+                        HStack(spacing: 4) {
                             Image(systemName: filter.icon)
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.system(size: 10, weight: .semibold))
                             Text(filter.title)
-                                .font(.system(size: 13, weight: isSelected ? .bold : .medium))
+                                .font(.system(size: 12, weight: isSelected ? .bold : .medium))
                         }
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, 10)
                         .padding(.vertical, 7)
                         .background(isSelected ? ProvisionTheme.provisionGreen : ProvisionTheme.surface)
                         .foregroundStyle(isSelected ? ProvisionTheme.onAccent : ProvisionTheme.textPrimary)
                         .clipShape(Capsule())
                         .overlay(
-                            Capsule()
-                                .stroke(isSelected ? ProvisionTheme.provisionGreen : ProvisionTheme.border, lineWidth: 1)
+                            Capsule().stroke(isSelected ? ProvisionTheme.provisionGreen : ProvisionTheme.border, lineWidth: 1)
                         )
                     }
+                    .buttonStyle(.plain)
+                    .accessibleTouchTarget()
                 }
             }
             .padding(.horizontal, 16)
@@ -181,10 +244,12 @@ public struct InventoryView: View {
                 Button("Reset Filters") {
                     viewModel.searchText = ""
                     viewModel.selectedCategory = nil
-                    viewModel.applyFilter(.all)
+                    viewModel.activeQuickFilter = .all
+                    viewModel.sortOption = .nameAsc
                 }
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(ProvisionTheme.redAlert)
+                .accessibleTouchTarget()
             }
         }
     }
@@ -192,43 +257,8 @@ public struct InventoryView: View {
     private var isAnyFilterActive: Bool {
         !viewModel.searchText.isEmpty ||
         viewModel.selectedCategory != nil ||
-        viewModel.activeQuickFilter != .all
-    }
-    
-    private var categoryChipsBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                // All Chip
-                categoryChip(title: "All", isSelected: viewModel.selectedCategory == nil) {
-                    viewModel.selectedCategory = nil
-                }
-                
-                // Dynamic or Default Category Chips
-                let cats = viewModel.categories.isEmpty ? ["Canned Goods", "Dairy", "Snacks", "Produce", "Pantry"] : viewModel.categories
-                ForEach(cats, id: \.self) { cat in
-                    categoryChip(title: cat, isSelected: viewModel.selectedCategory == cat) {
-                        viewModel.selectedCategory = cat
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-        }
-    }
-    
-    private func categoryChip(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 13, weight: isSelected ? .bold : .medium))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-            .background(isSelected ? ProvisionTheme.provisionGreen : ProvisionTheme.surface)
-            .foregroundStyle(isSelected ? ProvisionTheme.onAccent : ProvisionTheme.textPrimary)
-            .clipShape(Capsule())
-                .overlay(
-                    Capsule()
-                        .stroke(isSelected ? ProvisionTheme.provisionGreen : ProvisionTheme.border, lineWidth: 1)
-                )
-        }
+        viewModel.activeQuickFilter != .all ||
+        viewModel.sortOption != .nameAsc
     }
     
     private var productsList: some View {

@@ -14,9 +14,9 @@ public struct ShoppingListView: View {
             VStack(spacing: 0) {
                 // Filter Picker
                 Picker("Filter", selection: $viewModel.filter) {
-                    ForEach(ShoppingFilter.allCases) { filter in
-                        Text(filter.rawValue).tag(filter)
-                    }
+                    Text("To Buy (\(viewModel.pendingCount))").tag(ShoppingFilter.pending)
+                    Text("Purchased (\(viewModel.purchasedCount))").tag(ShoppingFilter.completed)
+                    Text("All (\(viewModel.items.count))").tag(ShoppingFilter.all)
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 16)
@@ -243,15 +243,15 @@ public struct ShoppingListView: View {
     private var emptyShoppingList: some View {
         VStack(spacing: 16) {
             Spacer()
-            if viewModel.filter == .all {
+            if viewModel.filter == .pending || viewModel.filter == .all {
                 Image("pip_grocery")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 110, height: 110)
+                    .frame(width: 90, height: 90)
                     .accessibilityHidden(true)
             } else {
                 Image(systemName: emptyStateIcon)
-                    .font(.system(size: 48))
+                    .font(.system(size: 44))
                     .foregroundStyle(ProvisionTheme.textTertiary)
             }
             
