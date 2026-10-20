@@ -37,6 +37,10 @@ public struct HomeInventoryAndPipTests {
         try testInventoryQuickFilterLowStock()
         try testInventoryQuickFilterOutOfStock()
         try testInventoryFilterCombinedWithSearchAndCategory()
+        try testInventorySortingOptions()
+        try testShoppingListDefaultToBuyAndPurchasedSeparation()
+        try testReviewAllWorkspaceFiltering()
+        try testReusableSearchableProductSelector()
         print("=== ALL HOME, INVENTORY & PIP TESTS PASSED ===")
     }
 
@@ -280,5 +284,138 @@ public struct HomeInventoryAndPipTests {
         let bakeryExpiring = vm.filteredProducts
         try assertEquals(bakeryExpiring.count, 1, "Only Gardenia Bread matches Snacks & Bakery + expiring soon")
         try assertEquals(bakeryExpiring.first?.id, 7, "Gardenia Bread id is 7")
+    }
+
+    // MARK: - Inventory Sorting Tests
+
+    public static func testInventorySortingOptions() throws {
+        let vm = PreviewData.makeInventoryViewModel()
+
+        // 1. Name Ascending (A-Z)
+        vm.sortOption = .nameAsc
+        let sortedAsc = vm.filteredProducts
+        try assertTrue(sortedAsc.count >= 2, "Products must not be empty")
+        for i in 0..<(sortedAsc.count - 1) {
+            try assertTrue(sortedAsc[i].name.localizedCaseInsensitiveCompare(sortedAsc[i+1].name) != .orderedDescending, "Must be sorted A-Z")
+        }
+
+        // 2. Name Descending (Z-A)
+        vm.sortOption = .nameDesc
+        let sortedDesc = vm.filteredProducts
+        for i in 0..<(sortedDesc.count - 1) {
+            try assertTrue(sortedDesc[i].name.localizedCaseInsensitiveCompare(sortedDesc[i+1].name) != .orderedAscending, "Must be sorted Z-A")
+        }
+
+        // 3. Stock Lowest First
+        vm.sortOption = .stockLowest
+        let sortedStockLow = vm.filteredProducts
+        for i in 0..<(sortedStockLow.count - 1) {
+            let stockA = sortedStockLow[i].total_remaining_quantity ?? 0
+            let stockB = sortedStockLow[i+1].total_remaining_quantity ?? 0
+            try assertTrue(stockA <= stockB, "Stock must be ascending")
+        }
+    }
+
+    // MARK: - Shopping List To-Buy Segmentation Tests
+
+    public static func testShoppingListDefaultToBuyAndPurchasedSeparation() throws {
+        let vm = ShoppingViewModel(isPreview: true)
+        vm.items = [
+            ShoppingItem(id: 1, name: "Bananas", quantity: 1, is_bought: false),
+            ShoppingItem(id: 2, name: "Apples", quantity: 2, is_bought: true),
+            ShoppingItem(id: 3, name: "Milk", quantity: 1, is_bought: false),
+            ShoppingItem(id: 4, name: "Bread", quantity: 1, is_bought: true)
+        ]
+
+        // 1. Verify default filter is To Buy (.pending)
+        try assertEquals(vm.filter, .pending, "Shopping list must default to To Buy (.pending)")
+
+        // 2. Filtered items in To Buy must only contain unpurchased items
+        let toBuyItems = vm.filteredItems
+        try assertEquals(toBuyItems.count, 2, "Must show exactly 2 items to buy")
+        for item in toBuyItems {
+            try assertTrue(!item.is_bought, "To Buy items must not be purchased")
+        }
+        try assertEquals(vm.pendingCount, 2, "Pending count must be 2")
+        try assertEquals(vm.purchasedCount, 2, "Purchased count must be 2")
+
+        // 3. Switch to Purchased (.completed)
+        vm.filter = .completed
+        let purchasedItems = vm.filteredItems
+        try assertEquals(purchasedItems.count, 2, "Must show exactly 2 purchased items")
+        for item in purchasedItems {
+            try assertTrue(item.is_bought, "Purchased items must have is_bought = true")
+        }
+
+        // 4. Switch to All (.all)
+        vm.filter = .all
+        try assertEquals(vm.filteredItems.count, 4, "All filter must show all 4 items")
+    }
+
+    // MARK: - Review All Workspace Tests
+
+    public static func testReviewAllWorkspaceFiltering() throws {
+        let vm = ScanViewModel(isPreview: true)
+        let itemReady = ScannedIntakeItem(
+            id: UUID(),
+            name: "Century Tuna",
+            brand: "Century",
+            barcode: "4800016644818",
+            quantity: 2,
+            unit: "cans",
+            status: .recognized,
+            productId: 1,
+            storageLocationId: 10
+        )
+        let itemNoLoc = ScannedIntakeItem(
+            id: UUID(),
+            name: "Purefoods Corned Beef",
+            brand: "Purefoods",
+            barcode: "4800361389440",
+            quantity: 1,
+            unit: "can",
+            status: .recognized,
+            productId: 2,
+            storageLocationId: nil
+        )
+        let itemUnresolved = ScannedIntakeItem(
+            id: UUID(),
+            name: "Mystery Biscuit",
+            brand: "Unknown",
+            barcode: "9999999999999",
+            quantity: 1,
+            unit: "pcs",
+            status: .needsReview,
+            productId: nil,
+            storageLocationId: 10
+        )
+        vm.scannedItems = [itemReady, itemNoLoc, itemUnresolved]
+
+        let reviewWorkspace = IntakeSessionReviewView(viewModel: vm)
+        
+        // All filter shows 3 items
+        try assertEquals(reviewWorkspace.filteredItems.count, 3, "All filter should return all 3 items")
+
+        // Authoritative validation states
+        try assertEquals(vm.validationState(for: itemReady), .ready, "itemReady must be .ready")
+        try assertEquals(vm.validationState(for: itemNoLoc), .needsDetails, "itemNoLoc must be .needsDetails")
+        try assertEquals(vm.validationState(for: itemUnresolved), .needsReview, "itemUnresolved must be .needsReview")
+    }
+
+    // MARK: - Searchable Product Selector Tests
+
+    public static func testReusableSearchableProductSelector() throws {
+        let prods = PreviewData.products
+        var selectedId: Int? = nil
+        let binding = Binding<Int?>(get: { selectedId }, set: { selectedId = $0 })
+        
+        let selector = SearchableProductSelector(
+            products: prods,
+            selectedProductId: binding,
+            placeholder: "Search..."
+        )
+
+        // Filtered products without query contains all products
+        try assertEquals(selector.filteredProducts.count, prods.count, "All products returned when query is empty")
     }
 }
