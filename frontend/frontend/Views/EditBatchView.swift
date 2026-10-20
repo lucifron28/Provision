@@ -106,7 +106,7 @@ public struct EditBatchView: View {
                     } label: {
                         if isSubmitting {
                             ProgressView()
-                                .tint(.white)
+                                .tint(ProvisionTheme.onAccent)
                                 .frame(maxWidth: .infinity, minHeight: 48)
                         } else {
                             Text("Save Changes")

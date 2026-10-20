@@ -108,13 +108,11 @@ public struct AddInventoryView: View {
                                 }
                                 .padding(.vertical, 4)
                             } else {
-                                Picker("Product", selection: $selectedProductId) {
-                                    Text("Choose from catalog...").tag(Int?.none)
-                                    ForEach(viewModel.products) { p in
-                                        Text(p.brand != nil && !p.brand!.isEmpty ? "\(p.name) (\(p.brand!))" : p.name).tag(Int?.some(p.id))
-                                    }
-                                }
-                                .tint(ProvisionTheme.provisionGreen)
+                                SearchableProductSelector(
+                                    products: viewModel.products,
+                                    selectedProductId: $selectedProductId,
+                                    placeholder: "Search catalog by name, brand, or barcode..."
+                                )
                                 
                                 if let selectedId = selectedProductId, let p = viewModel.products.first(where: { $0.id == selectedId }) {
                                     HStack {

@@ -1072,26 +1072,13 @@ public struct ScanView: View {
             Form {
                 if !viewModel.availableCatalog.isEmpty {
                     Section("Match to Existing Catalog Product") {
-                        Picker("Select Catalog Product", selection: $selectedCatalogProductId) {
-                            Text("Choose from catalog...").tag(nil as Int?)
-                            ForEach(viewModel.availableCatalog) { prod in
-                                Text("\(prod.name) (\(prod.brand ?? "Pantry"))").tag(prod.id as Int?)
-                            }
-                        }
-
-                        if let selId = selectedCatalogProductId,
-                           let foundProd = viewModel.availableCatalog.first(where: { $0.id == selId }) {
-                            Button {
-                                viewModel.resolveProductWithCatalog(product: foundProd)
-                                selectedCatalogProductId = nil
-                            } label: {
-                                HStack {
-                                    Image(systemName: "link.circle.fill")
-                                    Text("Link as \(foundProd.name)")
-                                        .bold()
-                                }
-                                .foregroundStyle(ProvisionTheme.provisionGreen)
-                            }
+                        SearchableProductSelector(
+                            products: viewModel.availableCatalog,
+                            selectedProductId: $selectedCatalogProductId,
+                            placeholder: "Search catalog by name, brand, or barcode..."
+                        ) { foundProd in
+                            viewModel.resolveProductWithCatalog(product: foundProd)
+                            selectedCatalogProductId = nil
                         }
                     }
                 }
@@ -1415,99 +1402,17 @@ public struct IntakeItemReviewSheet: View {
                 .foregroundStyle(ProvisionTheme.textSecondary)
             if !viewModel.availableCatalog.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Search & Match Existing Catalog Product:")
+                    Text("Match to Existing Catalog Product:")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(ProvisionTheme.textPrimary)
 
-                    HStack(spacing: 6) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 12))
-                            .foregroundStyle(ProvisionTheme.textTertiary)
-
-                        TextField("Search by name, brand, or barcode...", text: $catalogSearchQuery)
-                            .font(.system(size: 13))
-                            .foregroundStyle(ProvisionTheme.textPrimary)
-
-                        if !catalogSearchQuery.isEmpty {
-                            Button {
-                                catalogSearchQuery = ""
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(ProvisionTheme.textTertiary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(ProvisionTheme.inputBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(ProvisionTheme.border, lineWidth: 1)
-                    )
-
-                    let query = catalogSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                    let filteredCatalog = viewModel.availableCatalog.filter { prod in
-                        guard !query.isEmpty else { return true }
-                        let nameMatch = prod.name.lowercased().contains(query)
-                        let brandMatch = prod.brand?.lowercased().contains(query) == true
-                        let barcodeMatch = prod.barcode?.contains(query) == true
-                        let categoryMatch = prod.category?.lowercased().contains(query) == true
-                        return nameMatch || brandMatch || barcodeMatch || categoryMatch
-                    }
-
-                    if filteredCatalog.isEmpty {
-                        Text("No catalog products match '\(catalogSearchQuery)'. Register below.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(ProvisionTheme.textSecondary)
-                            .padding(.vertical, 4)
-                    } else {
-                        ScrollView(.vertical, showsIndicators: true) {
-                            LazyVStack(spacing: 6) {
-                                ForEach(Array(filteredCatalog.prefix(8))) { prod in
-                                    Button {
-                                        viewModel.resolveItemWithCatalogProduct(itemId: targetItem.id, product: prod)
-                                        catalogSearchQuery = ""
-                                    } label: {
-                                        HStack {
-                                            VStack(alignment: .leading, spacing: 2) {
-                                                Text(prod.name)
-                                                    .font(.system(size: 13, weight: .semibold))
-                                                    .foregroundStyle(ProvisionTheme.textPrimary)
-                                                HStack(spacing: 4) {
-                                                    if let brand = prod.brand, !brand.isEmpty {
-                                                        Text(brand)
-                                                    }
-                                                    if let cat = prod.category {
-                                                        Text("• \(cat)")
-                                                    }
-                                                }
-                                                .font(.system(size: 11))
-                                                .foregroundStyle(ProvisionTheme.textSecondary)
-                                            }
-                                            Spacer()
-                                            HStack(spacing: 4) {
-                                                Image(systemName: "link.circle.fill")
-                                                Text("Link")
-                                                    .font(.system(size: 12, weight: .bold))
-                                            }
-                                            .padding(.horizontal, 10)
-                                            .padding(.vertical, 6)
-                                            .background(ProvisionTheme.provisionGreenLight)
-                                            .foregroundStyle(ProvisionTheme.provisionGreen)
-                                            .clipShape(Capsule())
-                                        }
-                                        .padding(8)
-                                        .background(ProvisionTheme.surface)
-                                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                        .frame(maxHeight: 180)
+                    SearchableProductSelector(
+                        products: viewModel.availableCatalog,
+                        selectedProductId: $selectedCatalogProductId,
+                        placeholder: "Search catalog by name, brand, or barcode..."
+                    ) { prod in
+                        viewModel.resolveItemWithCatalogProduct(itemId: targetItem.id, product: prod)
+                        selectedCatalogProductId = nil
                     }
                 }
             }
