@@ -80,17 +80,14 @@ public struct AnalyticsView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
 
-                        // Valuation Summary Card
-                        valuationCard
+                        // Key Metrics 2-Column Grid (Valuation & Cumulative Spend)
+                        financialMetricsGrid
 
-                        // Recorded Spending Card
-                        spendingCard
-
-                        // Waste & Loss Prevention Card
+                        // Recorded Waste & Loss Prevention Card (Compact)
                         wastePreventionCard
 
-                        // Expiration Risk Radar
-                        riskRadarCard
+                        // Pantry Intelligence & FEFO Card
+                        decisionIntelligenceCard
                     }
                 }
                 .padding(.horizontal, 16)
@@ -110,156 +107,191 @@ public struct AnalyticsView: View {
 
     // MARK: - Subviews
 
-    private var valuationCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text("CURRENT INVENTORY VALUATION")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(ProvisionTheme.textSecondary)
-                    .tracking(0.6)
-                Spacer()
-                Image(systemName: "banknote.fill")
-                    .foregroundStyle(ProvisionTheme.provisionGreen)
-            }
+    // MARK: - Consolidate Financial Metrics (2-Column Grid)
 
-            Text("₱\(formatCurrency(viewModel.valuation.total_value))")
-                .font(.system(size: 32, weight: .bold, design: .serif))
-                .foregroundStyle(ProvisionTheme.textPrimary)
-
-            Divider()
-
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("ACTIVE BATCHES")
+    private var financialMetricsGrid: some View {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+            // Card 1: Inventory Valuation
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("VALUATION")
                         .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(ProvisionTheme.textTertiary)
-                    Text("\(viewModel.valuation.total_active_batches)")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(ProvisionTheme.textPrimary)
-                }
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("CATALOG PRODUCTS")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(ProvisionTheme.textTertiary)
-                    Text("\(viewModel.valuation.total_active_products)")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(ProvisionTheme.textPrimary)
-                }
-            }
-        }
-        .padding(18)
-        .provisionCard()
-    }
-
-    private var spendingCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text("CUMULATIVE GROCERY SPEND")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(ProvisionTheme.textSecondary)
-                    .tracking(0.6)
-                Spacer()
-                Image(systemName: "creditcard.fill")
-                    .foregroundStyle(ProvisionTheme.provisionGreen)
-            }
-
-            Text("₱\(formatCurrency(viewModel.spending.total_spent))")
-                .font(.system(size: 28, weight: .bold, design: .serif))
-                .foregroundStyle(ProvisionTheme.textPrimary)
-
-            HStack(spacing: 6) {
-                Image(systemName: "checkmark.seal.fill")
-                    .font(.system(size: 12))
-                    .foregroundStyle(ProvisionTheme.provisionGreen)
-                Text("Total recorded across \(viewModel.spending.sessions_count) completed session(s)")
-                    .font(.system(size: 13))
-                    .foregroundStyle(ProvisionTheme.textSecondary)
-            }
-        }
-        .padding(18)
-        .provisionCard()
-    }
-
-    private var wastePreventionCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text("RECORDED WASTE & LOSS")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(ProvisionTheme.textSecondary)
-                    .tracking(0.6)
-                Spacer()
-                Image(systemName: "arrow.triangle.2.circlepath.doc.on.clipboard")
-                    .foregroundStyle(ProvisionTheme.amberWarning)
-            }
-
-            HStack(alignment: .firstTextBaseline) {
-                Text("₱\(formatCurrency(viewModel.waste.total_financial_loss))")
-                    .font(.system(size: 28, weight: .bold, design: .serif))
-                    .foregroundStyle(ProvisionTheme.redAlert)
-
-                Text("financial loss")
-                    .font(.system(size: 13))
-                    .foregroundStyle(ProvisionTheme.textSecondary)
-            }
-
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("ITEMS WASTED")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(ProvisionTheme.textTertiary)
-                    Text(String(format: "%.0f units", viewModel.waste.total_quantity_wasted))
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(ProvisionTheme.textPrimary)
-                }
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("WASTE LOGS")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(ProvisionTheme.textTertiary)
-                    Text("\(viewModel.waste.total_waste_events) logged")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(ProvisionTheme.textPrimary)
-                }
-            }
-        }
-        .padding(18)
-        .provisionCard(borderColor: ProvisionTheme.amberWarning.opacity(0.4))
-    }
-
-    private var riskRadarCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("DECISION INTELLIGENCE")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(ProvisionTheme.textSecondary)
-                .tracking(0.6)
-
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(ProvisionTheme.provisionGreenLight)
-                        .frame(width: 42, height: 42)
-                    Image(systemName: "leaf.circle.fill")
-                        .font(.system(size: 22))
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                        .tracking(0.5)
+                    Spacer()
+                    Image(systemName: "banknote.fill")
+                        .font(.system(size: 12))
                         .foregroundStyle(ProvisionTheme.provisionGreen)
                 }
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("FEFO Consumption Active")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(ProvisionTheme.textPrimary)
-                    Text("Oldest batches are prioritized automatically during consumption to minimize spoilage.")
-                        .font(.system(size: 12))
+                Text("₱\(formatCurrency(viewModel.valuation.total_value))")
+                    .font(.system(size: 22, weight: .bold, design: .serif))
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+
+                Divider()
+                    .background(ProvisionTheme.border.opacity(0.6))
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("BATCHES")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(ProvisionTheme.textTertiary)
+                        Text("\(viewModel.valuation.total_active_batches)")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text("PRODUCTS")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(ProvisionTheme.textTertiary)
+                        Text("\(viewModel.valuation.total_active_products)")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+                    }
+                }
+            }
+            .padding(14)
+            .provisionCard()
+
+            // Card 2: Cumulative Grocery Spend
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("TOTAL SPEND")
+                        .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(ProvisionTheme.textSecondary)
+                        .tracking(0.5)
+                    Spacer()
+                    Image(systemName: "creditcard.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(ProvisionTheme.provisionGreen)
+                }
+
+                Text("₱\(formatCurrency(viewModel.spending.total_spent))")
+                    .font(.system(size: 22, weight: .bold, design: .serif))
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+
+                Divider()
+                    .background(ProvisionTheme.border.opacity(0.6))
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("INTAKE SESSIONS")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(ProvisionTheme.textTertiary)
+                    Text("\(viewModel.spending.sessions_count) completed")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(ProvisionTheme.textPrimary)
                 }
             }
             .padding(14)
             .provisionCard()
         }
+    }
+
+    // MARK: - Compact Waste Prevention Card
+
+    private var wastePreventionCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.triangle.2.circlepath.doc.on.clipboard")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(viewModel.waste.total_financial_loss > 0 ? ProvisionTheme.redAlert : ProvisionTheme.provisionGreen)
+                    Text("RECORDED WASTE & SPOILAGE")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                        .tracking(0.6)
+                }
+                Spacer()
+                if viewModel.waste.total_financial_loss == 0 {
+                    Text("Zero Loss")
+                        .font(.system(size: 10, weight: .bold))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(ProvisionTheme.provisionGreenLight)
+                        .foregroundStyle(ProvisionTheme.provisionGreen)
+                        .clipShape(Capsule())
+                }
+            }
+
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("₱\(formatCurrency(viewModel.waste.total_financial_loss))")
+                        .font(.system(size: 24, weight: .bold, design: .serif))
+                        .foregroundStyle(viewModel.waste.total_financial_loss > 0 ? ProvisionTheme.redAlert : ProvisionTheme.provisionGreen)
+                    Text("financial loss recorded")
+                        .font(.system(size: 11))
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                }
+
+                Spacer()
+
+                HStack(spacing: 16) {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("WASTED UNITS")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(ProvisionTheme.textTertiary)
+                        Text(String(format: "%.0f", viewModel.waste.total_quantity_wasted))
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+                    }
+
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("DISCARD EVENTS")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(ProvisionTheme.textTertiary)
+                        Text("\(viewModel.waste.total_waste_events)")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .provisionCard(borderColor: viewModel.waste.total_financial_loss > 0 ? ProvisionTheme.amberWarning.opacity(0.3) : ProvisionTheme.border)
+    }
+
+    // MARK: - Decision Intelligence Card
+
+    private var decisionIntelligenceCard: some View {
+        HStack(spacing: 12) {
+            Image("pip_guardian")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 46, height: 46)
+                .background(
+                    Circle()
+                        .fill(ProvisionTheme.provisionGreenLight)
+                        .frame(width: 52, height: 52)
+                )
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Text("FEFO Pantry Optimization")
+                        .font(.system(size: 14, weight: .bold, design: .serif))
+                        .foregroundStyle(ProvisionTheme.textPrimary)
+                    Spacer()
+                    Text("Active")
+                        .font(.system(size: 10, weight: .bold))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(ProvisionTheme.provisionGreenLight)
+                        .foregroundStyle(ProvisionTheme.provisionGreen)
+                        .clipShape(Capsule())
+                }
+
+                Text("First-Expiring, First-Out rule automatically prioritizes oldest stock during consumption to eliminate household food waste.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(ProvisionTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(14)
+        .provisionCard()
     }
 
     private func formatCurrency(_ value: Double) -> String {
