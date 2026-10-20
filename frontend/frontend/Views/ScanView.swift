@@ -20,7 +20,7 @@ public struct ScanView: View {
     @State private var editingPriceText: String = ""
     @State private var selectedCatalogProductId: Int? = nil
     @State private var reviewingItem: ScannedIntakeItem? = nil
-
+    @State private var showingReviewAllSheet: Bool = false
     public init(viewModel: ScanViewModel) {
         self.viewModel = viewModel
     }
@@ -146,6 +146,9 @@ public struct ScanView: View {
                     itemId: item.id,
                     viewModel: viewModel
                 )
+            }
+            .sheet(isPresented: $showingReviewAllSheet) {
+                IntakeSessionReviewView(viewModel: viewModel)
             }
             .safeAreaInset(edge: .bottom) {
                 if !viewModel.scannedItems.isEmpty {
@@ -494,6 +497,7 @@ public struct ScanView: View {
     }
 
     private var activeModalSuspension: SuspensionReason? {
+        if showingReviewAllSheet { return .reviewWorkspace }
         if showingAddManualSheet { return .manualEntrySheet }
         if viewModel.showingQuickAddSheet { return .quickAddSheet }
         if viewModel.showingReceiptCamera { return .receiptCamera }
@@ -556,13 +560,61 @@ public struct ScanView: View {
                 emptyIntakeView
             } else {
                 LazyVStack(spacing: 8) {
-                    ForEach(viewModel.scannedItems) { item in
+                    ForEach(mainScreenPreviewItems) { item in
                         compactIntakeRow(for: item)
                     }
                 }
                 .disabled(viewModel.isIntakeMutationLocked)
+
+                if viewModel.scannedItems.count > 4 {
+                    Button {
+                        showingReviewAllSheet = true
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Review All \(viewModel.scannedItems.count) Scanned Items")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(ProvisionTheme.textPrimary)
+                                Text("Search, filter, and review details in the full workspace")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(ProvisionTheme.textSecondary)
+                            }
+                            Spacer()
+                            HStack(spacing: 4) {
+                                Text("Open Workspace")
+                                    .font(.system(size: 12, weight: .semibold))
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 11, weight: .bold))
+                            }
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                        }
+                        .padding(14)
+                        .background(ProvisionTheme.surfaceSecondary)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(ProvisionTheme.border, lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibleTouchTarget()
+                }
             }
         }
+    }
+
+    private var mainScreenPreviewItems: [ScannedIntakeItem] {
+        let items = viewModel.scannedItems
+        if items.count <= 4 { return items }
+        let exceptions = items.filter { item in
+            let state = viewModel.validationState(for: item)
+            return state == .needsReview || state == .needsDetails
+        }
+        let nonExceptions = items.filter { item in
+            let state = viewModel.validationState(for: item)
+            return state != .needsReview && state != .needsDetails
+        }
+        return Array((exceptions + nonExceptions).prefix(4))
     }
 
     private var intakeSummaryHeader: some View {
@@ -573,9 +625,30 @@ public struct ScanView: View {
 
         return HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Intake Review")
-                    .font(ProvisionTypography.sectionSerif)
-                    .foregroundStyle(ProvisionTheme.textPrimary)
+                HStack(spacing: 6) {
+                    Text("Intake Review")
+                        .font(ProvisionTypography.sectionSerif)
+                        .foregroundStyle(ProvisionTheme.textPrimary)
+
+                    if totalCount > 4 {
+                        Button {
+                            showingReviewAllSheet = true
+                        } label: {
+                            HStack(spacing: 3) {
+                                Text("Workspace (\(totalCount))")
+                                    .font(.system(size: 11, weight: .bold))
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 9, weight: .bold))
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(ProvisionTheme.surfaceSecondary)
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                            .clipShape(Capsule())
+                        }
+                        .accessibleTouchTarget()
+                    }
+                }
 
                 HStack(spacing: 6) {
                     Text("Total: \(totalCount)")
@@ -605,7 +678,6 @@ public struct ScanView: View {
                     }
                 }
             }
-
             Spacer()
 
             HStack(spacing: 8) {

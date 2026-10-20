@@ -66,6 +66,7 @@ public enum SuspensionReason: String, CaseIterable, Hashable, Sendable {
     case quickAddSheet = "Product resolution sheet open"
     case manualEntrySheet = "Manual entry sheet open"
     case itemReviewSheet = "Intake item review sheet open"
+    case reviewWorkspace = "Intake review workspace open"
     case expirationSheet = "Expiration date scanner open"
     case priceEditing = "Price editing active"
     case background = "App in background or inactive"
