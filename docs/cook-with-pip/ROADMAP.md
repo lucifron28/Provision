@@ -4,7 +4,7 @@ Status: **PLANNED / NOT IMPLEMENTED** | Last reviewed: 2026-10-29 | Base: `feat/
 
 **Purpose.** Evolve Provision from pantry tracking into a Filipino-first household food assistant: discover credible recipes, identify what can be cooked from usable inventory, respect allergies and preferences, buy missing ingredients without duplicates, plan meals, track leftovers, and measure waste. This document is the actionable backlog, not evidence that features already exist.
 
-**Read first:** [Implementation contract](./COOK_WITH_PIP_TECHNICAL_SPEC.md), [Recipe source governance](./RECIPE_SOURCE_POLICY.md), repository `AGENTS.md`. Keep these documents aligned; update checkboxes only after implementation + tests + green CI.
+**Read first:** [Implementation contract](./TECHNICAL_SPEC.md), [Recipe source governance](./RECIPE_SOURCE_POLICY.md), repository `AGENTS.md`. Keep these documents aligned; update checkboxes only after implementation + tests + green CI.
 
 ## Existing system and non-goals
 
