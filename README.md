@@ -230,3 +230,7 @@ This project is intentionally at **approximately 50% completion** for the iOS De
 - Automatic inventory commit from live intake scanning.
 - Offline-first local database caching (SwiftData / Core Data).
 - Background expiration alert notifications.
+
+## Planned: Cook with Pip (AI Recipes and Smart Shopping)
+
+**Planning only — not yet implemented.** See [Agent Handoff](AGENTS.md), [Phased Roadmap](docs/cook-with-pip/ROADMAP.md), [Technical Spec](docs/cook-with-pip/TECHNICAL_SPEC.md) and [Filipino-First Trusted Recipe Source Policy](docs/cook-with-pip/RECIPE_SOURCE_POLICY.md). Covers DeepSeek recipe discovery and optional wider search; approved Filipino publisher prioritization; cuisines, food categories, preferences and allergies; deterministic stock matching; explicit shopping-list confirmation/deduplication; saved recipes, cooking, meal plans, leftovers, budgets and waste. **Household isolation is a release prerequisite.** Existing Chef Pip hints are not AI-powered.
