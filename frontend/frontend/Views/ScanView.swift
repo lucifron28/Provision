@@ -681,7 +681,7 @@ public struct ScanView: View {
             Spacer()
 
             HStack(spacing: 8) {
-                if readyToConfirmCount > 0 {
+                if !viewModel.hasPendingCommitRecovery && readyToConfirmCount > 0 {
                     Button {
                         viewModel.confirmAllReady()
                     } label: {
@@ -945,20 +945,30 @@ public struct ScanView: View {
         return VStack(spacing: 8) {
             // Clear status / reasons when disabled
             HStack(spacing: 6) {
-                if allConfirmed {
+                if let err = viewModel.pendingCommitRecoveryError {
+                    Image(systemName: "exclamationmark.octagon.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(ProvisionTheme.redAlert)
+                    Text("Recovery Error • Submission locked")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(ProvisionTheme.redAlert)
+                        .lineLimit(1)
+                } else if viewModel.hasPendingCommitRecovery {
+                    Image(systemName: "arrow.clockwise.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(ProvisionTheme.amberWarning)
+                    Text("Reconciliation Required • Previous intake pending")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(ProvisionTheme.amberWarning)
+                        .lineLimit(1)
+                } else if allConfirmed {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 12))
                         .foregroundStyle(ProvisionTheme.provisionGreen)
                     Text("Ready to Commit • All \(totalCount) items confirmed")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(ProvisionTheme.provisionGreen)
-                } else if viewModel.hasPendingCommitRecovery {
-                    Image(systemName: "arrow.clockwise.circle.fill")
-                        .font(.system(size: 12))
-                        .foregroundStyle(ProvisionTheme.amberWarning)
-                    Text("Unresolved previous submission pending")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(ProvisionTheme.amberWarning)
+                        .lineLimit(1)
                 } else {
                     Image(systemName: "exclamationmark.circle.fill")
                         .font(.system(size: 12))
@@ -972,6 +982,7 @@ public struct ScanView: View {
             }
 
             // Commit Button
+            let canAct = viewModel.pendingCommitRecoveryError == nil && (allConfirmed || viewModel.hasPendingCommitRecovery)
             Button {
                 Task {
                     await viewModel.commitIntakeSession()
@@ -980,23 +991,35 @@ public struct ScanView: View {
                 HStack(spacing: 8) {
                     if viewModel.isCommitting {
                         ProgressView()
-                            .tint(.white)
-                        Text("Committing Intake...")
+                            .tint(ProvisionTheme.onAccent)
+                        Text(viewModel.hasPendingCommitRecovery ? "Reconciling Submission..." : "Committing Intake...")
+                            .font(.system(size: 15, weight: .bold))
+                    } else if viewModel.pendingCommitRecoveryError != nil {
+                        Image(systemName: "lock.slash.fill")
+                        Text("Intake Recovery Locked")
+                            .font(.system(size: 15, weight: .bold))
+                    } else if viewModel.hasPendingCommitRecovery {
+                        Image(systemName: "arrow.clockwise.circle.fill")
+                        Text("Resolve Previous Submission")
+                            .font(.system(size: 15, weight: .bold))
+                    } else if allConfirmed {
+                        Image(systemName: "checkmark.circle.fill")
+                        Text("Commit \(totalCount) Item(s) to Pantry")
                             .font(.system(size: 15, weight: .bold))
                     } else {
-                        Image(systemName: viewModel.hasPendingCommitRecovery ? "arrow.clockwise.circle.fill" : allConfirmed ? "checkmark.circle.fill" : "lock.fill")
-                        Text(viewModel.hasPendingCommitRecovery ? "Resolve Previous Submission" : allConfirmed ? "Commit \(totalCount) Item(s) to Pantry" : "Commit Intake (\(confirmedCount)/\(totalCount) Confirmed)")
+                        Image(systemName: "lock.fill")
+                        Text("Commit Intake (\(confirmedCount)/\(totalCount) Confirmed)")
                             .font(.system(size: 15, weight: .bold))
                     }
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 13)
-                .background((allConfirmed || viewModel.hasPendingCommitRecovery) ? ProvisionTheme.provisionGreen : ProvisionTheme.surfaceSecondary)
-                .foregroundStyle((allConfirmed || viewModel.hasPendingCommitRecovery) ? ProvisionTheme.onAccent : ProvisionTheme.textTertiary)
+                .background(canAct ? ProvisionTheme.provisionGreen : ProvisionTheme.surfaceSecondary)
+                .foregroundStyle(canAct ? ProvisionTheme.onAccent : ProvisionTheme.textTertiary)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(allConfirmed ? Color.clear : ProvisionTheme.border.opacity(0.6), lineWidth: 1)
+                        .stroke(canAct ? Color.clear : ProvisionTheme.border.opacity(0.6), lineWidth: 1)
                 )
             }
             .disabled(viewModel.isCommitting || viewModel.pendingCommitRecoveryError != nil || (!viewModel.hasPendingCommitRecovery && !allConfirmed))

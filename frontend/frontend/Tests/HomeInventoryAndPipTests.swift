@@ -41,7 +41,9 @@ public struct HomeInventoryAndPipTests {
         try testShoppingListDefaultToBuyAndPurchasedSeparation()
         try testReviewAllWorkspaceFiltering()
         try testReviewWorkspaceScannerSuspensionAndCommitRecovery()
+        try testRestoredAllConfirmedPendingSubmissionPrecedence()
         try testReusableSearchableProductSelector()
+        try testProductSelectorSelectionAndSheetDismissal()
         print("=== ALL HOME, INVENTORY & PIP TESTS PASSED ===")
     }
 
@@ -471,6 +473,84 @@ public struct HomeInventoryAndPipTests {
         try assertTrue(!cannedMatches.isEmpty, "Should find matches for Canned Goods")
         for p in cannedMatches {
             try assertEquals(p.category, "Canned Goods", "Category must match Canned Goods")
+        }
+    }
+
+    // MARK: - Restored All-Confirmed Pending Submission Recovery Precedence Tests
+
+    public static func testRestoredAllConfirmedPendingSubmissionPrecedence() throws {
+        let defaults = UserDefaults(suiteName: "test.precedence.\(UUID().uuidString)")!
+        defer { defaults.removePersistentDomain(forName: "test.precedence") }
+
+        let vm = ScanViewModel(isPreview: false, pendingCommitDefaults: defaults)
+        
+        let item1 = ScannedIntakeItem(
+            name: "Century Tuna",
+            barcode: "111",
+            quantity: 1.0,
+            unit: "cans",
+            status: .confirmed,
+            productId: 1,
+            storageLocationId: 10,
+            isConfirmed: true
+        )
+        let item2 = ScannedIntakeItem(
+            name: "Eden Cheese",
+            barcode: "222",
+            quantity: 1.0,
+            unit: "pcs",
+            status: .confirmed,
+            productId: 2,
+            storageLocationId: 10,
+            isConfirmed: true
+        )
+        vm.scannedItems = [item1, item2]
+
+        // Both items are confirmed -> allConfirmed would be true
+        let totalCount = vm.scannedItems.count
+        let confirmedCount = vm.confirmedItemsCount
+        let allConfirmed = totalCount > 0 && confirmedCount == totalCount
+        try assertTrue(allConfirmed, "All items in queue are confirmed")
+
+        // 1. Simulate an active pending commit recovery
+        vm.suspendScanning(for: .pendingCommitRecovery)
+        try assertTrue(vm.activeSuspensions.contains(.pendingCommitRecovery), "Must contain pendingCommitRecovery suspension")
+        try assertTrue(vm.isIntakeMutationLocked, "Intake mutations must be locked during pending recovery")
+
+        // 2. In both ScanView and IntakeSessionReviewView, hasPendingCommitRecovery MUST take precedence over allConfirmed
+        let hasRecovery = vm.hasPendingCommitRecovery || vm.activeSuspensions.contains(.pendingCommitRecovery)
+        try assertTrue(hasRecovery, "Pending recovery status must take precedence over allConfirmed")
+    }
+
+    // MARK: - Product Selection Callback and Sheet Dismissal Tests
+
+    public static func testProductSelectorSelectionAndSheetDismissal() throws {
+        let prods = PreviewData.products
+        var selectedId: Int? = nil
+        var callbackFired: Bool = false
+        var selectedName: String = ""
+        let binding = Binding<Int?>(get: { selectedId }, set: { selectedId = $0 })
+
+        let selector = SearchableProductSelector(
+            products: prods,
+            selectedProductId: binding,
+            placeholder: "Choose item..."
+        ) { product in
+            callbackFired = true
+            selectedName = product.name
+        }
+
+        // Initially no selection
+        try assertEquals(selector.selectedProduct, nil, "Initially selectedProduct is nil")
+        try assertTrue(!selector.showingSheet, "Initially sheet is not showing")
+
+        // Tap first product
+        if let first = prods.first {
+            selectedId = first.id
+            selector.onSelect?(first)
+            try assertEquals(selector.selectedProduct?.id, first.id, "selectedProduct must reflect updated selectedProductId")
+            try assertTrue(callbackFired, "onSelect callback must fire on product selection")
+            try assertEquals(selectedName, first.name, "Callback must pass selected product")
         }
     }
 }

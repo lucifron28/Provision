@@ -129,7 +129,7 @@ public class ScanViewModel: ObservableObject {
     public var isSuspended: Bool { !activeSuspensions.isEmpty }
     public var currentSuspensionReason: String? { activeSuspensions.first?.rawValue }
     public var suspensionReason: String? { currentSuspensionReason }
-    public var hasPendingCommitRecovery: Bool { pendingIntakeCommit != nil || pendingCommitRecoveryError != nil }
+    public var hasPendingCommitRecovery: Bool { pendingIntakeCommit != nil || pendingCommitRecoveryError != nil || activeSuspensions.contains(.pendingCommitRecovery) }
     public var isIntakeMutationLocked: Bool { isCommitting || hasPendingCommitRecovery }
 
     @Published public private(set) var pendingDraftSessionId: Int? = nil
