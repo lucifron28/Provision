@@ -451,30 +451,14 @@ public struct IntakeSessionReviewView: View {
         let totalCount = viewModel.scannedItems.count
         let confirmedCount = viewModel.confirmedItemsCount
         let allConfirmed = totalCount > 0 && confirmedCount == totalCount
-        let reviewCount = viewModel.itemsNeedingReviewCount
-        let locationCount = viewModel.itemsNeedingLocationCount
-        let unconfirmedCount = totalCount - confirmedCount
-
-        var reasons: [String] = []
-        if reviewCount > 0 {
-            reasons.append("\(reviewCount) item\(reviewCount == 1 ? "" : "s") need review")
-        }
-        if locationCount > 0 {
-            reasons.append("\(locationCount) item\(locationCount == 1 ? "" : "s") need location")
-        }
-        if reasons.isEmpty && unconfirmedCount > 0 {
-            reasons.append("\(unconfirmedCount) item\(unconfirmedCount == 1 ? "" : "s") need confirmation")
-        }
-        let reasonText = reasons.joined(separator: " • ")
-
         return VStack(spacing: 8) {
             // Clear status / reasons when disabled
             HStack(spacing: 6) {
-                if let err = viewModel.pendingCommitRecoveryError {
+                if viewModel.pendingCommitRecoveryError != nil {
                     Image(systemName: "exclamationmark.octagon.fill")
                         .font(.system(size: 12))
                         .foregroundStyle(ProvisionTheme.redAlert)
-                    Text("Recovery Error • Submission locked")
+                    Text(viewModel.intakeStatusBannerText)
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(ProvisionTheme.redAlert)
                         .lineLimit(1)
@@ -482,7 +466,7 @@ public struct IntakeSessionReviewView: View {
                     Image(systemName: "arrow.clockwise.circle.fill")
                         .font(.system(size: 12))
                         .foregroundStyle(ProvisionTheme.amberWarning)
-                    Text("Reconciliation Required • Previous intake pending")
+                    Text(viewModel.intakeStatusBannerText)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(ProvisionTheme.amberWarning)
                         .lineLimit(1)
@@ -490,7 +474,7 @@ public struct IntakeSessionReviewView: View {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 12))
                         .foregroundStyle(ProvisionTheme.provisionGreen)
-                    Text("Ready to Commit • All \(totalCount) items confirmed")
+                    Text(viewModel.intakeStatusBannerText)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(ProvisionTheme.provisionGreen)
                         .lineLimit(1)
@@ -498,7 +482,7 @@ public struct IntakeSessionReviewView: View {
                     Image(systemName: "exclamationmark.circle.fill")
                         .font(.system(size: 12))
                         .foregroundStyle(ProvisionTheme.amberWarning)
-                    Text(reasonText)
+                    Text(viewModel.intakeStatusBannerText)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(ProvisionTheme.amberWarning)
                         .lineLimit(1)

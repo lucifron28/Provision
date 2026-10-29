@@ -77,13 +77,29 @@ public enum SuspensionReason: String, CaseIterable, Hashable, Sendable {
     case pendingCommitRecovery = "Recovering a previous intake commit"
 }
 
-private struct PendingIntakeCommit: Codable {
-    let sessionID: Int?
-    let fingerprint: String
-    let storeName: String
-    let intakeItems: [ScannedIntakeItem]
-    let requestItems: [SessionItemCreate]
-    let creationRequest: GrocerySessionCreate?
+public struct PendingIntakeCommit: Codable, Sendable {
+    public let sessionID: Int?
+    public let fingerprint: String
+    public let storeName: String
+    public let intakeItems: [ScannedIntakeItem]
+    public let requestItems: [SessionItemCreate]
+    public let creationRequest: GrocerySessionCreate?
+
+    public init(
+        sessionID: Int? = nil,
+        fingerprint: String,
+        storeName: String,
+        intakeItems: [ScannedIntakeItem],
+        requestItems: [SessionItemCreate],
+        creationRequest: GrocerySessionCreate? = nil
+    ) {
+        self.sessionID = sessionID
+        self.fingerprint = fingerprint
+        self.storeName = storeName
+        self.intakeItems = intakeItems
+        self.requestItems = requestItems
+        self.creationRequest = creationRequest
+    }
 
     func attaching(sessionID: Int) -> PendingIntakeCommit {
         PendingIntakeCommit(
@@ -97,12 +113,12 @@ private struct PendingIntakeCommit: Codable {
     }
 }
 
-private struct IntakeFingerprintPayload: Codable {
+public struct IntakeFingerprintPayload: Codable {
     let storeName: String
     let items: [ScannedIntakeItem]
 }
 
-private let pendingIntakeCommitStorageKey = "provision.pending-intake-commit.v1"
+public let pendingIntakeCommitStorageKey = "provision.pending-intake-commit.v1"
 
 @MainActor
 public class ScanViewModel: ObservableObject {
@@ -132,6 +148,30 @@ public class ScanViewModel: ObservableObject {
     public var hasPendingCommitRecovery: Bool { pendingIntakeCommit != nil || pendingCommitRecoveryError != nil || activeSuspensions.contains(.pendingCommitRecovery) }
     public var isIntakeMutationLocked: Bool { isCommitting || hasPendingCommitRecovery }
 
+
+    /// Single authoritative status text displayed above the commit action bar in both ScanView and IntakeSessionReviewView.
+    public var intakeStatusBannerText: String {
+        if let _ = pendingCommitRecoveryError {
+            return "Recovery Error • Submission locked"
+        } else if hasPendingCommitRecovery {
+            return "Reconciliation Required • Previous intake pending"
+        } else if scannedItems.count > 0 && confirmedItemsCount == scannedItems.count {
+            return "Ready to Commit • All \(scannedItems.count) items confirmed"
+        } else {
+            var reasons: [String] = []
+            if itemsNeedingReviewCount > 0 {
+                reasons.append("\(itemsNeedingReviewCount) item\(itemsNeedingReviewCount == 1 ? "" : "s") need review")
+            }
+            if itemsNeedingLocationCount > 0 {
+                reasons.append("\(itemsNeedingLocationCount) item\(itemsNeedingLocationCount == 1 ? "" : "s") need location")
+            }
+            let unconfirmedCount = scannedItems.count - confirmedItemsCount
+            if reasons.isEmpty && unconfirmedCount > 0 {
+                reasons.append("\(unconfirmedCount) item\(unconfirmedCount == 1 ? "" : "s") need confirmation")
+            }
+            return reasons.joined(separator: " • ")
+        }
+    }
     @Published public private(set) var pendingDraftSessionId: Int? = nil
     @Published public private(set) var pendingCommitRecoveryError: String? = nil
     private var pendingIntakeCommit: PendingIntakeCommit? = nil
@@ -173,10 +213,14 @@ public class ScanViewModel: ObservableObject {
                     self.storeName = pending.storeName
                     self.scannedItems = pending.intakeItems
                     self.activeSuspensions.insert(.pendingCommitRecovery)
+                    self.scannerManager.lockAcceptance()
+                    self.scannerManager.stopScanning()
                     self.errorMessage = "A previous intake submission needs reconciliation. Retry before editing or starting another intake."
                 } catch {
                     self.pendingCommitRecoveryError = "Saved intake recovery data could not be read. No new intake was submitted; preserve this app data and contact support before retrying."
                     self.activeSuspensions.insert(.pendingCommitRecovery)
+                    self.scannerManager.lockAcceptance()
+                    self.scannerManager.stopScanning()
                     self.errorMessage = self.pendingCommitRecoveryError
                 }
             }

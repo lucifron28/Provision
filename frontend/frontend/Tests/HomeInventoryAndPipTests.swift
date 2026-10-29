@@ -479,15 +479,15 @@ public struct HomeInventoryAndPipTests {
     // MARK: - Restored All-Confirmed Pending Submission Recovery Precedence Tests
 
     public static func testRestoredAllConfirmedPendingSubmissionPrecedence() throws {
-        let defaults = UserDefaults(suiteName: "test.precedence.\(UUID().uuidString)")!
-        defer { defaults.removePersistentDomain(forName: "test.precedence") }
+        let suiteName = "test.precedence.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let vm = ScanViewModel(isPreview: false, pendingCommitDefaults: defaults)
-        
+        // 1. Create and persist an actual pending commit into defaults with confirmed items
         let item1 = ScannedIntakeItem(
             name: "Century Tuna",
-            barcode: "111",
-            quantity: 1.0,
+            barcode: "4800016644818",
+            quantity: 2.0,
             unit: "cans",
             status: .confirmed,
             productId: 1,
@@ -496,7 +496,7 @@ public struct HomeInventoryAndPipTests {
         )
         let item2 = ScannedIntakeItem(
             name: "Eden Cheese",
-            barcode: "222",
+            barcode: "4800361389440",
             quantity: 1.0,
             unit: "pcs",
             status: .confirmed,
@@ -504,53 +504,113 @@ public struct HomeInventoryAndPipTests {
             storageLocationId: 10,
             isConfirmed: true
         )
-        vm.scannedItems = [item1, item2]
+        let requestItems = [
+            SessionItemCreate(product_id: 1, storage_location_id: 10, quantity: 2.0, unit_price: 45.0),
+            SessionItemCreate(product_id: 2, storage_location_id: 10, quantity: 1.0, unit_price: 65.0)
+        ]
+        let pending = PendingIntakeCommit(
+            sessionID: 999,
+            fingerprint: "test-fingerprint-999",
+            storeName: "SM Megamall",
+            intakeItems: [item1, item2],
+            requestItems: requestItems,
+            creationRequest: nil
+        )
+        let data = try JSONEncoder().encode(pending)
+        defaults.set(data, forKey: pendingIntakeCommitStorageKey)
 
-        // Both items are confirmed -> allConfirmed would be true
-        let totalCount = vm.scannedItems.count
-        let confirmedCount = vm.confirmedItemsCount
-        let allConfirmed = totalCount > 0 && confirmedCount == totalCount
-        try assertTrue(allConfirmed, "All items in queue are confirmed")
+        // 2. Reconstruct brand-new ScanViewModel from defaults (simulating fresh app launch)
+        let restoredVM = ScanViewModel(isPreview: false, pendingCommitDefaults: defaults)
 
-        // 1. Simulate an active pending commit recovery
-        vm.suspendScanning(for: .pendingCommitRecovery)
-        try assertTrue(vm.activeSuspensions.contains(.pendingCommitRecovery), "Must contain pendingCommitRecovery suspension")
-        try assertTrue(vm.isIntakeMutationLocked, "Intake mutations must be locked during pending recovery")
+        // 3. Verify restored data
+        try assertEquals(restoredVM.pendingDraftSessionId, 999, "Draft session ID must be restored")
+        try assertEquals(restoredVM.storeName, "SM Megamall", "Store name must be restored")
+        try assertEquals(restoredVM.scannedItems.count, 2, "Both intake items must be restored")
+        try assertTrue(restoredVM.scannedItems[0].isConfirmed, "Item 1 must be confirmed")
+        try assertTrue(restoredVM.scannedItems[1].isConfirmed, "Item 2 must be confirmed")
 
-        // 2. In both ScanView and IntakeSessionReviewView, hasPendingCommitRecovery MUST take precedence over allConfirmed
-        let hasRecovery = vm.hasPendingCommitRecovery || vm.activeSuspensions.contains(.pendingCommitRecovery)
-        try assertTrue(hasRecovery, "Pending recovery status must take precedence over allConfirmed")
+        // 4. Verify allConfirmed is true in restored queue
+        let allConfirmed = restoredVM.scannedItems.count > 0 && restoredVM.confirmedItemsCount == restoredVM.scannedItems.count
+        try assertTrue(allConfirmed, "All items in restored queue are confirmed")
+
+        // 5. Verify recovery-state precedence over allConfirmed
+        try assertTrue(restoredVM.hasPendingCommitRecovery, "hasPendingCommitRecovery MUST be true")
+        try assertTrue(restoredVM.isIntakeMutationLocked, "Queue mutations MUST be locked during pending recovery")
+
+        // 6. Test the authoritative displayed recovery state text (NOT just boolean conditions!)
+        try assertEquals(
+            restoredVM.intakeStatusBannerText,
+            "Reconciliation Required • Previous intake pending",
+            "Displayed status text MUST show reconciliation requirement, NEVER 'Ready to Commit'!"
+        )
+
+        // 7. Verify scanner suspension and hardware acceptance gate lock
+        try assertTrue(restoredVM.activeSuspensions.contains(.pendingCommitRecovery), "Must be suspended for pendingCommitRecovery")
+        try assertTrue(!restoredVM.scannerManager.acceptanceGate.isArmed, "Hardware acceptance gate must be locked during pending recovery")
+
+        // 8. Verify queue mutations are rejected
+        restoredVM.addItem(barcode: "999", name: "Blocked Item")
+        try assertEquals(restoredVM.scannedItems.count, 2, "Adding item must be blocked during recovery lock")
+        restoredVM.removeItem(id: item1.id)
+        try assertEquals(restoredVM.scannedItems.count, 2, "Removing item must be blocked during recovery lock")
+        restoredVM.unconfirmItem(id: item1.id)
+        try assertTrue(restoredVM.scannedItems[0].isConfirmed, "Unconfirming item must be blocked during recovery lock")
     }
 
-    // MARK: - Product Selection Callback and Sheet Dismissal Tests
+    // MARK: - Real Product Selector Interaction & Dismissal Tests
 
     public static func testProductSelectorSelectionAndSheetDismissal() throws {
         let prods = PreviewData.products
         var selectedId: Int? = nil
         var callbackFired: Bool = false
         var selectedName: String = ""
-        let binding = Binding<Int?>(get: { selectedId }, set: { selectedId = $0 })
+        var isSheetPresented: Bool = false
+        let idBinding = Binding<Int?>(get: { selectedId }, set: { selectedId = $0 })
+        let sheetBinding = Binding<Bool>(get: { isSheetPresented }, set: { isSheetPresented = $0 })
 
-        let selector = SearchableProductSelector(
+        var selector = SearchableProductSelector(
             products: prods,
-            selectedProductId: binding,
-            placeholder: "Choose item..."
+            selectedProductId: idBinding,
+            placeholder: "Select item...",
+            isPresented: sheetBinding
         ) { product in
             callbackFired = true
             selectedName = product.name
         }
 
-        // Initially no selection
+        // 1. Initial State: sheet closed, no selection
         try assertEquals(selector.selectedProduct, nil, "Initially selectedProduct is nil")
         try assertTrue(!selector.showingSheet, "Initially sheet is not showing")
+        try assertTrue(!isSheetPresented, "External binding reflects closed sheet")
 
-        // Tap first product
-        if let first = prods.first {
-            selectedId = first.id
-            selector.onSelect?(first)
-            try assertEquals(selector.selectedProduct?.id, first.id, "selectedProduct must reflect updated selectedProductId")
-            try assertTrue(callbackFired, "onSelect callback must fire on product selection")
-            try assertEquals(selectedName, first.name, "Callback must pass selected product")
-        }
+        // 2. Open Sheet (Simulate user tapping compact selector row)
+        selector.openSheet()
+        try assertTrue(selector.showingSheet, "openSheet() must present the searchable sheet")
+        try assertTrue(isSheetPresented, "External binding reflects presented sheet")
+        try assertEquals(selector.searchQuery, "", "Search query must be reset on opening")
+
+        // 3. User cancels and dismisses without selecting
+        selector.cancelAndDismiss()
+        try assertTrue(!selector.showingSheet, "cancelAndDismiss() must dismiss the sheet")
+        try assertTrue(!isSheetPresented, "External binding reflects dismissed sheet")
+        try assertEquals(selector.selectedProductId, nil, "Canceling must not mutate selectedProductId binding")
+        try assertTrue(!callbackFired, "Canceling must not trigger onSelect callback")
+
+        // 4. Re-open sheet and filter results
+        selector.openSheet()
+        try assertTrue(selector.showingSheet, "Sheet is re-opened")
+        try assertTrue(isSheetPresented, "External binding reflects re-opened sheet")
+        let filtered = selector.filteredProducts(matching: "Tuna")
+        try assertTrue(!filtered.isEmpty, "Filtering by 'Tuna' must return matching catalog products")
+        let targetProduct = filtered.first!
+
+        // 5. Select product from matching list (Simulate user tapping product row)
+        selector.selectProduct(targetProduct)
+        try assertEquals(selectedId, targetProduct.id, "selectProduct must update the bound selectedProductId")
+        try assertEquals(selector.selectedProduct?.id, targetProduct.id, "selectedProduct must reflect the newly chosen product")
+        try assertTrue(callbackFired, "selectProduct must fire onSelect callback")
+        try assertEquals(selectedName, targetProduct.name, "Callback must pass the selected product")
+        try assertTrue(!selector.showingSheet, "Selecting a product must dismiss the sheet")
+        try assertTrue(!isSheetPresented, "External binding reflects dismissed sheet after selection")
     }
 }

@@ -352,22 +352,22 @@ public struct HomeView: View {
     }
 
     private var chefPipKitchenCorner: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
                 Image(viewModel.expiredItems.isEmpty ? "pip_cooking" : "pip_chef")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 48, height: 48)
+                    .frame(width: 44, height: 44)
                     .background(
                         Circle()
                             .fill(viewModel.expiredItems.isEmpty ? ProvisionTheme.provisionGreenLight : ProvisionTheme.amberLight)
-                            .frame(width: 54, height: 54)
+                            .frame(width: 48, height: 48)
                     )
 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
                         Text("Chef Pip's Kitchen Corner")
-                            .font(.system(size: 16, weight: .bold, design: .serif))
+                            .font(.system(size: 15, weight: .bold, design: .serif))
                             .foregroundStyle(ProvisionTheme.textPrimary)
                         Spacer()
                         HStack(spacing: 3) {
@@ -382,20 +382,13 @@ public struct HomeView: View {
                         .foregroundStyle(viewModel.expiredItems.isEmpty ? ProvisionTheme.amberWarning : ProvisionTheme.redAlert)
                         .clipShape(Capsule())
                     }
-
-                    Text(viewModel.expiredItems.isEmpty ? "Smart, zero-waste ideas for ingredients on hand" : "Safe kitchen guidance before cooking or meal prep")
-                        .font(.system(size: 11))
-                        .foregroundStyle(ProvisionTheme.textSecondary)
                 }
             }
-
-            Divider()
-                .background(ProvisionTheme.border.opacity(0.6))
 
             if let dateSafety = viewModel.chefPipDateSafetyNotice {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "exclamationmark.shield.fill")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(ProvisionTheme.redAlert)
                         .padding(.top, 2)
 
@@ -410,7 +403,7 @@ public struct HomeView: View {
             }
 
             if !viewModel.chefPipRecipeIdeas.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
                     ForEach(viewModel.chefPipRecipeIdeas, id: \.self) { idea in
                         HStack(alignment: .top, spacing: 8) {
                             Image(systemName: "fork.knife")
@@ -427,7 +420,7 @@ public struct HomeView: View {
                 }
             }
         }
-        .padding(16)
+        .padding(14)
         .provisionCard(
             backgroundColor: ProvisionTheme.surfaceSecondary.opacity(0.6),
             cornerRadius: 16,

@@ -9,19 +9,40 @@ public struct SearchableProductSelector: View {
     public var onSelect: ((Product) -> Void)? = nil
     public var placeholder: String = "Select from catalog..."
 
-    @State public var showingSheet: Bool = false
+    private var externalSheetBinding: Binding<Bool>?
+    @State private var internalShowingSheet: Bool = false
     @State public var searchQuery: String = ""
     @State public var selectedCategory: String? = nil
+
+    private var sheetBinding: Binding<Bool> {
+        Binding(
+            get: { externalSheetBinding?.wrappedValue ?? internalShowingSheet },
+            set: { newValue in
+                if let ext = externalSheetBinding {
+                    ext.wrappedValue = newValue
+                } else {
+                    internalShowingSheet = newValue
+                }
+            }
+        )
+    }
+
+    public var showingSheet: Bool {
+        get { sheetBinding.wrappedValue }
+        nonmutating set { sheetBinding.wrappedValue = newValue }
+    }
 
     public init(
         products: [Product],
         selectedProductId: Binding<Int?>,
         placeholder: String = "Select from catalog...",
+        isPresented: Binding<Bool>? = nil,
         onSelect: ((Product) -> Void)? = nil
     ) {
         self.products = products
         self._selectedProductId = selectedProductId
         self.placeholder = placeholder
+        self.externalSheetBinding = isPresented
         self.onSelect = onSelect
     }
 
@@ -51,12 +72,25 @@ public struct SearchableProductSelector: View {
     public var filteredProducts: [Product] {
         filteredProducts(matching: searchQuery, category: selectedCategory)
     }
+    public func openSheet() {
+        searchQuery = ""
+        selectedCategory = nil
+        showingSheet = true
+    }
+
+    public func cancelAndDismiss() {
+        showingSheet = false
+    }
+
+    public func selectProduct(_ product: Product) {
+        selectedProductId = product.id
+        onSelect?(product)
+        showingSheet = false
+    }
 
     public var body: some View {
         Button {
-            searchQuery = ""
-            selectedCategory = nil
-            showingSheet = true
+            openSheet()
         } label: {
             if let selected = selectedProduct {
                 compactSelectedProductRow(product: selected)
@@ -66,11 +100,10 @@ public struct SearchableProductSelector: View {
         }
         .buttonStyle(.plain)
         .accessibleTouchTarget()
-        .sheet(isPresented: $showingSheet) {
+        .sheet(isPresented: sheetBinding) {
             catalogSearchSheet
         }
     }
-
     // MARK: - Compact Row Displays
 
     private func compactSelectedProductRow(product: Product) -> some View {
@@ -88,8 +121,8 @@ public struct SearchableProductSelector: View {
                 Text(product.name)
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(ProvisionTheme.textPrimary)
-                    .lineLimit(1)
-
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
                 HStack(spacing: 4) {
                     if let brand = product.brand, !brand.isEmpty {
                         Text(brand)
@@ -265,9 +298,7 @@ public struct SearchableProductSelector: View {
                                 let isCurrent = selectedProductId == prod.id
 
                                 Button {
-                                    selectedProductId = prod.id
-                                    onSelect?(prod)
-                                    showingSheet = false
+                                    selectProduct(prod)
                                 } label: {
                                     catalogRow(product: prod, isSelected: isCurrent)
                                 }
@@ -286,7 +317,7 @@ public struct SearchableProductSelector: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
-                        showingSheet = false
+                        cancelAndDismiss()
                     }
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(ProvisionTheme.provisionGreen)
@@ -317,8 +348,8 @@ public struct SearchableProductSelector: View {
                 Text(product.name)
                     .font(.system(size: 15, weight: isSelected ? .bold : .semibold))
                     .foregroundStyle(ProvisionTheme.textPrimary)
-                    .lineLimit(1)
-
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
                 HStack(spacing: 6) {
                     if let brand = product.brand, !brand.isEmpty {
                         Text(brand)
