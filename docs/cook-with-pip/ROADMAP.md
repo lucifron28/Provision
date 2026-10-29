@@ -8,9 +8,19 @@ Status: **PLANNED / NOT IMPLEMENTED** | Last reviewed: 2026-10-29 | Base: `feat/
 
 ## Existing system and non-goals
 
-Current technology: iOS SwiftUI; FastAPI + SQLAlchemy + SQLite; JWT/Keychain; product/catalog, inventory batches with expiry and FEFO consumption, shopping list, price/waste analytics, camera/receipt intake, and Home's **heuristic** Chef Pip hints. Current `HomeViewModel.chefPipRecipeIdeas` is NOT AI recipe generation. Shopping has a `ShoppingListItem` (name, optional product_id, quantity, unit, is_bought, notes) and `POST /api/v1/shopping-list`. The README declares **one shared pantry across authenticated users**; there is no authorized user/household scope for personalized food data. The existing backend low-stock generator checks product ID, but general shopping entry creation does not prevent duplicates. The current catalog does not identify canonical culinary ingredients or reliable packaged-food allergen labels.
+Current technology: iOS SwiftUI; FastAPI + SQLAlchemy 2.0 + PostgreSQL 18 (via Docker Compose); JWT/Keychain; product/catalog, inventory batches with expiry and FEFO consumption, shopping list, price/waste analytics, camera/receipt intake, and Home's **heuristic** Chef Pip hints. Current `HomeViewModel.chefPipRecipeIdeas` is NOT AI recipe generation. Shopping has a `ShoppingListItem` (name, optional product_id, quantity, unit, is_bought, notes) and `POST /api/v1/shopping-list`. The README declares **one shared pantry across authenticated users**; there is no authorized user/household scope for personalized food data. The existing backend low-stock generator checks product ID, but general shopping entry creation does not prevent duplicates. The current catalog does not identify canonical culinary ingredients or reliable packaged-food allergen labels.
 
 Preserve barcode acceptance/rearm, receipt OCR, pending commit persistence/reconciliation, FEFO, shopping manual entry, offline cache, and Pip artwork. Do not infer inventory from an AI response, auto-buy, silently consume stock, promise allergen safety, scrape disallowed sites, or put provider API keys on-device. Do not merge any branch without approval.
+
+## Completed Prerequisites
+
+- [x] **PostgreSQL 18 Backend Migration** (Completed: 2026-10-29, base: `feat/complete-ui-ux-refinement`)
+  - Migrated backend from SQLite to PostgreSQL 18 containerized via Docker Compose (`compose.yaml`).
+  - Preserved synchronous SQLAlchemy 2.0 architecture with `psycopg` (psycopg 3) and connection pooling (`pool_pre_ping=True`).
+  - Full Alembic migrations verified against PostgreSQL 18 for both `upgrade head` and `downgrade base` cycles.
+  - Safe SQLite data migration and rollback utility implemented (`backend/scripts/migrate_sqlite_to_postgres.py`) with automatic safety backup, sequence synchronization, and row-count verification.
+  - Test suite migrated to isolated PostgreSQL test database (`provision_test`) with per-test table truncation and sequence reset; 90 tests passing.
+  - GitHub Actions CI workflow updated with PostgreSQL 18 service container and migration verification.
 
 ## Agreed end-user journeys
 
@@ -122,7 +132,7 @@ Preserve barcode acceptance/rearm, receipt OCR, pending commit persistence/recon
 
 ## Dependencies and development sequence
 
-`P0 -> P1 -> (P2 and P3 can run in parallel once scoped) -> P4 -> P5 -> P6 -> P7 -> P8`. P3 allergy gate must pass before enabling personalized recommendations to users. P1/P5 pure backend services should be built/tested before tying into AI. A vertical MVP may ship after P5 only with P0–P5 gates complete; P6/P7 are subsequent releases.
+`Completed Prerequisites -> P0 -> P1 -> (P2 and P3 can run in parallel once scoped) -> P4 -> P5 -> P6 -> P7 -> P8`. P3 allergy gate must pass before enabling personalized recommendations to users. P1/P5 pure backend services should be built/tested before tying into AI. A vertical MVP may ship after P5 only with P0–P5 gates complete; P6/P7 are subsequent releases.
 
 **Agent workflow for each phase:** inspect repository + official docs -> record small technical decisions -> make scoped change/migration -> negative/positive tests -> local tests -> push -> verify required GitHub Actions -> update checkbox and short evidence (commit SHA, tests, CI, caveats) -> continue to next unlocked milestone. "Done" means working code + verified acceptance criteria, never solely a plan.
 

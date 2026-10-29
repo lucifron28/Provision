@@ -7,7 +7,7 @@ Smart household food inventory and pantry management system.
 ## Tech Stack
 
 - **Frontend:** Swift + native SwiftUI (Deployment Target: iOS 26.5+)
-- **Backend:** FastAPI + SQLAlchemy 2.0 + SQLite
+- **Backend:** FastAPI + SQLAlchemy 2.0 + PostgreSQL 18 (via Docker Compose)
 - **Authentication:** JWT access tokens (HS256) + Argon2 password hashing (`pwdlib[argon2]`)
 - **Token Storage:** Native iOS Keychain Services (`Security` framework)
 
@@ -17,8 +17,10 @@ Smart household food inventory and pantry management system.
 
 ```text
 Provision/
-├── backend/                      # FastAPI + SQLite REST API
+├── compose.yaml                  # PostgreSQL 18 Docker Compose configuration
+├── backend/                      # FastAPI + PostgreSQL REST API
 ├── frontend/                     # Native SwiftUI iOS application (Xcode project)
+├── docs/                         # Architecture, roadmaps, and feature specifications
 └── provision_reference_screens/  # Design and reference exports
 ```
 
@@ -26,36 +28,72 @@ Provision/
 
 ## Getting Started
 
+### Prerequisites
+
+- **macOS** with [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running.
+- Python 3.13+ with [`uv`](https://github.com/astral-sh/uv).
+- Xcode 17+ (for native iOS client).
+
 ### Backend Execution
 
 From the repository root:
 
 ```bash
-# 1. Enter backend directory
+# 1. Start PostgreSQL 18 container via Docker Compose
+docker compose up -d
+
+# 2. Enter backend directory
 cd backend
 
-# 2. Configure local environment variables
+# 3. Configure local environment variables
 cp .env.example .env
-# Set your local JWT_SECRET_KEY in .env
+# (Optional: customize credentials or JWT_SECRET_KEY in .env)
 
-# 3. Sync dependencies
+# 4. Sync dependencies
 uv sync
 
-# 4. Apply database migrations
+# 5. Apply database migrations
 uv run alembic upgrade head
 
-# 5. Seed Philippine supermarket demo data (optional / recommended)
+# 6. Seed Philippine supermarket demo data (optional / recommended)
 uv run python seed.py
 
-# 6. Run automated test suite
+# 7. Run automated test suite
 uv run pytest
 
-# 7. Start local development server
+# 8. Start local development server
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 - Interactive OpenAPI Swagger Docs: `http://localhost:8000/docs`
 
+
+### Database Management (PostgreSQL 18 via Docker Compose)
+
+- **Start Database:** `docker compose up -d`
+- **Check Status & Health:** `docker compose ps`
+- **Stop Database:** `docker compose down`
+- **View Database Logs:** `docker compose logs -f postgres`
+- **Reset Database Volume (Destructive):** `docker compose down -v`
+
+### Migrating Existing SQLite Data to PostgreSQL
+
+If you previously ran Provision with local SQLite (`provision.db`), migrate your data safely:
+
+```bash
+cd backend
+
+# 1. Simulate migration and inspect counts without modifying database
+uv run python scripts/migrate_sqlite_to_postgres.py --sqlite-path provision.db --dry-run
+
+# 2. Execute migration (automatically creates a timestamped backup of provision.db)
+uv run python scripts/migrate_sqlite_to_postgres.py --sqlite-path provision.db
+
+# 3. Verify counts between SQLite and PostgreSQL
+uv run python scripts/migrate_sqlite_to_postgres.py --sqlite-path provision.db --verify-only
+```
+
+**Safety Guarantee:** The migration script runs inside an atomic PostgreSQL transaction and rolls back completely on any error. The source SQLite database is never deleted or modified.
 ---
 
 ### Frontend Execution

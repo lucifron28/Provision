@@ -23,6 +23,24 @@ jobs:
 
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: provision
+          POSTGRES_PASSWORD: provision
+          POSTGRES_DB: provision
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+psycopg://provision:provision@localhost:5432/provision
+      TEST_DATABASE_URL: postgresql+psycopg://provision:provision@localhost:5432/provision_test
+      JWT_SECRET_KEY: test-secret-key-for-ci-only-never-use-in-production
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -30,6 +48,9 @@ jobs:
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
           python-version: "3.13"
+      - name: Run Alembic migrations
+        working-directory: backend
+        run: uv run alembic upgrade head
       - name: Run backend tests
         working-directory: backend
         run: uv run pytest

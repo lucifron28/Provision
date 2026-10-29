@@ -22,23 +22,71 @@ def upgrade() -> None:
     """Upgrade schema."""
     bind = op.get_bind()
     if bind.dialect.name != "sqlite":
-        with op.batch_alter_table('inventory_batches', schema=None) as batch_op:
-            batch_op.drop_constraint('fk_inventory_batches_product_id', type_='foreignkey')
-            batch_op.create_foreign_key('fk_inventory_batches_product_id', 'products', ['product_id'], ['id'], ondelete='RESTRICT')
+        from sqlalchemy import inspect
+        inspector = inspect(bind)
 
-        with op.batch_alter_table('inventory_events', schema=None) as batch_op:
-            batch_op.drop_constraint('fk_inventory_events_batch_id', type_='foreignkey')
-            batch_op.create_foreign_key('fk_inventory_events_batch_id', 'inventory_batches', ['batch_id'], ['id'], ondelete='RESTRICT')
+        # Adjust inventory_batches -> products foreign key
+        for fk in inspector.get_foreign_keys('inventory_batches'):
+            if fk.get('referred_table') == 'products':
+                fk_name = fk.get('name')
+                if fk_name:
+                    op.drop_constraint(fk_name, 'inventory_batches', type_='foreignkey')
+        op.create_foreign_key(
+            'fk_inventory_batches_product_id',
+            'inventory_batches',
+            'products',
+            ['product_id'],
+            ['id'],
+            ondelete='RESTRICT',
+        )
+
+        # Adjust inventory_events -> inventory_batches foreign key
+        for fk in inspector.get_foreign_keys('inventory_events'):
+            if fk.get('referred_table') == 'inventory_batches':
+                fk_name = fk.get('name')
+                if fk_name:
+                    op.drop_constraint(fk_name, 'inventory_events', type_='foreignkey')
+        op.create_foreign_key(
+            'fk_inventory_events_batch_id',
+            'inventory_events',
+            'inventory_batches',
+            ['batch_id'],
+            ['id'],
+            ondelete='RESTRICT',
+        )
 
 
 def downgrade() -> None:
     """Downgrade schema."""
     bind = op.get_bind()
     if bind.dialect.name != "sqlite":
-        with op.batch_alter_table('inventory_events', schema=None) as batch_op:
-            batch_op.drop_constraint('fk_inventory_events_batch_id', type_='foreignkey')
-            batch_op.create_foreign_key('fk_inventory_events_batch_id', 'inventory_batches', ['batch_id'], ['id'], ondelete='CASCADE')
+        from sqlalchemy import inspect
+        inspector = inspect(bind)
 
-        with op.batch_alter_table('inventory_batches', schema=None) as batch_op:
-            batch_op.drop_constraint('fk_inventory_batches_product_id', type_='foreignkey')
-            batch_op.create_foreign_key('fk_inventory_batches_product_id', 'products', ['product_id'], ['id'], ondelete='CASCADE')
+        for fk in inspector.get_foreign_keys('inventory_events'):
+            if fk.get('referred_table') == 'inventory_batches':
+                fk_name = fk.get('name')
+                if fk_name:
+                    op.drop_constraint(fk_name, 'inventory_events', type_='foreignkey')
+        op.create_foreign_key(
+            'fk_inventory_events_batch_id',
+            'inventory_events',
+            'inventory_batches',
+            ['batch_id'],
+            ['id'],
+            ondelete='CASCADE',
+        )
+
+        for fk in inspector.get_foreign_keys('inventory_batches'):
+            if fk.get('referred_table') == 'products':
+                fk_name = fk.get('name')
+                if fk_name:
+                    op.drop_constraint(fk_name, 'inventory_batches', type_='foreignkey')
+        op.create_foreign_key(
+            'fk_inventory_batches_product_id',
+            'inventory_batches',
+            'products',
+            ['product_id'],
+            ['id'],
+            ondelete='CASCADE',
+        )
