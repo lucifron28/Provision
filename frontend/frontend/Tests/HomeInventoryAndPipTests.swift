@@ -40,6 +40,7 @@ public struct HomeInventoryAndPipTests {
         try testInventorySortingOptions()
         try testShoppingListDefaultToBuyAndPurchasedSeparation()
         try testReviewAllWorkspaceFiltering()
+        try testReviewWorkspaceScannerSuspensionAndCommitRecovery()
         try testReusableSearchableProductSelector()
         print("=== ALL HOME, INVENTORY & PIP TESTS PASSED ===")
     }
@@ -352,7 +353,7 @@ public struct HomeInventoryAndPipTests {
         try assertEquals(vm.filteredItems.count, 4, "All filter must show all 4 items")
     }
 
-    // MARK: - Review All Workspace Tests
+    // MARK: - Review All Workspace & Large List Tests
 
     public static func testReviewAllWorkspaceFiltering() throws {
         let vm = ScanViewModel(isPreview: true)
@@ -393,13 +394,47 @@ public struct HomeInventoryAndPipTests {
 
         let reviewWorkspace = IntakeSessionReviewView(viewModel: vm)
         
-        // All filter shows 3 items
+        // 1. All filter shows 3 items
         try assertEquals(reviewWorkspace.filteredItems.count, 3, "All filter should return all 3 items")
 
-        // Authoritative validation states
+        // 2. Authoritative validation states
         try assertEquals(vm.validationState(for: itemReady), .ready, "itemReady must be .ready")
         try assertEquals(vm.validationState(for: itemNoLoc), .needsDetails, "itemNoLoc must be .needsDetails")
         try assertEquals(vm.validationState(for: itemUnresolved), .needsReview, "itemUnresolved must be .needsReview")
+
+        // 3. Large-list performance test: 35 items
+        var largeItems: [ScannedIntakeItem] = []
+        for i in 1...35 {
+            largeItems.append(ScannedIntakeItem(
+                id: UUID(),
+                name: "Batch Item \(i)",
+                barcode: "BARCODE_\(i)",
+                quantity: 1.0,
+                unit: "pcs",
+                status: i % 5 == 0 ? .needsReview : .recognized,
+                productId: i % 5 == 0 ? nil : i,
+                storageLocationId: i % 3 == 0 ? nil : 1
+            ))
+        }
+        vm.scannedItems = largeItems
+        try assertEquals(vm.scannedItems.count, 35, "Large session has 35 items")
+        let largeWorkspace = IntakeSessionReviewView(viewModel: vm)
+        try assertEquals(largeWorkspace.filteredItems.count, 35, "Large session renders 35 items in workspace")
+    }
+
+    // MARK: - Review Workspace Scanner Suspension & Recovery Tests
+
+    public static func testReviewWorkspaceScannerSuspensionAndCommitRecovery() throws {
+        let vm = ScanViewModel(isPreview: false)
+        
+        // 1. Suspend for .reviewWorkspace
+        vm.suspendScanning(for: .reviewWorkspace)
+        try assertTrue(vm.activeSuspensions.contains(.reviewWorkspace), "Must contain .reviewWorkspace suspension")
+        try assertTrue(!vm.scannerManager.acceptanceGate.isArmed, "Acceptance gate must be locked during workspace review")
+
+        // 2. Resume releasing .reviewWorkspace
+        vm.resumeScanning(releasing: .reviewWorkspace)
+        try assertTrue(!vm.activeSuspensions.contains(.reviewWorkspace), "Must release .reviewWorkspace suspension")
     }
 
     // MARK: - Searchable Product Selector Tests
@@ -412,10 +447,30 @@ public struct HomeInventoryAndPipTests {
         let selector = SearchableProductSelector(
             products: prods,
             selectedProductId: binding,
-            placeholder: "Search..."
+            placeholder: "Search catalog..."
         )
 
-        // Filtered products without query contains all products
-        try assertEquals(selector.filteredProducts.count, prods.count, "All products returned when query is empty")
+        // 1. Initially compact sheet is closed
+        try assertTrue(!selector.showingSheet, "Selector sheet is not presented initially")
+        try assertEquals(selector.filteredProducts(matching: "").count, prods.count, "All products returned when query is empty")
+
+        // 2. Search query matching name
+        let tunaMatches = selector.filteredProducts(matching: "Tuna")
+        try assertTrue(!tunaMatches.isEmpty, "Should find matches for 'Tuna'")
+        for p in tunaMatches {
+            let matches = p.name.localizedCaseInsensitiveContains("Tuna") || (p.brand?.localizedCaseInsensitiveContains("Tuna") == true) || (p.category?.localizedCaseInsensitiveContains("Tuna") == true)
+            try assertTrue(matches, "All matches must match 'Tuna' in name, brand, or category")
+        }
+
+        // 3. Search query matching brand
+        let centuryMatches = selector.filteredProducts(matching: "Century")
+        try assertTrue(!centuryMatches.isEmpty, "Should find matches for brand 'Century'")
+
+        // 4. Category filtering
+        let cannedMatches = selector.filteredProducts(matching: "", category: "Canned Goods")
+        try assertTrue(!cannedMatches.isEmpty, "Should find matches for Canned Goods")
+        for p in cannedMatches {
+            try assertEquals(p.category, "Canned Goods", "Category must match Canned Goods")
+        }
     }
 }

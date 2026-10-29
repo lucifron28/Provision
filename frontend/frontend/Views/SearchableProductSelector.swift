@@ -1,21 +1,22 @@
 import SwiftUI
 
 // MARK: - Reusable Searchable Product Selector Component
-// Apple HIG compliant product search and selection with progressive disclosure.
+// Apple HIG compliant compact selector row presenting a native searchable sheet.
 
 public struct SearchableProductSelector: View {
     public let products: [Product]
     @Binding public var selectedProductId: Int?
     public var onSelect: ((Product) -> Void)? = nil
-    public var placeholder: String = "Search by product name, brand, or barcode..."
+    public var placeholder: String = "Select from catalog..."
 
-    @State private var searchQuery: String = ""
-    @State private var isExpanded: Bool = false
+    @State public var showingSheet: Bool = false
+    @State public var searchQuery: String = ""
+    @State public var selectedCategory: String? = nil
 
     public init(
         products: [Product],
         selectedProductId: Binding<Int?>,
-        placeholder: String = "Search by product name, brand, or barcode...",
+        placeholder: String = "Select from catalog...",
         onSelect: ((Product) -> Void)? = nil
     ) {
         self.products = products
@@ -29,50 +30,57 @@ public struct SearchableProductSelector: View {
         return products.first(where: { $0.id == id })
     }
 
-    public var filteredProducts: [Product] {
-        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !query.isEmpty else { return products }
+    public var categories: [String] {
+        Set(products.compactMap { $0.category }).sorted()
+    }
+
+    public func filteredProducts(matching query: String, category: String? = nil) -> [Product] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return products.filter { prod in
-            let nameMatch = prod.name.lowercased().contains(query)
-            let brandMatch = prod.brand?.lowercased().contains(query) == true
-            let barcodeMatch = prod.barcode?.contains(query) == true
-            let categoryMatch = prod.category?.lowercased().contains(query) == true
-            return nameMatch || brandMatch || barcodeMatch || categoryMatch
+            let matchesQuery = q.isEmpty ||
+                prod.name.lowercased().contains(q) ||
+                (prod.brand?.lowercased().contains(q) == true) ||
+                (prod.barcode?.contains(q) == true) ||
+                (prod.category?.lowercased().contains(q) == true)
+
+            let matchesCategory = category == nil || prod.category == category
+            return matchesQuery && matchesCategory
         }
+    }
+
+    public var filteredProducts: [Product] {
+        filteredProducts(matching: searchQuery, category: selectedCategory)
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Selected Product Card or Trigger
+        Button {
+            searchQuery = ""
+            selectedCategory = nil
+            showingSheet = true
+        } label: {
             if let selected = selectedProduct {
-                selectedProductCard(product: selected)
+                compactSelectedProductRow(product: selected)
             } else {
-                selectorTrigger
+                compactPlaceholderRow
             }
-
-            // Expandable Search & Match List
-            if isExpanded || selectedProduct == nil {
-                searchField
-
-                if filteredProducts.isEmpty {
-                    emptySearchNotice
-                } else {
-                    matchingProductsList
-                }
-            }
+        }
+        .buttonStyle(.plain)
+        .accessibleTouchTarget()
+        .sheet(isPresented: $showingSheet) {
+            catalogSearchSheet
         }
     }
 
-    // MARK: - Selected Product Display
+    // MARK: - Compact Row Displays
 
-    private func selectedProductCard(product: Product) -> some View {
+    private func compactSelectedProductRow(product: Product) -> some View {
         HStack(alignment: .center, spacing: 10) {
             ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(ProvisionTheme.provisionGreenLight)
-                    .frame(width: 40, height: 40)
+                    .frame(width: 36, height: 36)
                 Image(systemName: "checkmark.seal.fill")
-                    .font(.system(size: 18))
+                    .font(.system(size: 16))
                     .foregroundStyle(ProvisionTheme.provisionGreen)
             }
 
@@ -96,21 +104,18 @@ public struct SearchableProductSelector: View {
 
             Spacer()
 
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    isExpanded.toggle()
-                }
-            } label: {
-                Text(isExpanded ? "Done" : "Change")
+            HStack(spacing: 4) {
+                Text("Change")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(ProvisionTheme.provisionGreen)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(ProvisionTheme.provisionGreenLight)
-                    .clipShape(Capsule())
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(ProvisionTheme.provisionGreen)
             }
-            .buttonStyle(.plain)
-            .accessibleTouchTarget()
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(ProvisionTheme.provisionGreenLight)
+            .clipShape(Capsule())
         }
         .padding(10)
         .background(ProvisionTheme.surface)
@@ -121,119 +126,240 @@ public struct SearchableProductSelector: View {
         )
     }
 
-    private var selectorTrigger: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "shippingbox")
-                .font(.system(size: 14))
-                .foregroundStyle(ProvisionTheme.provisionGreen)
-            Text("Select an existing catalog product...")
+    private var compactPlaceholderRow: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(ProvisionTheme.surfaceSecondary)
+                    .frame(width: 36, height: 36)
+                Image(systemName: "shippingbox")
+                    .font(.system(size: 15))
+                    .foregroundStyle(ProvisionTheme.provisionGreen)
+            }
+
+            Text(placeholder)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(ProvisionTheme.textSecondary)
+
             Spacer()
-        }
-        .padding(.vertical, 4)
-    }
 
-    // MARK: - Search Input Field
-
-    private var searchField: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 13))
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(ProvisionTheme.textTertiary)
-
-            TextField(placeholder, text: $searchQuery)
-                .font(.system(size: 13))
-                .foregroundStyle(ProvisionTheme.textPrimary)
-                .tint(ProvisionTheme.provisionGreen)
-
-            if !searchQuery.isEmpty {
-                Button {
-                    searchQuery = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 13))
-                        .foregroundStyle(ProvisionTheme.textTertiary)
-                }
-                .buttonStyle(.plain)
-            }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(ProvisionTheme.inputBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .padding(10)
+        .background(ProvisionTheme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(ProvisionTheme.border, lineWidth: 1)
         )
     }
 
-    // MARK: - Matching Products List
+    // MARK: - Native Searchable Sheet
 
-    private var matchingProductsList: some View {
-        ScrollView(.vertical, showsIndicators: true) {
-            LazyVStack(spacing: 6) {
-                ForEach(Array(filteredProducts.prefix(8))) { prod in
-                    let isCurrent = selectedProductId == prod.id
+    private var catalogSearchSheet: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // Search Input Field
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 14))
+                        .foregroundStyle(ProvisionTheme.textTertiary)
 
-                    Button {
-                        selectedProductId = prod.id
-                        onSelect?(prod)
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            isExpanded = false
+                    TextField("Search catalog by name, brand, barcode...", text: $searchQuery)
+                        .font(.system(size: 14))
+                        .foregroundStyle(ProvisionTheme.textPrimary)
+                        .tint(ProvisionTheme.provisionGreen)
+
+                    if !searchQuery.isEmpty {
+                        Button {
+                            searchQuery = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 14))
+                                .foregroundStyle(ProvisionTheme.textTertiary)
                         }
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(prod.name)
-                                    .font(.system(size: 13, weight: isCurrent ? .bold : .medium))
-                                    .foregroundStyle(ProvisionTheme.textPrimary)
-                                    .lineLimit(1)
-
-                                HStack(spacing: 4) {
-                                    if let brand = prod.brand, !brand.isEmpty {
-                                        Text(brand)
-                                    }
-                                    if let cat = prod.category, !cat.isEmpty {
-                                        Text("• \(cat)")
-                                    }
-                                }
-                                .font(.system(size: 11))
-                                .foregroundStyle(ProvisionTheme.textSecondary)
-                            }
-
-                            Spacer()
-
-                            if isCurrent {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 16))
-                                    .foregroundStyle(ProvisionTheme.provisionGreen)
-                            } else {
-                                Text("Select")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(ProvisionTheme.surfaceSecondary)
-                                    .foregroundStyle(ProvisionTheme.textPrimary)
-                                    .clipShape(Capsule())
-                            }
-                        }
-                        .padding(8)
-                        .background(isCurrent ? ProvisionTheme.provisionGreenLight.opacity(0.5) : ProvisionTheme.surface)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
-                    .accessibleTouchTarget()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(ProvisionTheme.inputBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(ProvisionTheme.border, lineWidth: 1)
+                )
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.bottom, 8)
+
+                // Category Filter Chips
+                if !categories.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            categoryPill(title: "All", isSelected: selectedCategory == nil) {
+                                selectedCategory = nil
+                            }
+
+                            ForEach(categories, id: \.self) { cat in
+                                categoryPill(title: cat, isSelected: selectedCategory == cat) {
+                                    selectedCategory = cat
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                    .padding(.bottom, 8)
+                }
+
+                Divider()
+                    .background(ProvisionTheme.border)
+
+                // Results Count Bar
+                HStack {
+                    Text("Showing \(filteredProducts.count) product\(filteredProducts.count == 1 ? "" : "s")")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                    Spacer()
+                    if selectedCategory != nil || !searchQuery.isEmpty {
+                        Button("Reset") {
+                            searchQuery = ""
+                            selectedCategory = nil
+                        }
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(ProvisionTheme.redAlert)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
+
+                // Matching Products List
+                if filteredProducts.isEmpty {
+                    VStack(spacing: 12) {
+                        Spacer()
+                        Image("pip_thinking")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 64, height: 64)
+                            .accessibilityHidden(true)
+
+                        Text("No Products Found")
+                            .font(ProvisionTypography.headline)
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+
+                        Text(searchQuery.isEmpty ? "No products in this category." : "No catalog products match '\(searchQuery)'.")
+                            .font(ProvisionTypography.footnote)
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(24)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 8) {
+                            ForEach(filteredProducts) { prod in
+                                let isCurrent = selectedProductId == prod.id
+
+                                Button {
+                                    selectedProductId = prod.id
+                                    onSelect?(prod)
+                                    showingSheet = false
+                                } label: {
+                                    catalogRow(product: prod, isSelected: isCurrent)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibleTouchTarget()
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                    }
+                }
+            }
+            .background(ProvisionTheme.background.ignoresSafeArea())
+            .navigationTitle("Select Catalog Product")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        showingSheet = false
+                    }
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(ProvisionTheme.provisionGreen)
                 }
             }
         }
-        .frame(maxHeight: 180)
     }
 
-    private var emptySearchNotice: some View {
-        Text("No catalog products match '\(searchQuery)'.")
-            .font(.system(size: 11))
-            .foregroundStyle(ProvisionTheme.textSecondary)
-            .padding(.vertical, 4)
+    private func categoryPill(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: isSelected ? .bold : .medium))
+                .padding(.horizontal, 11)
+                .padding(.vertical, 6)
+                .background(isSelected ? ProvisionTheme.provisionGreen : ProvisionTheme.surface)
+                .foregroundStyle(isSelected ? ProvisionTheme.onAccent : ProvisionTheme.textPrimary)
+                .clipShape(Capsule())
+                .overlay(
+                    Capsule().stroke(isSelected ? ProvisionTheme.provisionGreen : ProvisionTheme.border, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func catalogRow(product: Product, isSelected: Bool) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(product.name)
+                    .font(.system(size: 15, weight: isSelected ? .bold : .semibold))
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+                    .lineLimit(1)
+
+                HStack(spacing: 6) {
+                    if let brand = product.brand, !brand.isEmpty {
+                        Text(brand)
+                            .font(.system(size: 12))
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                    }
+                    if let cat = product.category, !cat.isEmpty {
+                        Text("• \(cat)")
+                            .font(.system(size: 12))
+                            .foregroundStyle(ProvisionTheme.textTertiary)
+                    }
+                    if let barcode = product.barcode, !barcode.isEmpty {
+                        Text("• \(barcode)")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(ProvisionTheme.textTertiary)
+                    }
+                }
+            }
+
+            Spacer()
+
+            if isSelected {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundStyle(ProvisionTheme.provisionGreen)
+            } else {
+                Text("Select")
+                    .font(.system(size: 12, weight: .bold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(ProvisionTheme.surfaceSecondary)
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+                    .clipShape(Capsule())
+            }
+        }
+        .padding(12)
+        .background(isSelected ? ProvisionTheme.provisionGreenLight.opacity(0.4) : ProvisionTheme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(isSelected ? ProvisionTheme.provisionGreen.opacity(0.5) : ProvisionTheme.border, lineWidth: 1)
+        )
     }
 }

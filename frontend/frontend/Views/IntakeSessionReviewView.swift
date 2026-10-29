@@ -70,12 +70,40 @@ public struct IntakeSessionReviewView: View {
     public var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                // Error Banner
+                if let errorMsg = viewModel.errorMessage {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(ProvisionTheme.redAlert)
+                            .font(.system(size: 16))
+
+                        Text(errorMsg)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(ProvisionTheme.redAlert)
+
+                        Spacer()
+
+                        Button {
+                            viewModel.errorMessage = nil
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(ProvisionTheme.redAlert.opacity(0.8))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(12)
+                    .background(ProvisionTheme.redLight)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                }
+
                 // Search Bar
                 searchBarSection
                     .padding(.horizontal, 16)
                     .padding(.top, 10)
                     .padding(.bottom, 8)
-
                 // Status Filter Pills
                 filterPillsBar
                     .padding(.bottom, 10)
@@ -423,8 +451,52 @@ public struct IntakeSessionReviewView: View {
         let totalCount = viewModel.scannedItems.count
         let confirmedCount = viewModel.confirmedItemsCount
         let allConfirmed = totalCount > 0 && confirmedCount == totalCount
+        let reviewCount = viewModel.itemsNeedingReviewCount
+        let locationCount = viewModel.itemsNeedingLocationCount
+        let unconfirmedCount = totalCount - confirmedCount
 
-        return VStack(spacing: 6) {
+        var reasons: [String] = []
+        if reviewCount > 0 {
+            reasons.append("\(reviewCount) item\(reviewCount == 1 ? "" : "s") need review")
+        }
+        if locationCount > 0 {
+            reasons.append("\(locationCount) item\(locationCount == 1 ? "" : "s") need location")
+        }
+        if reasons.isEmpty && unconfirmedCount > 0 {
+            reasons.append("\(unconfirmedCount) item\(unconfirmedCount == 1 ? "" : "s") need confirmation")
+        }
+        let reasonText = reasons.joined(separator: " • ")
+
+        return VStack(spacing: 8) {
+            // Clear status / reasons when disabled
+            HStack(spacing: 6) {
+                if allConfirmed {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(ProvisionTheme.provisionGreen)
+                    Text("Ready to Commit • All \(totalCount) items confirmed")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(ProvisionTheme.provisionGreen)
+                } else if viewModel.hasPendingCommitRecovery {
+                    Image(systemName: "arrow.clockwise.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(ProvisionTheme.amberWarning)
+                    Text("Unresolved previous submission pending")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(ProvisionTheme.amberWarning)
+                } else {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(ProvisionTheme.amberWarning)
+                    Text(reasonText)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(ProvisionTheme.amberWarning)
+                        .lineLimit(1)
+                }
+                Spacer()
+            }
+
+            // Commit / Recovery Button
             Button {
                 Task {
                     await viewModel.commitIntakeSession()
@@ -439,8 +511,8 @@ public struct IntakeSessionReviewView: View {
                         Text("Committing Intake...")
                             .font(.system(size: 15, weight: .bold))
                     } else {
-                        Image(systemName: allConfirmed ? "checkmark.circle.fill" : "lock.fill")
-                        Text(allConfirmed ? "Commit \(totalCount) Items to Pantry" : "Commit Intake (\(confirmedCount)/\(totalCount) Confirmed)")
+                        Image(systemName: viewModel.hasPendingCommitRecovery ? "arrow.clockwise.circle.fill" : allConfirmed ? "checkmark.circle.fill" : "lock.fill")
+                        Text(viewModel.hasPendingCommitRecovery ? "Resolve Previous Submission" : allConfirmed ? "Commit \(totalCount) Item(s) to Pantry" : "Commit Intake (\(confirmedCount)/\(totalCount) Confirmed)")
                             .font(.system(size: 15, weight: .bold))
                     }
                 }
@@ -449,11 +521,26 @@ public struct IntakeSessionReviewView: View {
                 .background((allConfirmed || viewModel.hasPendingCommitRecovery) ? ProvisionTheme.provisionGreen : ProvisionTheme.surfaceSecondary)
                 .foregroundStyle((allConfirmed || viewModel.hasPendingCommitRecovery) ? ProvisionTheme.onAccent : ProvisionTheme.textTertiary)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(allConfirmed ? Color.clear : ProvisionTheme.border.opacity(0.6), lineWidth: 1)
+                )
             }
-            .disabled(viewModel.isCommitting || (!viewModel.hasPendingCommitRecovery && !allConfirmed))
+            .disabled(viewModel.isCommitting || viewModel.pendingCommitRecoveryError != nil || (!viewModel.hasPendingCommitRecovery && !allConfirmed))
+
+            if viewModel.hasPendingCommitRecovery {
+                Button("Check Status / Cancel Previous Draft") {
+                    Task {
+                        await viewModel.cancelPendingCommitAndUnlock()
+                    }
+                }
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(ProvisionTheme.redAlert)
+                .disabled(viewModel.isCommitting || viewModel.pendingCommitRecoveryError != nil)
+            }
         }
         .padding(.horizontal, 16)
-        .padding(.top, 8)
+        .padding(.top, 10)
         .padding(.bottom, 6)
         .background(ProvisionTheme.surface)
         .overlay(alignment: .top) {
