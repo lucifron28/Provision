@@ -62,7 +62,8 @@ Stabilization is complete for the audit scope, verified locally and in CI.
 
 ### P0 — Household data isolation and safety foundation (BLOCKS AI production rollout)
 
-Backend implementation `c1adb03` is locally verified; CI acceptance is pending.
+Backend implementation `c1adb03` is verified locally and in
+[backend and iOS CI](https://github.com/lucifron28/Provision/actions/runs/41028424731).
 It scopes all existing pantry routes and analytics, adds private signup households,
 owner/member roles, scoped barcode and intake idempotency keys, database ownership
 constraints, legacy quarantine, scoped demo resets, consent, self export and
@@ -72,18 +73,18 @@ tokens require login again. Production demo seeding is blocked.
 Evidence on PostgreSQL 18.6: full `uv run pytest -q` recorded **124 passed,
 1 skipped**; migration checks recorded three passing tests and no Alembic drift;
 privacy eight tests and household security six tests passed. The skip requires
-the optional historical `backend/provision.db` file. Checkboxes remain pending
-until CI passes. Client cache/scanner account binding and privacy UI are tracked
+the optional historical `backend/provision.db` file. Client cache/scanner account
+binding and privacy UI are tracked
 in [Mac handoff](MAC_HANDOFF.md). Live DeepSeek/search and their operational
 quotas remain deferred; no consent grant enables external calls.
 
-- [ ] Audit all authenticated API routes and caching for cross-user access; enumerate products vs household-owned entities. The router's `Depends(get_current_user)` authenticates but does **not** scope inventory or shopping queries.
+- [x] Audit authenticated API routes and caching for cross-user access; enumerate household-owned entities. Existing pantry APIs now enforce household context. Client cache remediation remains in the Mac handoff.
 - [ ] Define household and membership tables; permission policy for household access and role changes. Establish clearly owned records for batches, locations, sessions, shopping, preferences, meal plans, saved recipes, leftovers, events, and caches; globally shared catalog may remain read-only as appropriate.
-- [ ] Add Alembic migrations and an explicit migration/seed strategy for existing shared-demo data; default new accounts must NOT see other users' pantry or private diet details.
-- [ ] Enforce scoped queries and ownership checks in repository/service layer for every read/write, never rely on client-submitted `household_id`; add cross-household negative tests for ID guessing and list endpoints.
+- [x] Add Alembic migrations and an explicit migration/seed strategy for existing shared-demo data; new accounts receive private households and unassignable legacy data is quarantined.
+- [x] Enforce scoped queries and ownership checks for existing backend reads/writes; validate selected membership and related-record ownership; test ID guessing, collections, analytics and bulk shopping across households.
 - [ ] Add scoped SwiftData/cache keys and clear caches on logout/household switch; avoid sensitive allergy/preference data in logs and analytics.
 - [ ] Record consent/disclosure for sending minimized pantry and food preferences to DeepSeek; define retention, delete/export controls, API key rotation, usage quotas, and an opt-out/no-AI behavior.
-- [ ] Fix demo credentials exposure in production-facing docs/build; separate demo from production configuration.
+- [x] Separate demo and production configuration: seed CLI requires `--demo`, production seeding is blocked, and public setup instructions omit demo passwords.
 - [ ] Gate: No cross-household leakage; auth 401/403 tested; migration rollback plan reviewed; new AI endpoints disabled until this passes.
 
 ### P1 — Canonical ingredient and quantity foundation (deterministic; no AI dependency)
