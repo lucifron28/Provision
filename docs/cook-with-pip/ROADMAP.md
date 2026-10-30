@@ -1,6 +1,6 @@
 # Cook with Pip — Product Roadmap and Execution Checklist
 
-Status: **PLANNED / NOT IMPLEMENTED** | Last reviewed: 2026-10-29 | Base: `feat/complete-ui-ux-refinement`
+Status: **IN PROGRESS / partial backend implementation** | Last reviewed: 2026-10-30 | Base: `feat/complete-ui-ux-refinement`
 
 **Purpose.** Evolve Provision from pantry tracking into a Filipino-first household food assistant: discover credible recipes, identify what can be cooked from usable inventory, respect allergies and preferences, buy missing ingredients without duplicates, plan meals, track leftovers, and measure waste. This document is the actionable backlog, not evidence that features already exist.
 
@@ -129,12 +129,14 @@ See [the profile contract](FOOD_PROFILES_API.md). Allergen graph evaluation and
 explicit substitutions through `a86649d` passed **333 tests with one optional-file
 skip**, migration checks, and
 [backend and iOS CI](https://github.com/lucifron28/Provision/actions/runs/41039948431).
-See [the safety contract](FOOD_SAFETY_API.md). Reviewed package labels and
-recommendation integration are not covered by that CI result. This phase remains
-unchecked until the remaining implementation and acceptance checks pass.
+See [the safety contract](FOOD_SAFETY_API.md). Versioned package-label reviews
+through `019b752` passed **352 tests with one optional-file skip**, migration
+checks and [backend and iOS CI](https://github.com/lucifron28/Provision/actions/runs/41041904218).
+Recommendation integration is not covered by that CI result. The overall phase
+remains incomplete until the remaining implementation and acceptance checks pass.
 
-- [ ] Add household/member-scoped preferences: preferred cuisine (Filipino default, selectable regions), dislikes, diet patterns, ingredient exclusions, heat tolerance, equipment, time/budget goals, preferred language, serving count.
-- [ ] Add **separate** allergen profile (not just a dislike): explicit allergens incl. milk, egg, fish, crustacean shellfish, tree nuts, peanuts, wheat, soy, sesame; custom allergens, other sensitivities, cross-contact concern, severity/notes optional. Don't treat this US list as exhaustive or as a substitute for Philippine-specific labels.
+- [x] Add household/member-scoped preferences: preferred cuisine (Filipino default, selectable regions), dislikes, diet patterns, ingredient exclusions, heat tolerance, equipment, time/budget goals, preferred language, serving count. Backend storage and scoped APIs are verified above; native editing remains in the Mac handoff.
+- [x] Add **separate** allergen profile (not just a dislike): explicit allergens incl. milk, egg, fish, crustacean shellfish, tree nuts, peanuts, wheat, soy, sesame; custom allergens, other sensitivities, cross-contact concern, severity/notes optional. Don't treat this US list as exhaustive or as a substitute for Philippine-specific labels. Backend declarations are verified above.
 - [ ] Require user to explicitly set allergies to `none declared` or `not provided`; unknown is never interpreted as allergy-free. Provide accessible editing and deletion; per-member vs household applicability must be clear.
 - [ ] Normalize ingredient/allergen synonym and derivative graph: dairy whey/casein, shrimp paste/bagoong alamang -> crustacean shellfish, patis -> fish, common soy/wheat sauces, nuts and sesame; retain unknown processing/packaging labels.
 - [ ] Hard filter explicit conflicts before ranking. Any incomplete/uncertain allergen composition -> `Requires label/manual review`, not `Safe for you`. Handle substitutions with fresh allergen validation.
@@ -143,6 +145,13 @@ unchecked until the remaining implementation and acceptance checks pass.
 - [ ] Gate: ambiguous or potentially allergenic recipes cannot receive a confident safe label; accessibility and privacy reviewed.
 
 ### P4 — DeepSeek-backed Cook with Pip recipes
+
+The [household recipe API](RECIPES_API.md) adds manual entries, typed categories,
+regional classification, immutable revisions, private bookmarks and deterministic
+recommendations. Local PostgreSQL verification recorded **379 tests passing and
+one optional-file skip**. This does not complete the provider or SwiftUI phase.
+DeepSeek and web calls remain disabled; no publisher provenance is asserted for
+household-entered content. CI evidence for this implementation is still pending.
 
 - [ ] Add provider interface `RecipeAIProvider` and server-side DeepSeek implementation; model, base URL, search feature flags, budgets, timeouts, and retries belong in env/config, NEVER app bundle.
 - [ ] Use structured JSON/Pydantic DTOs for recipes; validate source attribution, recipe ID, title, description, cuisine/region, category tags, prep/cook duration, servings, ingredients, instructions, substitutions, uncertainty flags, provenance, and generated/adapted marker.
