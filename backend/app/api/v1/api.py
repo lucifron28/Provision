@@ -13,9 +13,11 @@ from app.api.v1.endpoints import (
 )
 from app.api.v1.dependencies import get_current_household
 from app.api.v1.endpoints import ingredients
+from app.api.v1.endpoints import preferences
 
 api_router = APIRouter()
 api_router.include_router(ingredients.router, prefix="/ingredients", tags=["Ingredients"])
+api_router.include_router(preferences.router, prefix="/food-profiles", tags=["Food profiles"])
 
 # Public authentication endpoints
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])

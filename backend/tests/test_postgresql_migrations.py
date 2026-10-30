@@ -10,7 +10,7 @@ from database_safety import create_owned_test_schema, drop_owned_test_schema
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "d91e84af0c52"
+EXPECTED_HEAD = "f62c910e7a43"
 
 
 @pytest.fixture
@@ -79,6 +79,8 @@ def test_postgresql18_migrations_upgrade_head_and_downgrade_base(migration_schem
             "households",
             "household_memberships",
             "processing_consents",
+            "food_preferences",
+            "food_allergies",
             "products",
             "storage_locations",
             "grocery_sessions",

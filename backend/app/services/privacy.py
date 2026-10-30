@@ -32,6 +32,7 @@ from app.schemas.product import ProductRead
 from app.schemas.privacy import CONSENT_POLICY_VERSION
 from app.schemas.session import GrocerySessionRead
 from app.schemas.shopping import ShoppingListItemRead
+from app.services.preferences import read_profile
 
 CONSENT_PURPOSE = "deepseek_recipes_v1"
 CONSENT_CONSTRAINT = "uq_processing_consent_scope"
@@ -235,6 +236,7 @@ def export_account_data(
         account=own_profile,
         household=HouseholdExport(id=household.id, name=household.name),
         consent=own_consent,
+        food_profiles=[read_profile(db, household_id, user.id), read_profile(db, household_id, None)],
         pantry=PantryExport(
             products=[ProductRead.model_validate(row) for row in products],
             storage_locations=[StorageLocationRead.model_validate(row) for row in locations],
