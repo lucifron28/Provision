@@ -89,6 +89,14 @@ quotas remain deferred; no consent grant enables external calls.
 
 ### P1 — Canonical ingredient and quantity foundation (deterministic; no AI dependency)
 
+Backend progress through `5e075ef` includes the canonical catalog, Filipino and
+English aliases, versioned household product mappings, explicit package factors,
+and a read-only availability API. Both backend and iOS jobs
+[passed for that commit](https://github.com/lucifron28/Provision/actions/runs/41036483959).
+See [the API contract](INGREDIENT_API.md) for uncertainty rules and request shapes.
+This is partial P1 evidence. Recipe persistence, allergen declarations and the
+remaining acceptance audit are still pending, so the phase stays unchecked.
+
 - [ ] Design `ingredients` taxonomy with normalized names, Filipino/English aliases (bawang/garlic, sibuyas/onion, calamansi, kangkong, etc.), food family, density/portion reference where reliable, and allergen declarations.
 - [ ] Implement curated `product_ingredient_mappings`: a brand/item may map to one ingredient or an explicitly reviewed composite; store confidence, method, verifier, mapping version and unknown state. Never treat flavor/brand text as an allergy-safe label.
 - [ ] Implement recipe ingredients (`required`/`optional`, quantity, unit, preparation, substitution candidates) and robust unit normalization (g/kg, mL/L, count; portion/package conversions only with authoritative product metadata). Reject unsupported count-to-mass conversions instead of guessing.

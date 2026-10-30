@@ -45,7 +45,9 @@ this factor automatically.
 
 Provide exactly one of `ingredient_id` and `display_name` per requirement. Amounts
 must be finite and positive. Requirements scale by servings. Duplicate required
-lines for one ingredient aggregate before stock comparison. Optional lines use
+lines for one ingredient aggregate in the canonical unit before serving division.
+For example, three 1 g lines for three recipe servings become exactly 1 g when
+requesting one serving. Optional lines use
 stock remaining after required demand and do not block the overall result.
 
 The service includes positive batches belonging to the selected household and
@@ -62,6 +64,8 @@ does not establish allergy eligibility; that remains a separate safety milestone
 
 Tests cover mapping version conflicts, foreign product IDs, explicit egg-carton
 conversion, exact quantity shortfalls, expired stock, unknown mapping/unit states,
-alias ambiguity and request validation. Concurrency stress tests, additional
-multi-product/composite scenarios, and the final P1 acceptance audit remain
-pending. Do not treat this reference as evidence that P1 is complete.
+alias ambiguity and request validation. Additional tests exercise simultaneous
+mapping creation, explicit composite quantities, stock across multiple brands,
+expiry ordering, foreign household exclusion, changed package units and fractional
+serving arithmetic. The final P1 acceptance audit remains pending. Do not treat
+this reference as evidence that P1 is complete.
