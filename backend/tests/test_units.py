@@ -10,6 +10,8 @@ from app.services.units import UnitConversionError, convert_amount
     ("250", "ml", "L", "0.25"),
     ("3", "pcs", "count", "3"),
     ("0", "g", "kg", "0"),
+    ("123456789012345678901234567890.123", "g", "kg",
+     "123456789012345678901234567.890123"),
 ])
 def test_exact_compatible_conversions(amount, source, target, expected):
     assert convert_amount(Decimal(amount), source, target) == Decimal(expected)
@@ -20,6 +22,7 @@ def test_exact_compatible_conversions(amount, source, target, expected):
     ("1", "pack", "count"), ("1", "cup", "g"),
     ("NaN", "g", "kg"), ("Infinity", "g", "kg"),
     ("-1", "g", "kg"),
+    ("1e999999", "kg", "g"),
 ])
 def test_unknown_or_invalid_conversions_fail_closed(amount, source, target):
     with pytest.raises(UnitConversionError):

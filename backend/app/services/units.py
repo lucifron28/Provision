@@ -1,6 +1,6 @@
 """Exact conversions within known dimensions, without inferred package sizes."""
 
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, DecimalException, InvalidOperation, localcontext
 
 
 class UnitConversionError(ValueError):
@@ -45,4 +45,9 @@ def convert_amount(amount: Decimal, source_unit: str, target_unit: str) -> Decim
     target_dimension, target_scale = _SCALES[target]
     if source_dimension != target_dimension:
         raise UnitConversionError("Conversion between measurement dimensions requires verified evidence")
-    return quantity * source_scale / target_scale
+    try:
+        with localcontext() as context:
+            context.prec = max(context.prec, len(quantity.as_tuple().digits) + 4)
+            return quantity * source_scale / target_scale
+    except DecimalException as exc:
+        raise UnitConversionError("Quantity exceeds supported decimal arithmetic") from exc
