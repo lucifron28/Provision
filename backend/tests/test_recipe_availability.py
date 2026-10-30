@@ -83,3 +83,38 @@ def test_duplicate_requirements_share_one_stock_pool(db, auth_household, auth_us
     req.requirements.append(req.requirements[0].model_copy())
     line = calculate_availability(db, auth_household.id, req).requirements[0]
     assert line.required_amount == 12 and line.shortfall == 2
+
+
+def test_optional_demand_uses_remaining_stock_and_does_not_block(db, auth_household, auth_user):
+    ingredient, _ = pantry(db, auth_household, auth_user)
+    req = request(ingredient, 8, "g")
+    req.requirements.append(req.requirements[0].model_copy(update={"amount": Decimal("5"), "required": False}))
+    result = calculate_availability(db, auth_household.id, req)
+    assert result.overall_status == "full"
+    assert result.requirements[1].available_amount == 2
+    assert result.requirements[1].shortfall == 3
+
+
+def test_composite_requires_explicit_component_quantities(client, db, auth_household):
+    from app.services.ingredient_matching import seed_ingredient_catalog_v1
+    seed_ingredient_catalog_v1(db)
+    db.commit()
+    rice = client.get("/api/v1/ingredients/?query=bigas").json()["results"][0]["id"]
+    salt = client.get("/api/v1/ingredients/?query=asin").json()["results"][0]["id"]
+    product = client.post("/api/v1/products/", json={"name": "Rice mix", "unit": "pack"}).json()
+    mapping = dict(mode="COMPOSITE", components=[{"ingredient_id": rice}, {"ingredient_id": salt}],
+        verified=True, unknown_composition=False, method="Reviewed package label", package_factors=[dict(
+            ingredient_id=rice, inventory_unit="pack", ingredient_amount=100, ingredient_unit="g", source_reference="100g rice per pack")])
+    url = f"/api/v1/ingredients/products/{product['id']}/mapping"
+    assert client.put(url, json=mapping).status_code == 200
+    assert client.post("/api/v1/batches/", json={"product_id": product["id"], "original_quantity": 2}).status_code == 201
+    result = client.post("/api/v1/ingredients/availability", json=dict(recipe_servings=2, servings=1,
+        requirements=[dict(ingredient_id=rice, amount=300, unit="g"), dict(ingredient_id=salt, amount=2, unit="g")]))
+    assert result.status_code == 200, result.text
+    lines = {line["ingredient_id"]: line for line in result.json()["requirements"]}
+    assert Decimal(lines[rice]["available_amount"]) == 200
+    assert Decimal(lines[rice]["required_amount"]) == 150
+    assert lines[rice]["status"] == "full"
+    assert lines[salt]["status"] == "unknown"
+    assert "verified_component_quantity_missing" in lines[salt]["unknown_reasons"]
+    assert result.json()["overall_status"] == "unknown"

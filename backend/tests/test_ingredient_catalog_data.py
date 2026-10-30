@@ -1,9 +1,21 @@
 from collections import defaultdict
+import importlib.util
+from pathlib import Path
 
 import pytest
 
 from app.data.ingredient_catalog_v1 import INGREDIENT_CATALOG_V1
 from app.services.units import normalize_unit
+
+
+def test_migration_catalog_snapshot_matches_versioned_identity_data():
+    path = Path(__file__).resolve().parents[1] / "alembic/versions/d91e84af0c52_add_ingredient_foundation.py"
+    spec = importlib.util.spec_from_file_location("ingredient_migration_snapshot", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    expected = tuple((entry["canonical_name"], entry["filipino_name"], entry["family"],
+                      entry["default_unit"], entry["aliases"]) for entry in INGREDIENT_CATALOG_V1)
+    assert module._CATALOG_V1_SNAPSHOT == expected
 
 
 def _normalize_name(value: str) -> str:

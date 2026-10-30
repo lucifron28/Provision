@@ -1,4 +1,12 @@
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+from fastapi import HTTPException
+
+from app.api.v1.endpoints.ingredients import put_mapping
+from app.models.user import User
+from app.schemas.ingredients import ProductIngredientMappingUpsert
 
 from app.models.ingredient import ProductIngredientMapping
 from app.models.household import Household
@@ -42,3 +50,31 @@ def test_mapping_api_version_scope_and_readonly_availability(client, db, auth_ho
 
 def test_ingredient_api_requires_authentication(unauthed_client):
     assert unauthed_client.get("/api/v1/ingredients/").status_code == 401
+
+
+def test_concurrent_mapping_creation_accepts_exactly_one_writer(client, db, engine, auth_household, auth_user):
+    seed_ingredient_catalog_v1(db)
+    db.commit()
+    ingredient_id = client.get("/api/v1/ingredients/?query=itlog").json()["results"][0]["id"]
+    product_id = client.post("/api/v1/products/", json={"name": "Egg", "unit": "count"}).json()["id"]
+    household_id, user_id = auth_household.id, auth_user.id
+    db.rollback()
+    barrier = Barrier(2)
+    payload = ProductIngredientMappingUpsert(mode="DIRECT", ingredient_id=ingredient_id, method="manual")
+
+    def write():
+        with Session(engine) as independent:
+            user = independent.get(User, user_id)
+            barrier.wait(timeout=10)
+            try:
+                result = put_mapping(product_id, payload, household_id, user, independent)
+                return result.version
+            except HTTPException as exc:
+                independent.rollback()
+                return exc.status_code
+
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        results = list(workers.map(lambda _: write(), range(2)))
+    assert sorted(results) == [1, 409]
+    db.expire_all()
+    assert db.scalar(select(func.count()).select_from(ProductIngredientMapping)) == 1
