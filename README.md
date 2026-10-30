@@ -36,6 +36,17 @@ Provision/
 
 ### Backend Execution
 
+The backend also runs on Windows with Docker Desktop and PowerShell. If port 5432
+is reserved by Windows, set `$env:POSTGRES_PORT="55432"` before starting Compose
+and use port 55432 in `DATABASE_URL` and `TEST_DATABASE_URL`.
+
+### DeepSeek configuration
+
+`backend/.env.example` contains a placeholder `DEEPSEEK_API_KEY`. Replace it only
+in your local untracked environment file when credentials are available. Settings
+load the key as a secret value. Live DeepSeek calls and web search are disabled;
+adding a key alone does not enable provider requests.
+
 From the repository root:
 
 ```bash

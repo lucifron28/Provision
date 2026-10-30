@@ -31,7 +31,7 @@ docker compose ps
 # Stop PostgreSQL 18
 docker compose down
 ```
-- **Volume:** `postgres_data` mounts to PostgreSQL 18's cluster directory `/var/lib/postgresql/18/docker`.
+- **Volume:** `postgres_data` mounts to `/var/lib/postgresql`; PostgreSQL 18 stores its cluster in `/var/lib/postgresql/18/docker`.
 - **Port:** Localhost-only port binding `127.0.0.1:5432:5432`.
 - **Credentials:** Configured via `.env` (defaults: `provision` / `provision`).
 

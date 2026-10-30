@@ -1,3 +1,4 @@
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,6 +10,8 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
+    # Configuration only. No live provider or search calls are enabled.
+    DEEPSEEK_API_KEY: SecretStr | None = None
 
 
     model_config = SettingsConfigDict(
