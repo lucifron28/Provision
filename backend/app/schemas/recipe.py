@@ -71,6 +71,7 @@ class RecipeRead(RecipeFields):
 class RecipeEvaluationInput(StrictSchema):
     expected_recipe_revision: int = Field(ge=1)
     servings: Servings
+    include_optional: bool = True
     diner_user_ids: list[Annotated[int, Field(gt=0)]] | None = Field(default=None, min_length=1, max_length=100)
     substitutions: list[IngredientSubstitution] = Field(default_factory=list, max_length=200)
 
@@ -105,4 +106,5 @@ class SavedRecipeRead(StrictSchema):
 class RecipeEvaluationRead(StrictSchema):
     recipe_id: int
     recipe_revision: int
+    included_requirement_indexes: list[int] = Field(default_factory=list)
     result: FoodSafetyRead

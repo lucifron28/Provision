@@ -118,8 +118,15 @@ def evaluate_recipe(db, household_id, recipe_id, request: RecipeEvaluationInput)
     requirements = [IngredientRequirementInput(ingredient_id=item.ingredient_id,
         display_name=None if item.ingredient_id else item.display_name, amount=item.amount, unit=item.unit, required=item.required)
         for item in record.ingredients]
+    for substitution in request.substitutions:
+        original = requirements[substitution.requirement_index]
+        requirements[substitution.requirement_index] = substitution.replacement.model_copy(update={"required": original.required})
+    included_indexes = [index for index, item in enumerate(requirements) if item.required or request.include_optional]
+    requirements = [requirements[index] for index in included_indexes]
+    if not requirements:
+        raise HTTPException(422, "No ingredients selected for evaluation")
     evaluation = FoodSafetyRequest(recipe_servings=record.servings, servings=request.servings,
-        diner_user_ids=request.diner_user_ids, requirements=requirements, substitutions=request.substitutions)
+        diner_user_ids=request.diner_user_ids, requirements=requirements)
     result = evaluate_food_safety(db, household_id, evaluation)
     from app.services.recipe_sources import recipe_source_context
     source_allowed, _, _ = recipe_source_context(db, household_id, recipe.id)
@@ -128,7 +135,8 @@ def evaluate_recipe(db, household_id, recipe_id, request: RecipeEvaluationInput)
             result.decision = "review_required"
         result.reasons = sorted(set(result.reasons) | ({"recipe_content_permission_not_declared"}
             if record.content_permission == "NOT_DECLARED" else set()) | ({"recipe_source_unavailable"} if not source_allowed else set()))
-    return RecipeEvaluationRead(recipe_id=recipe.id, recipe_revision=recipe.revision, result=result)
+    return RecipeEvaluationRead(recipe_id=recipe.id, recipe_revision=recipe.revision,
+        included_requirement_indexes=included_indexes, result=result)
 
 
 def _saved(db, household_id, member_id, recipe_id):

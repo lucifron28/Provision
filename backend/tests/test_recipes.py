@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
+from decimal import Decimal
 
 from fastapi import HTTPException
 import pytest
@@ -80,6 +81,24 @@ def test_recipe_evaluation_loads_stored_requirements_and_rechecks_substitution(c
     assert result.status_code == 200 and result.json()["result"]["decision"] == "eligible"
     substitution[0]["requirement_index"] = 3
     assert client.post(url, json={**payload, "substitutions": substitution}).status_code == 422
+
+
+def test_explicit_optional_omission_uses_original_substitution_indexes(client, catalog):
+    declare(client, "egg")
+    recipe = create(client, ingredients=[dict(display_name="egg", amount=1, unit="count", required=False),
+        dict(display_name="garlic", amount=2, unit="g")])
+    url = f"/api/v1/recipes/{recipe['id']}/evaluate"
+    request = dict(expected_recipe_revision=1, servings=1)
+    assert client.post(url, json=request).json()["result"]["decision"] == "blocked"
+    request.update(include_optional=False, substitutions=[dict(requirement_index=1,
+        replacement=dict(display_name="onion", amount=6, unit="g", required=False))])
+    response = client.post(url, json=request)
+    assert response.status_code == 200, response.text
+    assert response.json()["included_requirement_indexes"] == [1]
+    assert response.json()["result"]["decision"] == "eligible"
+    line = response.json()["result"]["availability"]["requirements"][0]
+    assert line["ingredient_id"] == catalog["onion"].id and line["required"] is True
+    assert Decimal(line["required_amount"]) == 3
 
 
 def test_saved_recipes_pin_version_and_unsave_erases_private_notes(client, db, catalog):
