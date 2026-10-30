@@ -10,6 +10,7 @@ from app.schemas.product import ProductRead
 from app.schemas.session import GrocerySessionRead
 from app.schemas.shopping import ShoppingListItemRead
 from app.schemas.preferences import FoodProfileRead
+from app.schemas.recipe import RecipeRead, SavedRecipeRead
 
 
 CONSENT_POLICY_VERSION = "2026-10-30"
@@ -67,3 +68,5 @@ class AccountExport(BaseModel):
     consent: ConsentRead
     pantry: PantryExport
     food_profiles: list[FoodProfileRead] = Field(default_factory=list)
+    recipes: list[RecipeRead] = Field(default_factory=list)
+    saved_recipes: list[SavedRecipeRead] = Field(default_factory=list)

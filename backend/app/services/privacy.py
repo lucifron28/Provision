@@ -18,6 +18,7 @@ from app.models.product import Product
 from app.models.session import GrocerySession
 from app.models.shopping import ShoppingListItem
 from app.models.user import User
+from app.models.recipe import Recipe, SavedRecipe
 from app.schemas.batch import InventoryBatchWithDetails
 from app.schemas.event import InventoryEventRead
 from app.schemas.location import StorageLocationRead
@@ -33,6 +34,7 @@ from app.schemas.privacy import CONSENT_POLICY_VERSION
 from app.schemas.session import GrocerySessionRead
 from app.schemas.shopping import ShoppingListItemRead
 from app.services.preferences import read_profile
+from app.services.recipes import read_recipe, saved_read
 
 CONSENT_PURPOSE = "deepseek_recipes_v1"
 CONSENT_CONSTRAINT = "uq_processing_consent_scope"
@@ -237,6 +239,10 @@ def export_account_data(
         household=HouseholdExport(id=household.id, name=household.name),
         consent=own_consent,
         food_profiles=[read_profile(db, household_id, user.id), read_profile(db, household_id, None)],
+        recipes=[read_recipe(db, row) for row in db.scalars(select(Recipe).where(Recipe.household_id == household_id)
+            .order_by(Recipe.id)).all()],
+        saved_recipes=[saved_read(row) for row in db.scalars(select(SavedRecipe).where(
+            SavedRecipe.household_id == household_id, SavedRecipe.member_user_id == user.id).order_by(SavedRecipe.recipe_id)).all()],
         pantry=PantryExport(
             products=[ProductRead.model_validate(row) for row in products],
             storage_locations=[StorageLocationRead.model_validate(row) for row in locations],

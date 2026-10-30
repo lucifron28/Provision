@@ -11,6 +11,7 @@ from app.models.privacy import ProcessingConsent
 from app.models.preferences import FoodPreference, FoodAllergy
 from app.models.allergens import IngredientAllergen, IngredientDerivative
 from app.models.product_label import ProductAllergenLabel
+from app.models.recipe import Recipe, RecipeIngredient, RecipeRevision, SavedRecipe
 from app.models.ingredient import (
     Ingredient,
     IngredientAlias,
@@ -41,6 +42,10 @@ __all__ = [
     "IngredientAllergen",
     "IngredientDerivative",
     "ProductAllergenLabel",
+    "Recipe",
+    "RecipeIngredient",
+    "RecipeRevision",
+    "SavedRecipe",
     "Ingredient",
     "IngredientAlias",
     "ProductIngredientMapping",
