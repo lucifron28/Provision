@@ -325,9 +325,11 @@ food profiles and allergy checks, versioned household recipes, deterministic
 recommendations, source governance, explicit shopping preview/confirmation, and
 historical PHP budget and waste reports. See the [roadmap](docs/cook-with-pip/ROADMAP.md)
 for acceptance evidence and the current meal-planning, cooking, and leftover work.
-Backend and iOS CI [passed for `05f0f31`](https://github.com/lucifron28/Provision/actions/runs/41066131363),
-with 516 backend tests passing and one optional historical-file test skipped.
-That run predates the current planning/cooking/leftover integration.
+Backend CI [passed for `0e6977f`](https://github.com/lucifron28/Provision/actions/runs/41084343660),
+with 578 tests passing and one optional historical-file test skipped. This covers
+planning, cooking, leftovers, user adaptations and large-household shopping.
+[Draft PR #1](https://github.com/lucifron28/Provision/pull/1) tracks checks on the
+current published head, including the existing iOS scanner suite.
 
 Live DeepSeek and web calls remain disabled. Household-entered recipes carry no
 asserted publisher provenance. Chef Pip hints in the iOS app remain heuristic,

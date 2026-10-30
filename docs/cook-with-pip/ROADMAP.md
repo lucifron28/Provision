@@ -1,10 +1,18 @@
 # Cook with Pip — Product Roadmap and Execution Checklist
 
-Status: **IN PROGRESS / partial backend implementation** | Last reviewed: 2026-10-30 | Base: `feat/complete-ui-ux-refinement`
+Status: **Windows backend foundations implemented; provider and Mac/client phases deferred** | Last reviewed: 2026-10-30 | Base: `feat/complete-ui-ux-refinement`
 
 **Purpose.** Evolve Provision from pantry tracking into a Filipino-first household food assistant: discover credible recipes, identify what can be cooked from usable inventory, respect allergies and preferences, buy missing ingredients without duplicates, plan meals, track leftovers, and measure waste. This document is the actionable backlog, not evidence that features already exist.
 
-**Read first:** [Implementation contract](./TECHNICAL_SPEC.md), [Recipe source governance](./RECIPE_SOURCE_POLICY.md), repository `AGENTS.md`. Keep these documents aligned; update checkboxes only after implementation + tests + green CI.
+**Read first:** [Backend acceptance audit](./BACKEND_ACCEPTANCE.md), [Implementation contract](./TECHNICAL_SPEC.md), [Recipe source governance](./RECIPE_SOURCE_POLICY.md), repository `AGENTS.md`. Keep these documents aligned; update checkboxes only after implementation + tests + green CI.
+
+Final backend implementation `0e6977f` passed PostgreSQL 18
+[PR backend CI](https://github.com/lucifron28/Provision/actions/runs/41084343660):
+**578 passed, one optional historical-file skip**, with two dependency deprecation
+warnings. The migration upgrade/drift/downgrade/re-upgrade checks passed.
+[Draft PR #1](https://github.com/lucifron28/Provision/pull/1) records the current
+published head and CI checks. No merge is authorized. Unchecked client/provider
+items below remain deferred; backend completion does not complete those phases.
 
 ## Existing system and non-goals
 
@@ -223,11 +231,11 @@ neighboring tests pass. The complete local suite through `57c1a64` recorded
 The subsequent large-household test passed separately with 60 pantry batches,
 120 shopping rows and a foreign household row. It confirms an item beyond the
 first 100 rows without altering unrelated entries or inventory. Exact-head CI
-for the final additions remains pending.
+for all final backend additions is recorded in the 578-test result above.
 Plans describe intended meals without reserving inventory; actual cooking
 confirmation rechecks stock under the household write lock.
 
-- [ ] Save/unsave recipe references and user adaptations with provenance, default portions, categories and household scope; allow revalidation after source/stock changes.
+- [x] Backend save/unsave retains private portions and preferences. User adaptations pin an immutable household parent revision and revalidate current ancestor permissions/source history; full ingredient safety and stock checks still apply. Native bookmarking/editing flows remain in the Mac handoff.
 - [ ] Guided Cooking mode: steps, timers where supported, serving adjustments, checklist, ingredients reviewed before cooking; never change inventory simply by viewing a recipe.
 - [x] Backend explicit "Record Cooking" provides quantity overrides, a FEFO allocation preview, audited inventory consumption, stock revision checks and retry records. Native review/confirmation UI remains in the Mac handoff.
 - [x] Backend weekly meal planner supports dates, breakfast/lunch/dinner/merienda and household servings. Combined ingredient demand subtracts current pantry and pending purchases once.
@@ -259,7 +267,7 @@ pending; this phase is not complete.
 - [ ] Security: API auth/household isolation, external-site SSRF redirect chains, untrusted fetched page prompt injection, API key leakage, duplicate idempotency, retention/deletion, traffic/cost rate limiting.
 - [ ] Update stale README midterm status and safe demo documentation. Record provider costs and capabilities **as of validation date**; never guarantee DeepSeek API feature permanence.
 - [ ] Run full backend pytest + iOS XCTest + branch CI; inspect and fix failures without changing acceptance criteria merely to pass tests. Document any device/provider testing that was not actually run.
-- [ ] Open PR for review; **do not merge** without approval.
+- [x] Opened [draft PR #1](https://github.com/lucifron28/Provision/pull/1) for review. It remains unmerged; merge requires explicit approval.
 
 ## Dependencies and development sequence
 

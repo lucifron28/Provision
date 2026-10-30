@@ -25,6 +25,15 @@ Windows task explicitly defers. Live external calls remain disabled.
 
 ## Integrated verification
 
+The final backend implementation on `0e6977f` passed PostgreSQL 18
+[PR backend CI](https://github.com/lucifron28/Provision/actions/runs/41084343660):
+**578 passed, one optional historical-file skip**, with two dependency
+deprecation warnings. The job also passed Alembic upgrade, schema drift,
+downgrade-to-base and re-upgrade checks. This includes the adaptation and
+large-household acceptance cases. [Draft PR #1](https://github.com/lucifron28/Provision/pull/1)
+tracks the current published head and its backend and existing scanner checks.
+The PR remains unmerged.
+
 The foundation through `11e99fa` passed **568 tests, one optional historical-file
 skip**, with two dependency deprecation warnings on local PostgreSQL 18.6.
 Focused PostgreSQL
@@ -43,7 +52,7 @@ skip**, with two dependency deprecation warnings. The subsequent large-household
 test passed separately. It uses 60 pantry batches, 120 shopping rows and a foreign
 household row, places the matched item after 119 unrelated entries, and verifies
 exact reconciliation without changing unrelated rows or inventory. Exact-head
-CI for these final additions remains pending.
+These final additions are included in the 578-test CI result above.
 
 ## Deferred work
 
