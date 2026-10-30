@@ -27,8 +27,9 @@ Stabilization is **in progress**, not complete.
 - Local PostgreSQL 18.6 on Windows, port 55432: upgrade to head, downgrade to
   base, re-upgrade and `alembic check` passed on a separate verification database.
 - [CI for 9b1efe7](https://github.com/lucifron28/Provision/actions/runs/41024254918)
-  is pending at the time of this entry. These checks do not prove the safety
-  corrections complete. Importer and test-isolation regressions remain in progress.
+  passed both backend and iOS jobs. Backend recorded 89 passed and 1 skipped.
+  These checks do not prove the safety corrections complete. Importer and
+  test-isolation regressions remain in progress.
 - Live DeepSeek/search integration is deferred until credentials are supplied.
   SwiftUI implementation and device acceptance remain Mac-dependent work.
 
