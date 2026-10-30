@@ -47,7 +47,7 @@ uv sync
 uv run alembic upgrade head
 
 # Seed Philippine demo supermarket data
-uv run python seed.py
+uv run python seed.py --demo
 
 # Run backend test suite (against PostgreSQL test database)
 uv run pytest
@@ -65,7 +65,9 @@ uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
   ```
 
 ### 4. SQLite Data Migration (`backend/scripts/`)
-For environments with legacy SQLite `provision.db` files:
+For environments with legacy SQLite `provision.db` files, prepare a fresh empty
+PostgreSQL target at revision `a4d9c69b8f21`, import and verify there, then upgrade
+to head. See the README migration sequence.
 ```bash
 # Dry run
 uv run python scripts/migrate_sqlite_to_postgres.py --sqlite-path provision.db --dry-run

@@ -62,6 +62,21 @@ Stabilization is complete for the audit scope, verified locally and in CI.
 
 ### P0 — Household data isolation and safety foundation (BLOCKS AI production rollout)
 
+Backend implementation `c1adb03` is locally verified; CI acceptance is pending.
+It scopes all existing pantry routes and analytics, adds private signup households,
+owner/member roles, scoped barcode and intake idempotency keys, database ownership
+constraints, legacy quarantine, scoped demo resets, consent, self export and
+reauthenticated account deletion. JWTs now bind to immutable user IDs; legacy
+tokens require login again. Production demo seeding is blocked.
+
+Evidence on PostgreSQL 18.6: full `uv run pytest -q` recorded **124 passed,
+1 skipped**; migration checks recorded three passing tests and no Alembic drift;
+privacy eight tests and household security six tests passed. The skip requires
+the optional historical `backend/provision.db` file. Checkboxes remain pending
+until CI passes. Client cache/scanner account binding and privacy UI are tracked
+in [Mac handoff](MAC_HANDOFF.md). Live DeepSeek/search and their operational
+quotas remain deferred; no consent grant enables external calls.
+
 - [ ] Audit all authenticated API routes and caching for cross-user access; enumerate products vs household-owned entities. The router's `Depends(get_current_user)` authenticates but does **not** scope inventory or shopping queries.
 - [ ] Define household and membership tables; permission policy for household access and role changes. Establish clearly owned records for batches, locations, sessions, shopping, preferences, meal plans, saved recipes, leftovers, events, and caches; globally shared catalog may remain read-only as appropriate.
 - [ ] Add Alembic migrations and an explicit migration/seed strategy for existing shared-demo data; default new accounts must NOT see other users' pantry or private diet details.

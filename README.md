@@ -67,7 +67,7 @@ uv sync
 uv run alembic upgrade head
 
 # 6. Seed Philippine supermarket demo data (optional / recommended)
-uv run python seed.py
+uv run python seed.py --demo
 
 # 7. Run automated test suite
 export TEST_DATABASE_URL="postgresql+psycopg://provision:provision@127.0.0.1:5432/provision_test"
@@ -109,8 +109,15 @@ application database. Test tables live in a unique schema owned by each run.
 
 If you previously ran Provision with local SQLite (`provision.db`), migrate your data safely:
 
+Use a fresh, empty PostgreSQL target and set `DATABASE_URL` to that target before
+running these commands. Legacy imports use the pre-household schema revision;
+do not downgrade a populated application database to make room for an import.
+
 ```bash
 cd backend
+
+# Prepare the empty target at the legacy-compatible revision
+uv run alembic upgrade a4d9c69b8f21
 
 # 1. Simulate migration and inspect counts without modifying database
 uv run python scripts/migrate_sqlite_to_postgres.py --sqlite-path provision.db --dry-run
@@ -120,7 +127,15 @@ uv run python scripts/migrate_sqlite_to_postgres.py --sqlite-path provision.db
 
 # 3. Verify counts between SQLite and PostgreSQL
 uv run python scripts/migrate_sqlite_to_postgres.py --sqlite-path provision.db --verify-only
+
+# Apply household isolation after the legacy transfer has been verified
+uv run alembic upgrade head
 ```
+
+The household migration places records with no ownership evidence in a
+restricted legacy household with no members. Existing accounts receive private
+households. An operator must verify and assign legacy ownership before users can
+access those records. Registration never grants access to the quarantined pantry.
 
 **Safety Guarantee:** The migration script runs inside an atomic PostgreSQL transaction and rolls back completely on any error. The source SQLite database is never deleted or modified.
 ---
@@ -152,17 +167,20 @@ Run the database seeder from the `backend/` directory:
 
 ```bash
 cd backend
-uv run python seed.py
+uv run python seed.py --demo
 ```
 
-> **Safe Re-seeding:** The seeder is idempotent. It preserves existing registered user accounts (such as `cronvincent@gmail.com`), guarantees the default demo credentials below, and refreshes the inventory tables with clean demonstration scenarios.
+Demo seeding is for disposable local development databases. Set
+`ENVIRONMENT=production` in production configuration; the seeder refuses to run
+there. The CLI requires `--demo` to acknowledge local demo accounts. Reset only
+refreshes the demo household and preserves other households' inventory.
 
-### Default Demo Credentials
+### Local demo accounts
 
-| Account | Email | Password | Display Name |
-| :--- | :--- | :--- | :--- |
-| **Primary Demo User** | `user@provision.local` | `password123` | Maria Santos |
-| **Secondary Demo User** | `demo@provision.local` | `password123` | Juan Dela Cruz |
+The explicitly enabled demo fixture creates Maria Santos and Juan Dela Cruz in
+one demo household. These fixtures use insecure test credentials defined in
+`backend/seed.py`. Use registration for real accounts. Never seed demo accounts
+into a deployed database.
 
 ---
 
@@ -276,7 +294,9 @@ All 49 catalog products are authentic Philippine supermarket items with valid 48
 
 ## Important Domain Limitation
 
-> **Notice:** Provision currently authenticates access to a single shared household pantry. Per-user and multi-household data isolation is reserved for future development.
+Household isolation is being implemented and verified on this branch. New
+registrations receive private households; membership is required to select
+another household. Client cache integration remains pending on Mac.
 
 ---
 
