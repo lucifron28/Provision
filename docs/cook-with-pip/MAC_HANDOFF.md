@@ -30,6 +30,11 @@ navigation while implementing them.
 - Add preferences and separate allergy declarations. Preserve the distinction
   between not provided and none declared. Display conflicts and manual-review
   states without promising allergy safety.
+- Add explicit package-label review using [the label API](PRODUCT_LABELS_API.md).
+  Preserve the product's exact `updated_at` value in the request, including its
+  fractional seconds. Show stale product, mapping and review conflicts for fresh
+  review. Do not replay an old approval after a change or revocation. Present
+  member review as a recorded declaration, without implying certification.
 - Display provenance, publisher link and access mode. Candidate publishers must
   not appear approved. Live DeepSeek and web search remain disabled until the
   separately deferred provider milestone is authorized with credentials.

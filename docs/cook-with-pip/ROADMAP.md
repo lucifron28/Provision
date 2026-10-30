@@ -125,9 +125,13 @@ optional-file skip** on PostgreSQL 18.6, migration upgrade/downgrade checks, and
 [backend and iOS CI](https://github.com/lucifron28/Provision/actions/runs/41038236046).
 The API provides private member profiles, owner-managed shared profiles, explicit
 allergy state, custom declarations, revision checks, reset and account export.
-See [the profile contract](FOOD_PROFILES_API.md). Allergen graph evaluation,
-substitutions, reviewed package labels and recommendation integration require
-their own evidence before this phase can be marked complete.
+See [the profile contract](FOOD_PROFILES_API.md). Allergen graph evaluation and
+explicit substitutions through `a86649d` passed **333 tests with one optional-file
+skip**, migration checks, and
+[backend and iOS CI](https://github.com/lucifron28/Provision/actions/runs/41039948431).
+See [the safety contract](FOOD_SAFETY_API.md). Reviewed package labels and
+recommendation integration are not covered by that CI result. This phase remains
+unchecked until the remaining implementation and acceptance checks pass.
 
 - [ ] Add household/member-scoped preferences: preferred cuisine (Filipino default, selectable regions), dislikes, diet patterns, ingredient exclusions, heat tolerance, equipment, time/budget goals, preferred language, serving count.
 - [ ] Add **separate** allergen profile (not just a dislike): explicit allergens incl. milk, egg, fish, crustacean shellfish, tree nuts, peanuts, wheat, soy, sesame; custom allergens, other sensitivities, cross-contact concern, severity/notes optional. Don't treat this US list as exhaustive or as a substitute for Philippine-specific labels.

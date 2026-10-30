@@ -59,10 +59,11 @@ custom declarations require review.
 
 This curated graph is global and has no household write API. A product quantity
 mapping, confidence score or brand name does not establish allergen-label review.
-When stock is counted toward a requirement, the current evaluator adds
-`product_allergen_label_not_reviewed`. Reviewed product-label storage and its
-verification workflow remain pending. Do not describe stock-backed results as
-cleared until that separate work exists.
+When stock is counted toward a requirement, the evaluator checks its
+[reviewed product labels](PRODUCT_LABELS_API.md). Missing or stale records add
+`product_allergen_label_not_reviewed`. A complete current review can resolve
+generic possible associations for fully covered quantities. Confirmed conceptual
+conflicts remain blocked. Composite product components are checked as well.
 
 ## Substitutions
 
