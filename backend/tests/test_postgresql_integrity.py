@@ -26,12 +26,13 @@ from app.models.user import User
 
 
 def test_postgresql_dialect_active(engine):
-    """Verifies tests are running against PostgreSQL dialect when available."""
-    assert engine.dialect.name in ("postgresql", "sqlite")
-    if engine.dialect.name == "postgresql":
-        with engine.connect() as conn:
-            version_str = conn.execute(text("SELECT version();")).scalar()
-            assert "PostgreSQL" in version_str
+    """Verifies tests run against PostgreSQL 18, never a SQLite fallback."""
+    assert engine.dialect.name == "postgresql"
+    with engine.connect() as conn:
+        version_num = conn.execute(text("SHOW server_version_num")).scalar_one()
+        assert int(version_num) // 10000 == 18
+        version_str = conn.execute(text("SELECT version();")).scalar_one()
+        assert "PostgreSQL 18" in version_str
 
 
 def test_postgresql_foreign_key_restrict_product_deletion(db, engine):

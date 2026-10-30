@@ -70,6 +70,7 @@ uv run alembic upgrade head
 uv run python seed.py
 
 # 7. Run automated test suite
+export TEST_DATABASE_URL="postgresql+psycopg://provision:provision@127.0.0.1:5432/provision_test"
 uv run pytest
 
 # 8. Start local development server
@@ -77,6 +78,23 @@ uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 - Interactive OpenAPI Swagger Docs: `http://localhost:8000/docs`
+
+Create the dedicated test database once before running pytest:
+
+```bash
+docker compose exec postgres createdb -U provision provision_test
+```
+
+For PowerShell with PostgreSQL on port 55432:
+
+```powershell
+$env:TEST_DATABASE_URL="postgresql+psycopg://provision:provision@127.0.0.1:55432/provision_test"
+uv run pytest
+```
+
+Tests require PostgreSQL 18 and an explicit `TEST_DATABASE_URL` ending in `_test`.
+They must fail if PostgreSQL is unavailable, rather than using SQLite or the
+application database. Test tables live in a unique schema owned by each run.
 
 
 ### Database Management (PostgreSQL 18 via Docker Compose)
