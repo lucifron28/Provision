@@ -10,7 +10,7 @@ from database_safety import create_owned_test_schema, drop_owned_test_schema
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "b83e6a7d4c91"
+EXPECTED_HEAD = "d91e84af0c52"
 
 
 @pytest.fixture
@@ -121,7 +121,7 @@ def test_household_downgrade_restores_legacy_foreign_keys(migration_schema):
     engine = create_engine(migration_schema.scoped_url, pool_pre_ping=True)
     try:
         _run_alembic(migration_schema, "upgrade", "head")
-        _run_alembic(migration_schema, "downgrade", "-1")
+        _run_alembic(migration_schema, "downgrade", "a4d9c69b8f21")
 
         inspector = inspect(engine)
         expected = {
@@ -197,7 +197,7 @@ def test_downgrade_with_cross_household_duplicate_barcode_refuses_before_writes(
                 {"household_id": second_household_id},
             )
 
-        result = _alembic_result(migration_schema, "downgrade", "-1")
+        result = _alembic_result(migration_schema, "downgrade", "a4d9c69b8f21")
         assert result.returncode != 0
         assert "duplicate barcode values" in result.stderr
 

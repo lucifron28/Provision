@@ -8,6 +8,13 @@ from app.models.shopping import ShoppingListItem
 from app.models.user import User
 from app.models.household import Household, HouseholdMembership, HouseholdRole
 from app.models.privacy import ProcessingConsent
+from app.models.ingredient import (
+    Ingredient,
+    IngredientAlias,
+    ProductIngredientMapping,
+    ProductIngredientMappingTarget,
+    ProductPackageFactor,
+)
 
 __all__ = [
     "Base",
@@ -26,4 +33,9 @@ __all__ = [
     "HouseholdMembership",
     "HouseholdRole",
     "ProcessingConsent",
+    "Ingredient",
+    "IngredientAlias",
+    "ProductIngredientMapping",
+    "ProductIngredientMappingTarget",
+    "ProductPackageFactor",
 ]
