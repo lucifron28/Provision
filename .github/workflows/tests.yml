@@ -48,6 +48,10 @@ jobs:
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
           python-version: "3.13"
+      - name: Create dedicated test database
+        env:
+          PGPASSWORD: provision
+        run: createdb -h localhost -U provision provision_test
       - name: Run Alembic migrations
         working-directory: backend
         run: |
