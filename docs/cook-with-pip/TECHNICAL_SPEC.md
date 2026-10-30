@@ -63,8 +63,10 @@ are not completion evidence.
   active household member whose household data would be shared.
 - Account deletion reauthenticates and removes access while preserving shared
   inventory history. A sole owner with remaining members must transfer ownership
-  first. An inactive anonymized account tombstone prevents email-subject tokens
-  from reviving deleted accounts after email reuse.
+  first. Keep an inactive anonymized account tombstone for audit references.
+  Tokens must also carry the immutable user ID and authentication must match it
+  to the account. Email-subject tokens alone can revive access after email reuse.
+  Existing tokens without the ID claim require login again after rollout.
 - SwiftUI household cache keys, pending intake account binding, privacy screens
   and device acceptance remain Mac-dependent TODOs until implemented and tested.
 
