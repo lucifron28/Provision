@@ -19,7 +19,7 @@ Preserve barcode acceptance/rearm, receipt OCR, pending commit persistence/recon
 The original migration milestone below is historical evidence. Its safety claims
 are under correction: the test fixture allowed a development URL and silent
 SQLite fallback, and the transfer utility verified counts after committing.
-Stabilization is **in progress**, not complete.
+Stabilization is implemented locally; final CI acceptance for the patch is pending.
 
 - `cfa8373`: corrected the PostgreSQL 18 volume mount to `/var/lib/postgresql`;
   loaded a secret DeepSeek key placeholder without enabling provider calls.
@@ -28,8 +28,14 @@ Stabilization is **in progress**, not complete.
   base, re-upgrade and `alembic check` passed on a separate verification database.
 - [CI for 9b1efe7](https://github.com/lucifron28/Provision/actions/runs/41024254918)
   passed both backend and iOS jobs. Backend recorded 89 passed and 1 skipped.
-  These checks do not prove the safety corrections complete. Importer and
-  test-isolation regressions remain in progress.
+  These checks predate the safety patch.
+- `6d278f9`: fail-closed PostgreSQL 18 test configuration, token-owned test
+  schemas, guarded cleanup, read-only WAL-consistent legacy backups, locked
+  empty-target protection, in-transaction value verification and transactional
+  sequence restart. Executor verification recorded 14 focused tests passing and
+  102 full-suite tests passing, with one optional legacy-file test skipped.
+  [CI for this patch](https://github.com/lucifron28/Provision/actions?query=branch%3Afeat%2Fcomplete-ui-ux-refinement)
+  must pass before the milestone is marked complete.
 - Live DeepSeek/search integration is deferred until credentials are supplied.
   SwiftUI implementation and device acceptance remain Mac-dependent work.
 
