@@ -10,7 +10,7 @@ from database_safety import create_owned_test_schema, drop_owned_test_schema
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "f62c910e7a43"
+EXPECTED_HEAD = "73ab14c6d982"
 
 
 @pytest.fixture
@@ -81,6 +81,8 @@ def test_postgresql18_migrations_upgrade_head_and_downgrade_base(migration_schem
             "processing_consents",
             "food_preferences",
             "food_allergies",
+            "ingredient_allergens",
+            "ingredient_derivatives",
             "products",
             "storage_locations",
             "grocery_sessions",
@@ -89,6 +91,12 @@ def test_postgresql18_migrations_upgrade_head_and_downgrade_base(migration_schem
             "inventory_events",
             "alembic_version",
         } <= table_names
+
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT count(DISTINCT allergen_code) FROM ingredient_allergens")).scalar_one() == 9
+            assert connection.execute(text("""SELECT count(*) FROM ingredient_derivatives d
+                JOIN ingredients c ON c.id=d.ingredient_id JOIN ingredients p ON p.id=d.parent_ingredient_id
+                WHERE c.normalized_name='casein' AND p.normalized_name='milk' AND d.checked_at IS NOT NULL""")).scalar_one() == 1
 
         product_fk = next(
             fk
