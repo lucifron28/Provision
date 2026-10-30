@@ -70,6 +70,31 @@ and membership changes. Each update retains the previous snapshot. Archive
 removes the recipe from active browsing and recommendations while preserving
 history. Archived recipes cannot be overwritten through PUT.
 
+## User-authored adaptations
+
+A new household recipe may include paired `adapted_from_recipe_id` and
+`adapted_from_recipe_revision` fields. They identify an existing immutable
+revision in the same household. Both the author and parent must declare
+`OWNED_OR_PERMISSION_GRANTED`; this records a member declaration, not a license
+verification. The adapted recipe still has `USER_ENTERED` provenance and must
+provide its own complete ingredients and instructions.
+
+The parent link is fixed at creation. Updates that omit it preserve it; changing
+or explicitly clearing it returns `409 RECIPE_ORIGIN_IMMUTABLE`. Existing recipes
+without a parent cannot acquire one through an edit. Create a new recipe to
+record a new adaptation. Revisions and account export retain the paired fields.
+
+This foundation supports household-authored parents only. A parent or ancestor
+with any publisher reference, including a removed reference retained for audit,
+requires the deferred publisher adaptation workflow. The server accepts at most
+four ancestors and rejects missing, cross-household, cyclic or unavailable
+lineage. It rechecks ancestors' current active state, permission and retained
+source references during recipe evaluation, planning, shopping and cooking.
+Parent edits do not change the pinned origin revision. Parent permission
+withdrawal, archive or source linkage prevents automatic use of descendants.
+Each descendant's ingredients still undergo current diner, label and stock
+checks; lineage does not supply allergy clearance.
+
 ## Evaluation and private bookmarks
 
 An evaluation provides `expected_recipe_revision`, desired `servings`, optional

@@ -95,16 +95,17 @@ and a read-only availability API. Both backend and iOS jobs
 [passed for that commit](https://github.com/lucifron28/Provision/actions/runs/41036483959).
 See [the API contract](INGREDIENT_API.md) for uncertainty rules and request shapes.
 Later recipe persistence and allergen declarations have separate evidence below.
-Final acceptance, including the realistic Filipino recipe fixtures, remains
-pending for the integrated head.
+The 33 synthetic Filipino recipe fixtures and explicit canned-product package
+factor cases passed [backend and iOS CI on `37ff2b4`](https://github.com/lucifron28/Provision/actions/runs/41081566487),
+which recorded 570 passed and one skipped backend test.
 
-- [ ] Design `ingredients` taxonomy with normalized names, Filipino/English aliases (bawang/garlic, sibuyas/onion, calamansi, kangkong, etc.), food family, density/portion reference where reliable, and allergen declarations.
-- [ ] Implement curated `product_ingredient_mappings`: a brand/item may map to one ingredient or an explicitly reviewed composite; store confidence, method, verifier, mapping version and unknown state. Never treat flavor/brand text as an allergy-safe label.
-- [ ] Implement recipe ingredients (`required`/`optional`, quantity, unit, preparation, substitution candidates) and robust unit normalization (g/kg, mL/L, count; portion/package conversions only with authoritative product metadata). Reject unsupported count-to-mass conversions instead of guessing.
-- [ ] Compute available amounts from household-scoped positive remaining batches; exclude expired-by-recorded-date batches from automatic availability, flag missing expiry information and freshness uncertainty; preserve FEFO for actual consumption.
-- [ ] Make comparisons deterministic and testable: recipe required quantity, usable amount, shortfall, unknown/ambiguous conversion, partial availability, optional ingredient not required for Cook Now.
-- [ ] Add 30+ fixtures: Filipino pantry names, brand synonyms, sauces/condiments, egg cartons, canned goods, count-vs-g, fraction servings, multiple batches, unknown expiry, and expiry boundary.
-- [ ] Gate: identical request snapshot -> identical availability; no invented stock, implicit conversions, or expired-batch inclusion.
+- [x] Design `ingredients` taxonomy with normalized names, Filipino/English aliases (bawang/garlic, sibuyas/onion, calamansi, kangkong, etc.), food family, density/portion reference where reliable, and allergen declarations.
+- [x] Implement curated `product_ingredient_mappings`: a brand/item may map to one ingredient or an explicitly reviewed composite; store confidence, method, verifier, mapping version and unknown state. Never treat flavor/brand text as an allergy-safe label.
+- [x] Implement recipe ingredients (`required`/`optional`, quantity, unit, preparation, substitution candidates) and robust unit normalization (g/kg, mL/L, count; portion/package conversions only with authoritative product metadata). Reject unsupported count-to-mass conversions instead of guessing.
+- [x] Compute available amounts from household-scoped positive remaining batches; exclude expired-by-recorded-date batches from automatic availability, flag missing expiry information and freshness uncertainty; preserve FEFO for actual consumption.
+- [x] Make comparisons deterministic and testable: recipe required quantity, usable amount, shortfall, unknown/ambiguous conversion, partial availability, optional ingredient not required for Cook Now.
+- [x] Add 30+ fixtures: Filipino pantry names, brand synonyms, sauces/condiments, egg cartons, canned goods, count-vs-g, fraction servings, multiple batches, unknown expiry, and expiry boundary.
+- [x] Gate: identical request snapshot -> identical availability; no invented stock, implicit conversions, or expired-batch inclusion.
 
 ### P2 — Trusted recipe source registry and source discovery
 
@@ -119,8 +120,8 @@ The four real publisher candidates remain disabled
 and unapproved. No live fetch, search, content extraction or image reuse is
 implemented or authorized by a registry flag.
 
-- [ ] Implement a reviewed `recipe_sources` registry with host allowlisting, source tier, ownership/publisher, cuisine tags, terms/robots review, permitted fetch/use mode, review date, and disable flag.
-- [ ] Seed **candidates** Panlasang Pinoy, Kawaling Pinoy, Yummy.ph, and Ang Sarap (see source policy); do NOT label them licensed/verified for ingestion until individually reviewed.
+- [x] Implement a reviewed `recipe_sources` registry with host allowlisting, source tier, ownership/publisher, cuisine tags, terms/robots review, permitted fetch/use mode, review date, and disable flag.
+- [x] Seed **candidates** Panlasang Pinoy, Kawaling Pinoy, Yummy.ph, and Ang Sarap (see source policy); do NOT label them licensed/verified for ingestion until individually reviewed.
 - [ ] Implement DeepSeek Search and Fetch as server-side adapters with configurable timeouts, limits, caching, dedup by canonical URL, SSRF/redirect protections and audit traces. Check live API docs during implementation.
 - [ ] Search **approved Filipino sources first** using `site:` constraints and Filipino query aliases. Expand to other approved/general web results **only** when the user enables broader search or priority sources lack sufficient relevant results.
 - [ ] Rank after hard allergy/food-safety gates; prefer approved publisher, recipe-specific page, matched cuisine, ingredient suitability, accurate structured ingredient data, freshness, and user preferences; do not confuse source reputation with recipe safety.
@@ -150,10 +151,10 @@ remains incomplete until the remaining implementation and acceptance checks pass
 - [x] Add household/member-scoped preferences: preferred cuisine (Filipino default, selectable regions), dislikes, diet patterns, ingredient exclusions, heat tolerance, equipment, time/budget goals, preferred language, serving count. Backend storage and scoped APIs are verified above; native editing remains in the Mac handoff.
 - [x] Add **separate** allergen profile (not just a dislike): explicit allergens incl. milk, egg, fish, crustacean shellfish, tree nuts, peanuts, wheat, soy, sesame; custom allergens, other sensitivities, cross-contact concern, severity/notes optional. Don't treat this US list as exhaustive or as a substitute for Philippine-specific labels. Backend declarations are verified above.
 - [ ] Require user to explicitly set allergies to `none declared` or `not provided`; unknown is never interpreted as allergy-free. Provide accessible editing and deletion; per-member vs household applicability must be clear.
-- [ ] Normalize ingredient/allergen synonym and derivative graph: dairy whey/casein, shrimp paste/bagoong alamang -> crustacean shellfish, patis -> fish, common soy/wheat sauces, nuts and sesame; retain unknown processing/packaging labels.
-- [ ] Hard filter explicit conflicts before ranking. Any incomplete/uncertain allergen composition -> `Requires label/manual review`, not `Safe for you`. Handle substitutions with fresh allergen validation.
-- [ ] Never allow generative text to override hard filters; show transparent reasons for blocked/unverified recipes; allow preference soft-ranking override but NOT silent removal of an allergy guard.
-- [ ] Add negative tests for hidden allergens, packaged foods with unknown labels, substitutions introducing allergens, cross-contact warnings, multi-member households, preference conflicts.
+- [x] Normalize ingredient/allergen synonym and derivative graph: dairy whey/casein, shrimp paste/bagoong alamang -> crustacean shellfish, patis -> fish, common soy/wheat sauces, nuts and sesame; retain unknown processing/packaging labels.
+- [x] Hard filter explicit conflicts before ranking. Any incomplete/uncertain allergen composition -> `Requires label/manual review`, not `Safe for you`. Handle substitutions with fresh allergen validation.
+- [x] Never allow generative text to override hard filters; show transparent reasons for blocked/unverified recipes; allow preference soft-ranking override but NOT silent removal of an allergy guard.
+- [x] Add negative tests for hidden allergens, packaged foods with unknown labels, substitutions introducing allergens, cross-contact warnings, multi-member households, preference conflicts.
 - [ ] Gate: ambiguous or potentially allergenic recipes cannot receive a confident safe label; accessibility and privacy reviewed.
 
 ### P4 — DeepSeek-backed Cook with Pip recipes
@@ -188,15 +189,15 @@ credential fields and stale cached rows. Backend and iOS
 SwiftUI confirmation remains in the Mac handoff. This milestone stays unchecked
 until the relevant remaining gates pass.
 
-- [ ] Implement `POST /api/v1/recipe-shopping/preview` for recipe/version/servings and selected household: server recomputes current usable stock and requested quantities (never trust AI supplied shortages).
-- [ ] Compute shortage = `max(required - usable pantry, 0)`; for shopping reconciliation compare with **existing unbought** quantities by canonical ingredient/product and compatible unit, not fuzzy display text alone. Proposed shopping target = `max(existing_pending, shortage)`; delta = `max(shortage - existing_pending, 0)`. Distinguish existing item increase vs creation vs no-op.
+- [x] Implement `POST /api/v1/recipe-shopping/preview` for recipe/version/servings and selected household: server recomputes current usable stock and requested quantities (never trust AI supplied shortages).
+- [x] Compute shortage = `max(required - usable pantry, 0)`; for shopping reconciliation compare with **existing unbought** quantities by canonical ingredient/product and compatible unit, not fuzzy display text alone. Proposed shopping target = `max(existing_pending, shortage)`; delta = `max(shortage - existing_pending, 0)`. Distinguish existing item increase vs creation vs no-op.
 - [ ] Present confirmation sheet with per-ingredient existing stock, shortage, existing pending quantity, proposed delta/total, source recipe, selected servings, unknown conversions/allergen flags, selectable rows, quantity edits. **No write on preview.**
-- [ ] Implement `POST /api/v1/recipe-shopping/confirm` with unique idempotency key, short-lived preview/version, server-side recomputation, authorization and validation, concurrency control (SQLite-safe transaction/optimistic revision), atomic create/update and response specifying added/updated/unchanged.
-- [ ] Handle conflicts: inventory or shopping list changed since preview -> 409 and require fresh preview/confirmation. Never double-increase same shortage for repeated requests or multiple devices.
-- [ ] Preserve bought history, manually entered preferences and notes, user quantities; support multiple product equivalents but ask when ingredient mapping is ambiguous. Don't automatically buy or create new catalog products.
+- [x] Implement `POST /api/v1/recipe-shopping/confirm` with unique idempotency key, short-lived preview/version, server-side recomputation, authorization and validation, concurrency control (SQLite-safe transaction/optimistic revision), atomic create/update and response specifying added/updated/unchanged.
+- [x] Handle conflicts: inventory or shopping list changed since preview -> 409 and require fresh preview/confirmation. Never double-increase same shortage for repeated requests or multiple devices.
+- [x] Preserve bought history, manually entered preferences and notes, user quantities; support multiple product equivalents but ask when ingredient mapping is ambiguous. Don't automatically buy or create new catalog products.
 - [ ] Link successful confirmation to Shopping tab and show what changed; support recoverable failures and retries. Plan future combined weekly meal shortages with shared ingredients.
-- [ ] Cases: **4 eggs required, 2 usable, 1 already pending -> target pending 2, add 1 to existing entry**; 0 shortfall -> no-op; incompatible units -> needs review; partial pantry and duplicate existing entries -> deterministic merge strategy; interrupted response -> same idempotent result.
-- [ ] Gate: no duplicates/lost updates under concurrent taps; user consent to additions; transaction rolls back fully on error.
+- [x] Cases: **4 eggs required, 2 usable, 1 already pending -> target pending 2, add 1 to existing entry**; 0 shortfall -> no-op; incompatible units -> needs review; partial pantry and duplicate existing entries -> deterministic merge strategy; interrupted response -> same idempotent result.
+- [x] Gate: no duplicates/lost updates under concurrent taps; user consent to additions; transaction rolls back fully on error.
 
 ### P6 — Saved recipes, guided cooking, meal planner
 
@@ -209,15 +210,28 @@ two new migration tests prove history-loss downgrades refuse atomically.
 Alembic upgrade and schema-drift verification pass on the separate Windows
 verification database. The foundation through `11e99fa` passed the complete
 local suite, **568 passed, one optional historical-file skip**, with two existing
-dependency deprecation warnings. Exact-head CI acceptance remains pending.
+dependency deprecation warnings. Backend and the unchanged scanner XCTest job
+[passed on `2a5a8cf`](https://github.com/lucifron28/Provision/actions/runs/41080845054).
+CI independently recorded 568 passed and one skipped backend test. Subsequent
+adaptation and canned-product acceptance additions have separate pending checks.
+The canned-product tests subsequently passed on `37ff2b4` as recorded in P1.
+The user-authored adaptation addition now pins same-household parent revisions,
+keeps lineage on edits and rechecks ancestor permissions/source history across
+evaluation, plans, shopping and cooking. Seven focused adaptation tests and 80
+neighboring tests pass. The complete local suite through `57c1a64` recorded
+**577 passed, one optional-file skip**, with two dependency deprecation warnings.
+The subsequent large-household test passed separately with 60 pantry batches,
+120 shopping rows and a foreign household row. It confirms an item beyond the
+first 100 rows without altering unrelated entries or inventory. Exact-head CI
+for the final additions remains pending.
 Plans describe intended meals without reserving inventory; actual cooking
 confirmation rechecks stock under the household write lock.
 
 - [ ] Save/unsave recipe references and user adaptations with provenance, default portions, categories and household scope; allow revalidation after source/stock changes.
 - [ ] Guided Cooking mode: steps, timers where supported, serving adjustments, checklist, ingredients reviewed before cooking; never change inventory simply by viewing a recipe.
-- [ ] On **explicit** "Record Cooking", present consumed ingredient quantities and FEFO allocation preview; user adjusts quantities, then use existing inventory service/ledger for audited consumption, stock revision guards and retries.
-- [ ] Weekly meal planner (calendar days, breakfast/lunch/dinner/merienda, household servings). Combine ingredient demands across meals before subtracting available pantry and pending purchases, rather than per-recipe naive addition.
-- [ ] Batch "add missing for plan" uses same P5 preview-confirm pipeline; changing a plan invalidates previews. Save planning history and allow moving/removing meals.
+- [x] Backend explicit "Record Cooking" provides quantity overrides, a FEFO allocation preview, audited inventory consumption, stock revision checks and retry records. Native review/confirmation UI remains in the Mac handoff.
+- [x] Backend weekly meal planner supports dates, breakfast/lunch/dinner/merienda and household servings. Combined ingredient demand subtracts current pantry and pending purchases once.
+- [x] Backend batch shopping uses P5 reconciliation, preview/confirmation and plan revisions. Moving/removing meals preserves history and invalidates previews. Native planner/shopping screens remain deferred.
 - [ ] Gate: no accidental auto-consumption; concurrent plans don't silently oversubscribe scarce stock; grocery consolidation correct.
 
 ### P7 — Leftovers, budget, food waste, and household insights
@@ -230,18 +244,18 @@ It reports price provenance, unknown costs and quantities grouped by unit.
 Subsequent plan/cooking/leftover integration and its exact-head acceptance remain
 pending; this phase is not complete.
 
-- [ ] Add leftovers (name/recipe, quantity, storage location, prepared_at, optional use-by guidance explicitly user-verified, portions); avoid pretending generated food-safety dates are guaranteed.
+- [x] Add leftovers (name/recipe, quantity, storage location, prepared_at, optional use-by guidance explicitly user-verified, portions); avoid pretending generated food-safety dates are guaranteed.
 - [ ] Leftover reminders and reuse suggestions, respecting allergy/preference rules and user opt-in; no recommendation of spoiled/expired food.
-- [ ] Meal budget estimates using historical **available** prices with currency PHP, timestamps, store context, missing-price state; never portray estimated prices as current store quotes.
+- [x] Meal budget estimates using historical **available** prices with currency PHP, timestamps, store context, missing-price state; never portray estimated prices as current store quotes.
 - [ ] Waste dashboards: recorded discard events, cost, time period, recipe-plan usage, pantry-to-shopping efficiency and clear baseline methodology. No unsupported claims of savings.
-- [ ] Optional household cooking preferences/history with consent, deletion, and correct member scoping.
+- [x] Optional household cooking preferences/history with consent, deletion, and correct member scoping.
 - [ ] Gate: explainable metrics, opt-out, no sensitive-data leaks.
 
 ### P8 — Stabilization and release acceptance
 
 - [ ] End-to-end tests across FastAPI, migrations, SwiftUI, DeepSeek mock, search/fetch mock, SKU mapping, allergy filters, snapshots, concurrent shopping commits, retry/idempotency, and offline.
 - [ ] Real-device check: iPhone barcode/receipt flows unchanged, scanner pause/rearm, saved intake recovery, accessibility, VoiceOver, large text, light/dark, iPhone SE-sized viewport, 50+ pantry items, 100+ shopping items, 30+ scanned items.
-- [ ] Realistic PH recipe fixtures (adobo, sinigang, tinola, pancit, ginisang monggo, tortang talong, arroz caldo, lumpia, champorado) with region/category, common sauces, allergens, conditional quantities.
+- [x] Realistic PH recipe fixtures (adobo, sinigang, tinola, pancit, ginisang monggo, tortang talong, arroz caldo, lumpia, champorado) with region/category, common sauces, allergens, conditional quantities.
 - [ ] Security: API auth/household isolation, external-site SSRF redirect chains, untrusted fetched page prompt injection, API key leakage, duplicate idempotency, retention/deletion, traffic/cost rate limiting.
 - [ ] Update stale README midterm status and safe demo documentation. Record provider costs and capabilities **as of validation date**; never guarantee DeepSeek API feature permanence.
 - [ ] Run full backend pytest + iOS XCTest + branch CI; inspect and fix failures without changing acceptance criteria merely to pass tests. Document any device/provider testing that was not actually run.
