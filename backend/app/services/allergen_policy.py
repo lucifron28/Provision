@@ -7,12 +7,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.allergens import IngredientAllergen, IngredientDerivative
+from app.models.batch import InventoryBatch
 from app.models.household import HouseholdMembership
-from app.models.ingredient import Ingredient
+from app.models.ingredient import Ingredient, ProductIngredientMappingTarget
+from app.models.product import Product
 from app.models.user import User
 from app.schemas.food_safety import FoodSafetyRead, FoodSafetyRequest, IngredientSafetyRead
 from app.schemas.ingredients import RecipeAvailabilityRequest
-from app.services.ingredient_matching import resolve_ingredient
+from app.services.ingredient_matching import normalize_ingredient_name, resolve_ingredient
+from app.services.product_labels import current_label_context
 from app.services.preferences import read_profile
 from app.services.recipe_availability import calculate_availability
 
@@ -48,6 +51,61 @@ def _decision(blocked, review):
     return "blocked" if blocked else "review_required" if review else "eligible"
 
 
+def _stock_labels(db, household_id, availability, restricted_codes, custom_texts):
+    batch_ids = {batch_id for line in availability.requirements for batch_id in line.covered_batch_ids}
+    batches = {item.id: item for item in db.scalars(select(InventoryBatch).where(
+        InventoryBatch.household_id == household_id, InventoryBatch.id.in_(batch_ids))).all()}
+    product_ids = {batch.product_id for batch in batches.values()}
+    products = {item.id: item for item in db.scalars(select(Product).where(
+        Product.household_id == household_id, Product.id.in_(product_ids))).all()}
+    contexts = {}
+    for product_id in sorted(product_ids):
+        product = products.get(product_id)
+        blocked, review, extra_ids = set(), set(), set()
+        label, mapping, usable = current_label_context(db, household_id, product) if product else (None, None, False)
+        if not usable:
+            review.add("product_allergen_label_not_reviewed")
+        else:
+            extra_ids.update(db.scalars(select(ProductIngredientMappingTarget.ingredient_id).where(
+                ProductIngredientMappingTarget.household_id == household_id,
+                ProductIngredientMappingTarget.product_id == product_id,
+                ProductIngredientMappingTarget.mapping_version == mapping.version)).all())
+            if set(label.declared_allergens) & restricted_codes:
+                blocked.add("product_label_allergen_conflict")
+            if set(label.possible_allergens) & restricted_codes:
+                review.add("product_label_possible_allergen")
+            for custom in label.custom_allergens:
+                if normalize_ingredient_name(custom) in custom_texts:
+                    blocked.add("product_label_custom_allergen_conflict")
+                resolution = resolve_ingredient(db, display_name=custom)
+                if resolution.ingredient:
+                    extra_ids.add(resolution.ingredient.id)
+                else:
+                    review.add("product_label_custom_ingredient_unresolved")
+            if not label.composition_known:
+                review.add("product_label_composition_unknown")
+        contexts[product_id] = (extra_ids, blocked, review, usable and label.composition_known)
+    result = {}
+    for line in availability.requirements:
+        if line.ingredient_id is None:
+            continue
+        extra_ids, blocked, review, full = result.get(line.ingredient_id, (set(), set(), set(), True))
+        full = full and line.status == "full" and bool(line.covered_batch_ids)
+        for batch_id in line.covered_batch_ids:
+            batch = batches.get(batch_id)
+            if batch is None or batch.product_id not in contexts:
+                review.add("product_allergen_label_not_reviewed")
+                full = False
+                continue
+            targets, label_blocked, label_review, complete = contexts[batch.product_id]
+            extra_ids.update(targets)
+            blocked.update(label_blocked)
+            review.update(label_review)
+            full = full and complete
+        result[line.ingredient_id] = (extra_ids, blocked, review, full)
+    return result
+
+
 def evaluate_food_safety(db: Session, household_id: int, request: FoodSafetyRequest) -> FoodSafetyRead:
     member_ids = set(db.scalars(select(HouseholdMembership.user_id).join(User, User.id == HouseholdMembership.user_id)
         .where(HouseholdMembership.household_id == household_id, User.is_active.is_(True))).all())
@@ -78,6 +136,11 @@ def evaluate_food_safety(db: Session, household_id: int, request: FoodSafetyRequ
     if "gluten_free" in diets:
         allergen_codes.add("wheat")
         global_review.add("gluten_free_requires_label_review")
+    restricted_codes = set(allergen_codes)
+    if "vegetarian" in diets or "vegan" in diets:
+        restricted_codes.update({"fish", "crustacean_shellfish"})
+    if "vegan" in diets:
+        restricted_codes.update({"milk", "egg"})
 
     requirements = list(request.requirements)
     for substitution in request.substitutions:
@@ -87,7 +150,8 @@ def evaluate_food_safety(db: Session, household_id: int, request: FoodSafetyRequ
     availability_request = RecipeAvailabilityRequest(recipe_servings=request.recipe_servings,
         servings=request.servings, requirements=requirements)
     availability = calculate_availability(db, household_id, availability_request)
-    stock_backed = {line.ingredient_id for line in availability.requirements if line.covered_batch_ids}
+    stock_labels = _stock_labels(db, household_id, availability, restricted_codes,
+        {normalize_ingredient_name(item.custom_text) for item in declarations if item.custom_text})
 
     edges, associations = defaultdict(list), defaultdict(list)
     for edge in db.scalars(select(IngredientDerivative).order_by(IngredientDerivative.id)).all():
@@ -104,8 +168,16 @@ def evaluate_food_safety(db: Session, household_id: int, request: FoodSafetyRequ
         if ingredient is None:
             review.add("ingredient_unresolved_or_ambiguous")
         else:
-            certain, uncertain, graph_review = _ancestry(ingredient.id, edges)
-            review.update(graph_review)
+            extra_ids, label_blocked, label_review, fully_labeled = stock_labels.get(ingredient.id, (set(), set(), set(), False))
+            blocked.update(label_blocked)
+            review.update(label_review)
+            certain, uncertain = set(), set()
+            for root in sorted(extra_ids | {ingredient.id}):
+                confirmed, possible, graph_review = _ancestry(root, edges)
+                certain.update(confirmed)
+                uncertain.update(possible)
+                review.update(graph_review)
+            uncertain -= certain
             if certain & excluded:
                 blocked.add("ingredient_exclusion_conflict")
             if certain & custom_ids:
@@ -114,7 +186,10 @@ def evaluate_food_safety(db: Session, household_id: int, request: FoodSafetyRequ
                 review.add("possible_ingredient_conflict")
             for node in sorted(certain | uncertain):
                 for association in associations.get(node, []):
-                    if association.allergen_code not in allergen_codes:
+                    if association.allergen_code not in restricted_codes:
+                        continue
+                    if association.relation == "POSSIBLE" and fully_labeled:
+                        # Exact reviewed package declarations replace generic possibilities.
                         continue
                     if (node in certain and association.checked_at is not None
                             and association.evidence_reference.strip() and association.relation in {"DIRECT", "DERIVATIVE"}):
@@ -135,13 +210,13 @@ def evaluate_food_safety(db: Session, household_id: int, request: FoodSafetyRequ
                 blocked.add("dietary_restriction_conflict")
             if "halal" in diets and animal:
                 review.add("halal_certification_not_provided")
-            if ingredient.family not in _SIMPLE_FAMILIES or ingredient.family in _COMPLEX_FAMILIES or uncertain:
+            unknown_family = any(ingredients[node].family not in _SIMPLE_FAMILIES | _COMPLEX_FAMILIES
+                for node in certain if node in ingredients)
+            complex_family = any(ingredients[node].family in _COMPLEX_FAMILIES for node in certain if node in ingredients)
+            if unknown_family or uncertain or (complex_family and not fully_labeled):
                 review.add("ingredient_composition_requires_review")
             if "no_pork" in diets and meat and not names & _MEAT_NAMES:
                 review.add("meat_origin_requires_review")
-            if ingredient.id in stock_backed:
-                # Quantity mappings are explicitly not allergen-label evidence.
-                review.add("product_allergen_label_not_reviewed")
         line = IngredientSafetyRead(requirement_index=index, ingredient_id=ingredient.id if ingredient else None,
             decision=_decision(blocked, review), reasons=sorted(blocked | review))
         lines.append(line)
