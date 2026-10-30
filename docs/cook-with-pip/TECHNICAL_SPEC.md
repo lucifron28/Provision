@@ -42,6 +42,32 @@ This is the engineering contract for an agent to implement phases P0–P8 increm
 
 ## 3. Data model sketch + constraints
 
+### Backend implementation decisions, 2026-10-30
+
+Implementation is in progress. These decisions define the P0 contract; they
+are not completion evidence.
+
+- Products are household-owned, including barcode uniqueness. Scanner create,
+  lookup, edit and delete keep their existing route shapes. This avoids exposing
+  custom product names or permitting edits to another household's catalog.
+- New accounts receive a private household and owner membership atomically.
+  An optional household context must pass a membership check. Client body IDs
+  never grant access. Related product, location, batch and session references
+  must belong to the same household.
+- Existing rows without ownership evidence move into a restricted legacy
+  household without memberships. Existing accounts receive private households.
+  An operator must verify ownership before granting legacy access. Demo seeding
+  explicitly owns its demo household and may only reset that household's data.
+- Privacy consent defaults off and records a notice version. Granting consent
+  does not enable DeepSeek. Future sharing requires current consent from every
+  active household member whose household data would be shared.
+- Account deletion reauthenticates and removes access while preserving shared
+  inventory history. A sole owner with remaining members must transfer ownership
+  first. An inactive anonymized account tombstone prevents email-subject tokens
+  from reviving deleted accounts after email reuse.
+- SwiftUI household cache keys, pending intake account binding, privacy screens
+  and device acceptance remain Mac-dependent TODOs until implemented and tested.
+
 All table names proposed; write Alembic migrations with explicit indexes, uniqueness, FK behavior, downgrade and demo migration.
 
 | Table | Key fields / constraints |
