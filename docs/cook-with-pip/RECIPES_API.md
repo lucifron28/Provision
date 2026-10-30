@@ -76,6 +76,12 @@ An evaluation provides `expected_recipe_revision`, desired `servings`, optional
 `diner_user_ids` and optional indexed `substitutions`. The backend loads the
 stored recipe requirements. Client-supplied shortages or replacement requirement
 lists are rejected. Every substitution re-runs full meal safety and availability.
+Replacement amounts describe the base recipe servings and scale with the meal.
+`include_optional` defaults to true. Explicitly setting it to false omits optional
+ingredients before safety evaluation. Substitution indexes always refer to the
+original stored recipe; `included_requirement_indexes` maps the resulting meal
+back to those indexes. An omitted ingredient cannot be used as evidence of a
+conflict in the chosen meal.
 Viewing or evaluating a recipe never consumes inventory.
 
 Saving requires `expected_recipe_revision` and, after the first save, the current

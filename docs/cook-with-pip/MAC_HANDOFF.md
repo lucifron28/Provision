@@ -40,6 +40,11 @@ navigation while implementing them.
   separately deferred provider milestone is authorized with credentials.
 - Implement shopping preview, reviewed edits and explicit confirmation. Handle
   stale previews by requesting review again and retries with the same key.
+  Follow [the recipe shopping contract](RECIPE_SHOPPING_API.md), including
+  explicit duplicate consolidation, six-place decimal quantities, omitted
+  optional ingredients and refreshing the shopping list after confirmation.
+  Keep a retry's exact payload and idempotency key. A changed selection requires
+  a new key and a current preview.
 - Implement saved recipes, weekly plans, cooking confirmation and leftovers
   against the final backend contracts. Viewing or completing a recipe screen
   must not consume inventory automatically.

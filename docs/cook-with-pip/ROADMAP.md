@@ -112,8 +112,9 @@ candidate records, dated review evidence, audit history, exact host policy,
 household link references, source-aware recommendation gates and offline query
 planning. Two Luna executors added URL-security, policy, CLI and concurrency
 coverage. Local PostgreSQL verification recorded **469 passed, one optional-file
-skip**, migration upgrade/downgrade tests and no Alembic drift. CI for this source
-implementation is pending. The four real publisher candidates remain disabled
+skip**, migration upgrade/downgrade tests and no Alembic drift. Backend and iOS
+[passed on `361b8f1`](https://github.com/lucifron28/Provision/actions/runs/41048291822).
+The four real publisher candidates remain disabled
 and unapproved. No live fetch, search, content extraction or image reuse is
 implemented or authorized by a registry flag.
 
@@ -175,6 +176,16 @@ The source-policy additions above have their own pending CI verification.
 - [ ] Gate: outputs grounded, validated, attributable, no unapproved API exposure; tests/CI green.
 
 ### P5 — "Add Missing Ingredients to Shopping List" (primary integrated milestone)
+
+The [recipe shopping contract](RECIPE_SHOPPING_API.md) is under implementation
+and review by two Luna executors. It adds shared household write serialization,
+read-only snapshot previews and explicit idempotent confirmation. Local migration
+tests and schema-drift verification pass. The final reviewed PostgreSQL suite
+recorded **503 passed, one optional historical-file skip**. Independent review
+found and corrected table-lock ordering, truncated alias matching, fingerprint
+credential fields and stale cached rows. Exact-head CI remains pending, and
+SwiftUI confirmation remains in the Mac handoff. This milestone stays unchecked
+until the relevant remaining gates pass.
 
 - [ ] Implement `POST /api/v1/recipe-shopping/preview` for recipe/version/servings and selected household: server recomputes current usable stock and requested quantities (never trust AI supplied shortages).
 - [ ] Compute shortage = `max(required - usable pantry, 0)`; for shopping reconciliation compare with **existing unbought** quantities by canonical ingredient/product and compatible unit, not fuzzy display text alone. Proposed shopping target = `max(existing_pending, shortage)`; delta = `max(shortage - existing_pending, 0)`. Distinguish existing item increase vs creation vs no-op.
