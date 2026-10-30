@@ -85,6 +85,21 @@ def test_duplicate_requirements_share_one_stock_pool(db, auth_household, auth_us
     assert line.required_amount == 12 and line.shortfall == 2
 
 
+def test_unknown_required_quantity_is_retained_and_never_becomes_full(db, auth_household, auth_user):
+    ingredient, _ = pantry(db, auth_household, auth_user)
+    req = request(ingredient, 1, "cup")
+    req.requirements.append(req.requirements[0].model_copy(update={"unit": "g", "required": False}))
+    result = calculate_availability(db, auth_household.id, req)
+    assert result.overall_status == "unknown"
+    assert len(result.requirements) == 2
+    required, optional = result.requirements
+    assert required.required is True and required.status == "unknown"
+    assert required.required_amount is None and required.shortfall is None
+    assert "unsupported_or_incompatible_requirement_unit" in required.unknown_reasons
+    assert optional.status == "unknown"
+    assert "required_demand_unknown_for_optional_coverage" in optional.unknown_reasons
+
+
 @pytest.mark.parametrize("amounts,units,expected", [
     (["3"], ["g"], "1"),
     (["1", "1", "1"], ["g", "g", "g"], "1"),

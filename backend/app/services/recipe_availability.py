@@ -423,7 +423,7 @@ def calculate_availability(
         entries = stock.get(ingredient_id, [])
         required_group = entry_groups.get(True)
         required_demand: Decimal | None = None
-        if required_group is not None and required_group.required_amount is not None:
+        if required_group is not None:
             required_demand = required_group.required_amount
             line, _ = _render_group(
                 required_group,
