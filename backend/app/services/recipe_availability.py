@@ -3,7 +3,7 @@
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, localcontext
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -52,11 +52,18 @@ def _normalized_unit(value: str | None) -> str | None:
     return " ".join(value.casefold().split())
 
 
+def _scale_amount(amount: Decimal, request: RecipeAvailabilityRequest) -> Decimal:
+    # Multiply before dividing so an exact result such as 3 * 1 / 3 stays exact.
+    # Fifty digits cover the bounded request fields, unit factors and line sums.
+    with localcontext() as context:
+        context.prec = 50
+        return amount * request.servings / request.recipe_servings
+
+
 def _group_requirements(
     db: Session,
     request: RecipeAvailabilityRequest,
 ) -> tuple[dict[tuple[int, bool], _RequirementGroup], list[_RequirementGroup]]:
-    scale = request.servings / request.recipe_servings
     groups: dict[tuple[int, bool], _RequirementGroup] = {}
     unresolved: list[_RequirementGroup] = []
 
@@ -72,7 +79,7 @@ def _group_requirements(
         if resolution.ingredient is None:
             try:
                 normalized = normalize_unit(requirement.unit)
-                amount = requirement.amount * scale
+                amount = _scale_amount(requirement.amount, request)
             except UnitConversionError:
                 normalized = None
                 amount = None
@@ -110,13 +117,15 @@ def _group_requirements(
                 group.unknown_reasons.append("unsupported_requirement_unit")
             continue
         try:
-            scaled = requirement.amount * scale
-            converted = convert_amount(scaled, requirement.unit, group.unit)
+            converted = convert_amount(requirement.amount, requirement.unit, group.unit)
             group.required_amount += converted
         except UnitConversionError:
             group.required_amount = None
             group.unknown_reasons.append("unsupported_or_incompatible_requirement_unit")
 
+    for group in groups.values():
+        if group.required_amount is not None:
+            group.required_amount = _scale_amount(group.required_amount, request)
     return groups, unresolved
 
 

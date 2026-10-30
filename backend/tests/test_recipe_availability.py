@@ -85,6 +85,23 @@ def test_duplicate_requirements_share_one_stock_pool(db, auth_household, auth_us
     assert line.required_amount == 12 and line.shortfall == 2
 
 
+@pytest.mark.parametrize("amounts,units,expected", [
+    (["3"], ["g"], "1"),
+    (["1", "1", "1"], ["g", "g", "g"], "1"),
+    (["0.001", "2"], ["kg", "g"], "1"),
+    (["9"], ["g"], "3"),
+])
+def test_fraction_servings_aggregate_before_division(db, auth_household, auth_user, amounts, units, expected):
+    ingredient, _ = pantry(db, auth_household, auth_user, quantity=float(expected))
+    req = RecipeAvailabilityRequest(recipe_servings=3, servings=1, requirements=[
+        dict(ingredient_id=ingredient.id, amount=amount, unit=unit)
+        for amount, unit in zip(amounts, units)
+    ])
+    line = calculate_availability(db, auth_household.id, req).requirements[0]
+    assert line.required_amount == Decimal(expected)
+    assert line.shortfall == 0 and line.status == "full"
+
+
 def test_optional_demand_uses_remaining_stock_and_does_not_block(db, auth_household, auth_user):
     ingredient, _ = pantry(db, auth_household, auth_user)
     req = request(ingredient, 8, "g")
@@ -93,6 +110,53 @@ def test_optional_demand_uses_remaining_stock_and_does_not_block(db, auth_househ
     assert result.overall_status == "full"
     assert result.requirements[1].available_amount == 2
     assert result.requirements[1].shortfall == 3
+
+
+def test_multiple_products_share_stock_in_expiry_order_without_foreign_batches(db, auth_household, auth_user):
+    from app.models.household import Household
+
+    ingredient, first = pantry(db, auth_household, auth_user, quantity=3, expiration=2)
+    second_product = Product(household_id=auth_household.id, name="Other rice brand", unit="kg")
+    other_household = Household(name="Private pantry", slug="private-pantry")
+    db.add_all([second_product, other_household])
+    db.flush()
+    mapping = ProductIngredientMapping(household_id=auth_household.id, product_id=second_product.id,
+        version=1, mode="DIRECT", ingredient_id=ingredient.id, verification_status="VERIFIED",
+        method="Reviewed label", unknown_composition=False, verified_by_user_id=auth_user.id,
+        verified_at=datetime.now(timezone.utc))
+    db.add(mapping)
+    db.flush()
+    db.add(ProductIngredientMappingTarget(household_id=auth_household.id, product_id=second_product.id,
+        mapping_version=1, ingredient_id=ingredient.id))
+    second = InventoryBatch(household_id=auth_household.id, product_id=second_product.id,
+        original_quantity=0.02, remaining_quantity=0.02, expiration_date=household_today())
+    expired = InventoryBatch(household_id=auth_household.id, product_id=second_product.id,
+        original_quantity=100, remaining_quantity=100, expiration_date=household_today()-timedelta(days=1))
+    foreign_product = Product(household_id=other_household.id, name="Private rice", unit="g")
+    db.add_all([second, expired, foreign_product])
+    db.flush()
+    db.add(InventoryBatch(household_id=other_household.id, product_id=foreign_product.id,
+        original_quantity=500, remaining_quantity=500))
+    db.commit()
+
+    result = calculate_availability(db, auth_household.id, request(ingredient, 24, "g"))
+    line = result.requirements[0]
+    assert line.available_amount == 23 and line.shortfall == 1
+    assert line.covered_batch_ids == [second.id, first.id]
+    assert result.overall_status == "partial"
+    assert first.remaining_quantity == 3 and second.remaining_quantity == Decimal("0.02")
+    assert not db.new and not db.dirty and not db.deleted
+
+
+def test_package_factor_becomes_unknown_after_inventory_unit_changes(db, auth_household, auth_user):
+    ingredient, batch = pantry(db, auth_household, auth_user, unit="bag", factor=("500", "g"))
+    product = db.get(Product, batch.product_id)
+    product.unit = "box"
+    db.commit()
+    line = calculate_availability(db, auth_household.id, request(ingredient, 1, "g")).requirements[0]
+    assert line.status == "unknown" and line.shortfall is None
+    assert line.available_amount == 0
+    assert "unknown_or_incompatible_product_unit" in line.unknown_reasons
 
 
 def test_composite_requires_explicit_component_quantities(client, db, auth_household):
