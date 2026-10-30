@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from app.core.database import get_db
-from app.api.v1.dependencies import get_current_household_id
+from app.api.v1.dependencies import get_current_household_id, get_current_household_id_for_write
 from app.models.batch import InventoryBatch
 from app.models.event import InventoryEvent, EventType
 from app.schemas.event import (
@@ -23,7 +23,7 @@ router = APIRouter()
 @router.post("/consume", response_model=ConsumeResponse)
 def consume_product(
     req: ConsumeRequest,
-    household_id: int = Depends(get_current_household_id),
+    household_id: int = Depends(get_current_household_id_for_write),
     db: Session = Depends(get_db),
 ):
     try:
@@ -38,7 +38,7 @@ def consume_product(
 def discard_batch(
     batch_id: int,
     req: DiscardRequest,
-    household_id: int = Depends(get_current_household_id),
+    household_id: int = Depends(get_current_household_id_for_write),
     db: Session = Depends(get_db),
 ):
     try:
@@ -53,7 +53,7 @@ def discard_batch(
 def adjust_batch(
     batch_id: int,
     req: AdjustmentRequest,
-    household_id: int = Depends(get_current_household_id),
+    household_id: int = Depends(get_current_household_id_for_write),
     db: Session = Depends(get_db),
 ):
     try:

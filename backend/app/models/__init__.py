@@ -13,6 +13,7 @@ from app.models.allergens import IngredientAllergen, IngredientDerivative
 from app.models.product_label import ProductAllergenLabel
 from app.models.recipe import Recipe, RecipeIngredient, RecipeRevision, SavedRecipe
 from app.models.recipe_source import RecipeSource, RecipeSourceReference, RecipeSourceReview
+from app.models.recipe_shopping import RecipeShoppingIdempotency
 from app.models.ingredient import (
     Ingredient,
     IngredientAlias,
@@ -50,6 +51,7 @@ __all__ = [
     "RecipeSource",
     "RecipeSourceReference",
     "RecipeSourceReview",
+    "RecipeShoppingIdempotency",
     "Ingredient",
     "IngredientAlias",
     "ProductIngredientMapping",

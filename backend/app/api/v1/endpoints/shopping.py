@@ -4,10 +4,13 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select, func, and_
 
 from app.core.database import get_db
-from app.api.v1.dependencies import get_current_household_id
+from app.api.v1.dependencies import get_current_household_id, get_current_household_id_for_write
 from app.models.shopping import ShoppingListItem
 from app.models.product import Product
 from app.models.batch import InventoryBatch
+from app.models.ingredient import Ingredient
+from app.models.recipe import Recipe
+from app.services.household_writes import bump_shopping_revision
 from app.schemas.shopping import (
     ShoppingListItemCreate,
     ShoppingListItemUpdate,
@@ -44,19 +47,19 @@ def list_shopping_items(
 @router.post("/", response_model=ShoppingListItemRead, status_code=status.HTTP_201_CREATED)
 def add_shopping_item(
     item_in: ShoppingListItemCreate,
-    household_id: int = Depends(get_current_household_id),
+    household_id: int = Depends(get_current_household_id_for_write),
     db: Session = Depends(get_db),
 ):
     product = None
     item_name = item_in.name
     unit = item_in.unit
 
-    if item_in.product_id:
+    if item_in.product_id is not None:
         product = db.scalar(
             select(Product).where(
                 Product.id == item_in.product_id,
                 Product.household_id == household_id,
-            )
+            ).execution_options(populate_existing=True)
         )
         if not product:
             raise HTTPException(
@@ -74,9 +77,35 @@ def add_shopping_item(
             detail="Item name is required when product_id is not provided",
         )
 
+    if item_in.ingredient_id is not None:
+        ingredient = db.scalar(
+            select(Ingredient).where(
+                Ingredient.id == item_in.ingredient_id,
+                Ingredient.is_active.is_(True),
+            ).execution_options(populate_existing=True)
+        )
+        if ingredient is None:
+            raise HTTPException(status_code=422, detail="Ingredient is not active")
+
+    origin_recipe_revision = None
+    if item_in.origin_recipe_id is not None:
+        recipe = db.scalar(
+            select(Recipe).where(
+                Recipe.id == item_in.origin_recipe_id,
+                Recipe.household_id == household_id,
+                Recipe.is_active.is_(True),
+            ).execution_options(populate_existing=True)
+        )
+        if recipe is None:
+            raise HTTPException(status_code=404, detail="Origin recipe not found")
+        origin_recipe_revision = recipe.revision
+
     item = ShoppingListItem(
         household_id=household_id,
         product_id=item_in.product_id,
+        ingredient_id=item_in.ingredient_id,
+        origin_recipe_id=item_in.origin_recipe_id,
+        origin_recipe_revision=origin_recipe_revision,
         name=item_name,
         quantity=item_in.quantity,
         unit=unit,
@@ -84,6 +113,7 @@ def add_shopping_item(
         is_bought=False,
     )
     db.add(item)
+    bump_shopping_revision(db, household_id)
     db.commit()
     db.refresh(item)
 
@@ -94,6 +124,7 @@ def add_shopping_item(
             ShoppingListItem.id == item.id,
             ShoppingListItem.household_id == household_id,
         )
+        .execution_options(populate_existing=True)
     )
     return db.scalar(stmt)
 
@@ -111,6 +142,7 @@ def get_shopping_item(
             ShoppingListItem.id == item_id,
             ShoppingListItem.household_id == household_id,
         )
+        .execution_options(populate_existing=True)
     )
     item = db.scalar(stmt)
     if not item:
@@ -125,7 +157,7 @@ def get_shopping_item(
 def update_shopping_item(
     item_id: int,
     item_in: ShoppingListItemUpdate,
-    household_id: int = Depends(get_current_household_id),
+    household_id: int = Depends(get_current_household_id_for_write),
     db: Session = Depends(get_db),
 ):
     stmt = (
@@ -135,6 +167,7 @@ def update_shopping_item(
             ShoppingListItem.id == item_id,
             ShoppingListItem.household_id == household_id,
         )
+        .execution_options(populate_existing=True)
     )
     item = db.scalar(stmt)
     if not item:
@@ -149,7 +182,7 @@ def update_shopping_item(
             select(Product).where(
                 Product.id == update_data["product_id"],
                 Product.household_id == household_id,
-            )
+            ).execution_options(populate_existing=True)
         )
         if not product:
             raise HTTPException(
@@ -157,9 +190,37 @@ def update_shopping_item(
                 detail=f"Product with ID {update_data['product_id']} not found",
             )
 
+    if "ingredient_id" in update_data and update_data["ingredient_id"] is not None:
+        ingredient = db.scalar(
+            select(Ingredient).where(
+                Ingredient.id == update_data["ingredient_id"],
+                Ingredient.is_active.is_(True),
+            ).execution_options(populate_existing=True)
+        )
+        if ingredient is None:
+            raise HTTPException(status_code=422, detail="Ingredient is not active")
+
+    if "origin_recipe_id" in update_data:
+        if update_data["origin_recipe_id"] is None:
+            update_data["origin_recipe_revision"] = None
+        else:
+            recipe = db.scalar(
+                select(Recipe).where(
+                    Recipe.id == update_data["origin_recipe_id"],
+                    Recipe.household_id == household_id,
+                    Recipe.is_active.is_(True),
+                ).execution_options(populate_existing=True)
+            )
+            if recipe is None:
+                raise HTTPException(status_code=404, detail="Origin recipe not found")
+            update_data["origin_recipe_revision"] = recipe.revision
+
+    changed = any(getattr(item, field) != value for field, value in update_data.items())
     for field, value in update_data.items():
         setattr(item, field, value)
 
+    if changed:
+        bump_shopping_revision(db, household_id)
     db.commit()
     db.refresh(item)
     return item
@@ -168,7 +229,7 @@ def update_shopping_item(
 @router.post("/{item_id}/toggle", response_model=ShoppingListItemRead)
 def toggle_item_bought_status(
     item_id: int,
-    household_id: int = Depends(get_current_household_id),
+    household_id: int = Depends(get_current_household_id_for_write),
     db: Session = Depends(get_db),
 ):
     stmt = (
@@ -178,6 +239,7 @@ def toggle_item_bought_status(
             ShoppingListItem.id == item_id,
             ShoppingListItem.household_id == household_id,
         )
+        .execution_options(populate_existing=True)
     )
     item = db.scalar(stmt)
     if not item:
@@ -186,6 +248,7 @@ def toggle_item_bought_status(
             detail=f"Shopping list item with ID {item_id} not found",
         )
     item.is_bought = not item.is_bought
+    bump_shopping_revision(db, household_id)
     db.commit()
     db.refresh(item)
     return item
@@ -194,7 +257,7 @@ def toggle_item_bought_status(
 @router.post("/generate-from-low-stock", response_model=List[ShoppingListItemRead])
 def generate_from_low_stock(
     req: AutoGenerateShoppingRequest = AutoGenerateShoppingRequest(),
-    household_id: int = Depends(get_current_household_id),
+    household_id: int = Depends(get_current_household_id_for_write),
     db: Session = Depends(get_db),
 ):
     """
@@ -223,6 +286,7 @@ def generate_from_low_stock(
         )
         .outerjoin(stock_subq, Product.id == stock_subq.c.product_id)
         .where(Product.household_id == household_id)
+        .execution_options(populate_existing=True)
     )
 
     results = db.execute(stmt).all()
@@ -236,7 +300,7 @@ def generate_from_low_stock(
                     ShoppingListItem.product_id == product.id,
                     ShoppingListItem.household_id == household_id,
                     ShoppingListItem.is_bought.is_(False),
-                )
+                ).execution_options(populate_existing=True)
             )
             if not already_listed:
                 new_item = ShoppingListItem(
@@ -252,6 +316,7 @@ def generate_from_low_stock(
                 created_items.append(new_item)
 
     if created_items:
+        bump_shopping_revision(db, household_id)
         db.commit()
         for item in created_items:
             db.refresh(item)
@@ -273,18 +338,20 @@ def generate_from_low_stock(
 
 @router.delete("/completed/clear", status_code=status.HTTP_200_OK)
 def clear_completed_items(
-    household_id: int = Depends(get_current_household_id),
+    household_id: int = Depends(get_current_household_id_for_write),
     db: Session = Depends(get_db),
 ):
     items = db.scalars(
         select(ShoppingListItem).where(
             ShoppingListItem.household_id == household_id,
             ShoppingListItem.is_bought.is_(True),
-        )
+        ).execution_options(populate_existing=True)
     ).all()
     count = len(items)
     for item in items:
         db.delete(item)
+    if count:
+        bump_shopping_revision(db, household_id)
     db.commit()
     return {"message": f"Successfully removed {count} completed item(s)"}
 
@@ -292,14 +359,14 @@ def clear_completed_items(
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_shopping_item(
     item_id: int,
-    household_id: int = Depends(get_current_household_id),
+    household_id: int = Depends(get_current_household_id_for_write),
     db: Session = Depends(get_db),
 ):
     item = db.scalar(
         select(ShoppingListItem).where(
             ShoppingListItem.id == item_id,
             ShoppingListItem.household_id == household_id,
-        )
+        ).execution_options(populate_existing=True)
     )
     if not item:
         raise HTTPException(
@@ -307,5 +374,6 @@ def delete_shopping_item(
             detail=f"Shopping list item with ID {item_id} not found",
         )
     db.delete(item)
+    bump_shopping_revision(db, household_id)
     db.commit()
     return None

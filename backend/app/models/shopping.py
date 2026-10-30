@@ -1,5 +1,6 @@
+from decimal import Decimal
 from typing import Optional, TYPE_CHECKING
-from sqlalchemy import ForeignKey, ForeignKeyConstraint, Integer, String, Numeric, Boolean, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, ForeignKey, ForeignKeyConstraint, Integer, String, Numeric, Boolean, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
 
@@ -17,6 +18,17 @@ class ShoppingListItem(Base, TimestampMixin):
             name="fk_shopping_items_household_product",
             ondelete="SET NULL (product_id)",
         ),
+        ForeignKeyConstraint(
+            ["household_id", "origin_recipe_id", "origin_recipe_revision"],
+            ["recipe_revisions.household_id", "recipe_revisions.recipe_id", "recipe_revisions.revision"],
+            name="fk_shopping_items_household_recipe_revision",
+            ondelete="SET NULL (origin_recipe_id, origin_recipe_revision)",
+        ),
+        CheckConstraint(
+            "(origin_recipe_id IS NULL AND origin_recipe_revision IS NULL) OR "
+            "(origin_recipe_id IS NOT NULL AND origin_recipe_revision IS NOT NULL)",
+            name="ck_shopping_items_origin_recipe_pair",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -24,10 +36,15 @@ class ShoppingListItem(Base, TimestampMixin):
         ForeignKey("households.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     product_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    ingredient_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("ingredients.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    origin_recipe_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    origin_recipe_revision: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # In case the user writes an item before linking a product
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    quantity: Mapped[float] = mapped_column(Numeric(10, 2), default=1.0, nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(14, 6), default=Decimal("1"), nullable=False)
     unit: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     is_bought: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

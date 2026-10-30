@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.v1.dependencies import get_current_household_id
+from app.api.v1.dependencies import get_current_household_id, get_current_household_id_for_write
 from app.api.v1.endpoints.auth import get_current_user
 from app.core.database import get_db
 from app.models.ingredient import Ingredient, ProductIngredientMapping, ProductIngredientMappingTarget, ProductPackageFactor
@@ -17,6 +17,7 @@ from app.schemas.ingredients import (
 from app.services.ingredient_matching import lookup_ingredients
 from app.services.recipe_availability import calculate_availability
 from app.services.units import UnitConversionError, convert_amount
+from app.services.household_writes import bump_inventory_revision, lock_household_write
 
 router = APIRouter()
 
@@ -76,8 +77,9 @@ def get_mapping(product_id: int, household_id: int = Depends(get_current_househo
 
 @router.put("/products/{product_id}/mapping", response_model=ProductIngredientMappingRead)
 def put_mapping(product_id: int, request: ProductIngredientMappingUpsert,
-                household_id: int = Depends(get_current_household_id),
+                household_id: int = Depends(get_current_household_id_for_write),
                 user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    lock_household_write(db, household_id, actor_id=user.id)
     product = _product(db, household_id, product_id, lock=True)
     current = _current(db, household_id, product_id)
     if request.expected_version != (current.version if current else None):
@@ -116,6 +118,7 @@ def put_mapping(product_id: int, request: ProductIngredientMappingUpsert,
     for factor in request.package_factors:
         db.add(ProductPackageFactor(household_id=household_id, product_id=product_id,
             mapping_version=mapping.version, **factor.model_dump(), verified_by_user_id=user.id, verified_at=now))
+    bump_inventory_revision(db, household_id)
     db.commit()
     db.refresh(mapping)
     return _read(db, mapping)

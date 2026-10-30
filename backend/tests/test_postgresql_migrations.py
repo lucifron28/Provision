@@ -10,7 +10,7 @@ from database_safety import create_owned_test_schema, drop_owned_test_schema
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "aa812f04d937"
+EXPECTED_HEAD = "c7f2e19d4a63"
 
 
 @pytest.fixture
@@ -91,6 +91,7 @@ def test_postgresql18_migrations_upgrade_head_and_downgrade_base(migration_schem
             "recipe_sources",
             "recipe_source_reviews",
             "recipe_source_references",
+            "recipe_shopping_idempotency",
             "products",
             "storage_locations",
             "grocery_sessions",
@@ -232,5 +233,34 @@ def test_downgrade_with_cross_household_duplicate_barcode_refuses_before_writes(
             assert connection.execute(
                 text("SELECT count(*) FROM products WHERE barcode = 'same-barcode'")
             ).scalar_one() == 2
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("quantity,revision,reason", [
+    ("1.000001", 0, "Numeric(10,2) precision"),
+    ("1.00", 1, "revisions would be lost"),
+])
+def test_recipe_shopping_downgrade_refuses_data_loss(migration_schema, quantity, revision, reason):
+    engine = create_engine(migration_schema.scoped_url, pool_pre_ping=True)
+    try:
+        _run_alembic(migration_schema, "upgrade", "head")
+        with engine.begin() as connection:
+            household_id = connection.execute(text("SELECT id FROM households WHERE slug='legacy-quarantine'")).scalar_one()
+            connection.execute(text("UPDATE households SET shopping_revision=:revision WHERE id=:household_id"),
+                dict(revision=revision, household_id=household_id))
+            connection.execute(text("""INSERT INTO shopping_list_items
+                (household_id, name, quantity, unit, is_bought)
+                VALUES (:household_id, 'Keep precision', :quantity, 'g', false)"""),
+                dict(household_id=household_id, quantity=quantity))
+        result = _alembic_result(migration_schema, "downgrade", "aa812f04d937")
+        assert result.returncode != 0 and reason in result.stderr
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == EXPECTED_HEAD
+            assert str(connection.execute(text("SELECT quantity FROM shopping_list_items")).scalar_one()) == (
+                "1.000001" if revision == 0 else "1.000000")
+            assert connection.execute(text("SELECT shopping_revision FROM households WHERE id=:id"),
+                dict(id=household_id)).scalar_one() == revision
+        assert "recipe_shopping_idempotency" in inspect(engine).get_table_names(schema=migration_schema.schema)
     finally:
         engine.dispose()

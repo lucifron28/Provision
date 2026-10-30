@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select, nulls_last, func
 
 from app.core.database import get_db
-from app.api.v1.dependencies import get_current_household_id
+from app.api.v1.dependencies import get_current_household_id, get_current_household_id_for_write
 from app.models.batch import InventoryBatch
 from app.models.product import Product
 from app.models.location import StorageLocation
@@ -17,6 +17,7 @@ from app.schemas.batch import (
     InventoryBatchRead,
     InventoryBatchWithDetails,
 )
+from app.services.household_writes import bump_inventory_revision
 
 router = APIRouter()
 
@@ -67,7 +68,7 @@ def list_batches(
 @router.post("/", response_model=InventoryBatchWithDetails, status_code=status.HTTP_201_CREATED)
 def create_batch(
     batch_in: InventoryBatchCreate,
-    household_id: int = Depends(get_current_household_id),
+    household_id: int = Depends(get_current_household_id_for_write),
     db: Session = Depends(get_db),
 ):
     # Verify Product exists
@@ -75,7 +76,7 @@ def create_batch(
         select(Product).where(
             Product.id == batch_in.product_id,
             Product.household_id == household_id,
-        )
+        ).execution_options(populate_existing=True)
     )
     if not product:
         raise HTTPException(
@@ -89,7 +90,7 @@ def create_batch(
             select(StorageLocation).where(
                 StorageLocation.id == batch_in.storage_location_id,
                 StorageLocation.household_id == household_id,
-            )
+            ).execution_options(populate_existing=True)
         )
         if not location:
             raise HTTPException(
@@ -103,7 +104,7 @@ def create_batch(
             select(GrocerySession).where(
                 GrocerySession.id == batch_in.grocery_session_id,
                 GrocerySession.household_id == household_id,
-            )
+            ).execution_options(populate_existing=True)
         )
         if not session:
             raise HTTPException(
@@ -136,6 +137,7 @@ def create_batch(
         reason="Initial purchase intake",
     )
     db.add(purchase_event)
+    bump_inventory_revision(db, household_id)
     db.commit()
 
     # Reload with relationships
@@ -183,7 +185,7 @@ def get_batch(
 def update_batch(
     batch_id: int,
     batch_in: InventoryBatchUpdate,
-    household_id: int = Depends(get_current_household_id),
+    household_id: int = Depends(get_current_household_id_for_write),
     db: Session = Depends(get_db),
 ):
     stmt = (
@@ -196,6 +198,7 @@ def update_batch(
             InventoryBatch.id == batch_id,
             InventoryBatch.household_id == household_id,
         )
+        .execution_options(populate_existing=True)
     )
     batch = db.scalar(stmt)
     if not batch:
@@ -211,7 +214,7 @@ def update_batch(
             select(StorageLocation).where(
                 StorageLocation.id == update_data["storage_location_id"],
                 StorageLocation.household_id == household_id,
-            )
+            ).execution_options(populate_existing=True)
         )
         if not location:
             raise HTTPException(
@@ -219,9 +222,12 @@ def update_batch(
                 detail=f"Storage location with ID {update_data['storage_location_id']} not found",
             )
 
+    changed = any(getattr(batch, field) != value for field, value in update_data.items())
     for field, value in update_data.items():
         setattr(batch, field, value)
 
+    if changed:
+        bump_inventory_revision(db, household_id)
     db.commit()
     db.refresh(batch)
     return batch
@@ -230,14 +236,14 @@ def update_batch(
 @router.delete("/{batch_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_batch(
     batch_id: int,
-    household_id: int = Depends(get_current_household_id),
+    household_id: int = Depends(get_current_household_id_for_write),
     db: Session = Depends(get_db),
 ):
     batch = db.scalar(
         select(InventoryBatch).where(
             InventoryBatch.id == batch_id,
             InventoryBatch.household_id == household_id,
-        )
+        ).execution_options(populate_existing=True)
     )
     if not batch:
         raise HTTPException(
@@ -260,5 +266,6 @@ def delete_batch(
         )
 
     db.delete(batch)
+    bump_inventory_revision(db, household_id)
     db.commit()
     return None

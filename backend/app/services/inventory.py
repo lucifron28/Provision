@@ -15,6 +15,7 @@ from app.schemas.event import (
     DiscardRequest,
     AdjustmentRequest,
 )
+from app.services.household_writes import bump_inventory_revision, lock_household_write
 
 
 class InventoryService:
@@ -27,11 +28,12 @@ class InventoryService:
         Prefers batches with the earliest expiration date.
         If expiration date is null or identical, tie-breaks by purchased_at ASC.
         """
+        lock_household_write(db, household_id)
         product = db.scalar(
             select(Product).where(
                 Product.id == req.product_id,
                 Product.household_id == household_id,
-            )
+            ).execution_options(populate_existing=True)
         )
         if not product:
             raise ValueError(f"Product with ID {req.product_id} not found")
@@ -49,6 +51,7 @@ class InventoryService:
                 InventoryBatch.purchased_at.asc(),
                 InventoryBatch.id.asc(),
             )
+            .execution_options(populate_existing=True)
         )
         active_batches = db.scalars(stmt).all()
 
@@ -93,6 +96,7 @@ class InventoryService:
                 )
             )
 
+        bump_inventory_revision(db, household_id)
         db.commit()
 
         # Calculate new total stock
@@ -114,11 +118,12 @@ class InventoryService:
         Discards the entire remaining contents of a batch (e.g. spoilage, past expiration).
         Records a DISCARDED or EXPIRED event.
         """
+        lock_household_write(db, household_id)
         batch = db.scalar(
             select(InventoryBatch).where(
                 InventoryBatch.id == batch_id,
                 InventoryBatch.household_id == household_id,
-            )
+            ).execution_options(populate_existing=True)
         )
         if not batch:
             raise ValueError(f"Inventory batch with ID {batch_id} not found")
@@ -144,6 +149,7 @@ class InventoryService:
             notes=req.notes,
         )
         db.add(event)
+        bump_inventory_revision(db, household_id)
         db.commit()
         db.refresh(batch)
         return batch
@@ -155,11 +161,12 @@ class InventoryService:
         """
         Performs an inventory reconciliation count adjustment and logs the discrepancy.
         """
+        lock_household_write(db, household_id)
         batch = db.scalar(
             select(InventoryBatch).where(
                 InventoryBatch.id == batch_id,
                 InventoryBatch.household_id == household_id,
-            )
+            ).execution_options(populate_existing=True)
         )
         if not batch:
             raise ValueError(f"Inventory batch with ID {batch_id} not found")
@@ -179,6 +186,7 @@ class InventoryService:
             notes=req.notes,
         )
         db.add(event)
+        bump_inventory_revision(db, household_id)
         db.commit()
         db.refresh(batch)
         return batch

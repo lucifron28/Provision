@@ -2,6 +2,7 @@ import enum
 
 from sqlalchemy import (
     Boolean,
+    BigInteger,
     CheckConstraint,
     ForeignKey,
     Index,
@@ -25,6 +26,12 @@ class Household(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     slug: Mapped[str] = mapped_column(String(120), unique=True, index=True, nullable=False)
+    shopping_revision: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default=text("0")
+    )
+    inventory_revision: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default=text("0")
+    )
 
     memberships: Mapped[list["HouseholdMembership"]] = relationship(
         "HouseholdMembership", back_populates="household", cascade="all, delete-orphan"

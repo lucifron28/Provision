@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
-from app.api.v1.dependencies import get_current_household_id
+from app.api.v1.dependencies import get_current_household_id, get_current_household_id_for_write
 from app.core.database import get_db
 from app.schemas.food_safety import FoodSafetyRead, FoodSafetyRequest
 from app.services.allergen_policy import evaluate_food_safety
@@ -9,6 +9,7 @@ from app.api.v1.endpoints.auth import get_current_user
 from app.models.user import User
 from app.schemas.product_label import ProductLabelInput, ProductLabelRead
 from app.services.product_labels import read_label, write_label, revoke_label
+from app.services.household_writes import bump_inventory_revision
 
 router = APIRouter()
 
@@ -29,15 +30,17 @@ def get_label(product_id: int, response: Response, household_id: int = Depends(g
 
 @router.put("/products/{product_id}/label", response_model=ProductLabelRead)
 def put_label(product_id: int, request: ProductLabelInput, response: Response,
-              household_id: int = Depends(get_current_household_id), user: User = Depends(get_current_user),
+              household_id: int = Depends(get_current_household_id_for_write), user: User = Depends(get_current_user),
               db: Session = Depends(get_db)):
     response.headers["Cache-Control"] = "no-store"
+    bump_inventory_revision(db, household_id)
     return write_label(db, household_id, product_id, user.id, request)
 
 
 @router.delete("/products/{product_id}/label", status_code=204)
 def delete_label(product_id: int, expected_revision: int = Query(ge=1),
-                 household_id: int = Depends(get_current_household_id), user: User = Depends(get_current_user),
+                 household_id: int = Depends(get_current_household_id_for_write), user: User = Depends(get_current_user),
                  db: Session = Depends(get_db)):
+    bump_inventory_revision(db, household_id)
     revoke_label(db, household_id, product_id, user.id, expected_revision)
     return Response(status_code=204, headers={"Cache-Control": "no-store"})

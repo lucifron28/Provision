@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select, func, or_
 
 from app.core.database import get_db
-from app.api.v1.dependencies import get_current_household_id
+from app.api.v1.dependencies import get_current_household_id, get_current_household_id_for_write
 from app.models.product import Product
 from app.models.batch import InventoryBatch
 from app.schemas.product import (
@@ -13,6 +13,7 @@ from app.schemas.product import (
     ProductRead,
     ProductWithStock,
 )
+from app.services.household_writes import bump_inventory_revision
 
 router = APIRouter()
 
@@ -82,7 +83,7 @@ def list_products(
 @router.post("/", response_model=ProductWithStock, status_code=status.HTTP_201_CREATED)
 def create_product(
     product_in: ProductCreate,
-    household_id: int = Depends(get_current_household_id),
+    household_id: int = Depends(get_current_household_id_for_write),
     db: Session = Depends(get_db),
 ):
     if product_in.barcode:
@@ -90,7 +91,7 @@ def create_product(
             select(Product).where(
                 Product.household_id == household_id,
                 Product.barcode == product_in.barcode,
-            )
+            ).execution_options(populate_existing=True)
         )
         if existing:
             raise HTTPException(
@@ -109,6 +110,7 @@ def create_product(
         source=product_in.source,
     )
     db.add(product)
+    bump_inventory_revision(db, household_id)
     db.commit()
     db.refresh(product)
     return _get_product_with_stock(db, product, household_id)
@@ -158,14 +160,14 @@ def get_product(
 def update_product(
     product_id: int,
     product_in: ProductUpdate,
-    household_id: int = Depends(get_current_household_id),
+    household_id: int = Depends(get_current_household_id_for_write),
     db: Session = Depends(get_db),
 ):
     product = db.scalar(
         select(Product).where(
             Product.id == product_id,
             Product.household_id == household_id,
-        )
+        ).execution_options(populate_existing=True)
     )
     if not product:
         raise HTTPException(
@@ -179,15 +181,18 @@ def update_product(
                 Product.household_id == household_id,
                 Product.barcode == update_data["barcode"],
                 Product.id != product_id,
-            )
+            ).execution_options(populate_existing=True)
         )
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Product with barcode '{update_data['barcode']}' already exists",
             )
+    changed = any(getattr(product, field) != value for field, value in update_data.items())
     for field, value in update_data.items():
         setattr(product, field, value)
+    if changed:
+        bump_inventory_revision(db, household_id)
     db.commit()
     db.refresh(product)
     return _get_product_with_stock(db, product, household_id)
@@ -196,14 +201,14 @@ def update_product(
 @router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_product(
     product_id: int,
-    household_id: int = Depends(get_current_household_id),
+    household_id: int = Depends(get_current_household_id_for_write),
     db: Session = Depends(get_db),
 ):
     product = db.scalar(
         select(Product).where(
             Product.id == product_id,
             Product.household_id == household_id,
-        )
+        ).execution_options(populate_existing=True)
     )
     if not product:
         raise HTTPException(
@@ -224,5 +229,6 @@ def delete_product(
         )
 
     db.delete(product)
+    bump_inventory_revision(db, household_id)
     db.commit()
     return None
