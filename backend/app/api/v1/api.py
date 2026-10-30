@@ -18,6 +18,7 @@ from app.api.v1.endpoints import food_safety
 from app.api.v1.endpoints import recipes
 from app.api.v1.endpoints import recipe_sources
 from app.api.v1.endpoints import recipe_shopping
+from app.api.v1.endpoints import meal_insights
 
 api_router = APIRouter()
 api_router.include_router(ingredients.router, prefix="/ingredients", tags=["Ingredients"])
@@ -26,6 +27,7 @@ api_router.include_router(food_safety.router, prefix="/food-safety", tags=["Food
 api_router.include_router(recipes.router, prefix="/recipes", tags=["Recipes"])
 api_router.include_router(recipe_sources.router, prefix="/recipe-sources", tags=["Recipe sources"])
 api_router.include_router(recipe_shopping.router, prefix="/recipe-shopping", tags=["Recipe shopping"])
+api_router.include_router(meal_insights.router, prefix="/meal-insights", tags=["Meal insights"])
 
 # Public authentication endpoints
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
