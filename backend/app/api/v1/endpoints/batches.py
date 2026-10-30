@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
@@ -112,7 +112,9 @@ def create_batch(
                 detail=f"Grocery session with ID {batch_in.grocery_session_id} not found",
             )
 
-    purchased_at = batch_in.purchased_at or datetime.now(timezone.utc)
+    # Use the metadata clock when recording a purchase now. Host clock skew
+    # must not make a new receipt appear to predate the product's current unit.
+    purchased_at = batch_in.purchased_at or db.scalar(select(func.clock_timestamp()))
 
     batch = InventoryBatch(
         household_id=household_id,

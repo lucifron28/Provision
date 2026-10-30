@@ -11,6 +11,9 @@ from app.schemas.session import GrocerySessionRead
 from app.schemas.shopping import ShoppingListItemRead
 from app.schemas.preferences import FoodProfileRead
 from app.schemas.recipe import RecipeRead, SavedRecipeRead
+from app.schemas.meal_plan import MealPlanRead, MealPlanRevisionRead
+from app.schemas.leftover import LeftoverRead
+from app.schemas.cooking import CookingSessionRead
 
 
 CONSENT_POLICY_VERSION = "2026-10-30"
@@ -70,3 +73,7 @@ class AccountExport(BaseModel):
     food_profiles: list[FoodProfileRead] = Field(default_factory=list)
     recipes: list[RecipeRead] = Field(default_factory=list)
     saved_recipes: list[SavedRecipeRead] = Field(default_factory=list)
+    meal_plans: list[MealPlanRead] = Field(default_factory=list)
+    meal_plan_history: dict[int, list[MealPlanRevisionRead]] = Field(default_factory=dict)
+    leftovers: list[LeftoverRead] = Field(default_factory=list)
+    cooking_sessions: list[CookingSessionRead] = Field(default_factory=list)

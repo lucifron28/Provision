@@ -3,14 +3,15 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP, localcontext
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.models.batch import InventoryBatch
 from app.models.event import EventType, InventoryEvent
 from app.models.ingredient import Ingredient, ProductIngredientMapping, ProductIngredientMappingTarget, ProductPackageFactor
 from app.models.product import Product
 from app.models.session import GrocerySession
-from app.schemas.meal_insights import MealBudgetLine, MealBudgetRead, WasteEventRead, WastePeriodRead, WasteUnitTotal
+from app.models.leftover import LeftoverEvent
+from app.schemas.meal_insights import LeftoverWasteRead, MealBudgetLine, MealBudgetRead, WasteEventRead, WastePeriodRead, WasteUnitTotal
 from app.services.preferences import read_profile
 from app.services.recipes import evaluate_recipe
 from app.services.units import UnitConversionError, convert_amount
@@ -56,7 +57,8 @@ def _price_candidates(db, household_id, ingredient_ids):
             # Legacy batches do not store their unit at purchase. A later product
             # edit can change that unit, so do not reinterpret an older price.
             InventoryBatch.created_at >= product.updated_at,
-            InventoryBatch.unit_price >= 0, InventoryBatch.purchased_at <= datetime.now(timezone.utc))
+            InventoryBatch.purchased_at >= product.updated_at,
+            InventoryBatch.unit_price >= 0, InventoryBatch.purchased_at <= func.clock_timestamp())
             .order_by(InventoryBatch.purchased_at.desc(), InventoryBatch.id.desc()).limit(1))
         if priced is None or not priced.unit_price.is_finite():
             continue
@@ -115,7 +117,7 @@ def waste_for_period(db, household_id, request):
     totals, events, subtotal, priced_count = defaultdict(lambda: Decimal("0")), [], Decimal("0"), 0
     for event, batch, product in records:
         quantity = Decimal(str(event.quantity))
-        unit_history_known = product.updated_at <= batch.created_at
+        unit_history_known = product.updated_at <= min(batch.created_at, batch.purchased_at)
         usable_price = (batch.unit_price is not None and batch.unit_price.is_finite()
             and batch.unit_price >= 0 and unit_history_known)
         loss = quantity * batch.unit_price if usable_price else None
@@ -130,8 +132,19 @@ def waste_for_period(db, household_id, request):
             estimated_loss_php=_money(loss) if loss is not None else None,
             cost_unknown_reason=(None if usable_price else "purchase_unit_history_unknown" if not unit_history_known
                 else "recorded_price_unavailable")))
-    return WastePeriodRead(start=request.start, end=request.end, event_count=len(events), priced_event_count=priced_count,
-        unpriced_event_count=len(events)-priced_count, known_loss_subtotal_php=_money(subtotal),
-        estimated_total_loss_php=_money(subtotal) if priced_count == len(events) else None,
+    leftovers = db.scalars(select(LeftoverEvent).where(LeftoverEvent.household_id == household_id,
+        LeftoverEvent.event_type == "DISCARDED", LeftoverEvent.occurred_at >= request.start,
+        LeftoverEvent.occurred_at < request.end).order_by(LeftoverEvent.occurred_at, LeftoverEvent.id)).all()
+    leftover_events = []
+    for event in leftovers:
+        unit = " ".join(event.unit.strip().casefold().split())
+        totals[unit] += event.quantity
+        leftover_events.append(LeftoverWasteRead(event_id=event.id, leftover_id=event.leftover_id,
+            quantity=event.quantity, unit=unit, occurred_at=event.occurred_at, cooking_session_id=event.cooking_session_id))
+    event_count = len(events) + len(leftover_events)
+    return WastePeriodRead(start=request.start, end=request.end, event_count=event_count,
+        inventory_event_count=len(events), leftover_event_count=len(leftover_events), priced_event_count=priced_count,
+        unpriced_event_count=event_count-priced_count, known_loss_subtotal_php=_money(subtotal),
+        estimated_total_loss_php=_money(subtotal) if priced_count == event_count else None,
         quantities_by_unit=[WasteUnitTotal(unit=unit, quantity=totals[unit]) for unit in sorted(totals, key=lambda value: value or "")],
-        events=events)
+        events=events, leftover_events=leftover_events)

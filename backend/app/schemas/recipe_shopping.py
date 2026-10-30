@@ -119,6 +119,8 @@ class ShoppingItemDeletionSnapshot(StrictSchema):
     notes: str | None
     origin_recipe_id: int | None
     origin_recipe_revision: int | None
+    origin_plan_id: int | None = None
+    origin_plan_revision: int | None = None
 
 
 class ConsolidatedShoppingItems(StrictSchema):

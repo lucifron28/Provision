@@ -214,6 +214,9 @@ def update_shopping_item(
             if recipe is None:
                 raise HTTPException(status_code=404, detail="Origin recipe not found")
             update_data["origin_recipe_revision"] = recipe.revision
+            # Explicitly changing the primary origin replaces a prior plan link.
+            update_data["origin_plan_id"] = None
+            update_data["origin_plan_revision"] = None
 
     changed = any(getattr(item, field) != value for field, value in update_data.items())
     for field, value in update_data.items():

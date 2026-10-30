@@ -10,7 +10,7 @@ from database_safety import create_owned_test_schema, drop_owned_test_schema
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "c7f2e19d4a63"
+EXPECTED_HEAD = "f19c02a6e4b7"
 
 
 @pytest.fixture
@@ -92,6 +92,14 @@ def test_postgresql18_migrations_upgrade_head_and_downgrade_base(migration_schem
             "recipe_source_reviews",
             "recipe_source_references",
             "recipe_shopping_idempotency",
+            "meal_plans",
+            "meal_plan_entries",
+            "meal_plan_revisions",
+            "cooking_sessions",
+            "cooking_consumptions",
+            "cooking_idempotency",
+            "leftovers",
+            "leftover_events",
             "products",
             "storage_locations",
             "grocery_sessions",
@@ -262,5 +270,34 @@ def test_recipe_shopping_downgrade_refuses_data_loss(migration_schema, quantity,
             assert connection.execute(text("SELECT shopping_revision FROM households WHERE id=:id"),
                 dict(id=household_id)).scalar_one() == revision
         assert "recipe_shopping_idempotency" in inspect(engine).get_table_names(schema=migration_schema.schema)
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("table,insert_statement,reason", [
+    ("meal_plans", """INSERT INTO meal_plans (household_id, week_start, revision)
+        VALUES (:household_id, '2026-10-26', 1)""", "meal plans, history, or shopping provenance would be lost"),
+    ("leftovers", """INSERT INTO leftovers
+        (household_id, name, prepared_at, quantity, remaining_quantity, unit)
+        VALUES (:household_id, 'Preserve recorded food', CURRENT_TIMESTAMP, 2, 2, 'portion')""",
+        "cooking or leftover history would be lost"),
+])
+def test_planning_downgrade_refuses_history_loss(migration_schema, table, insert_statement, reason):
+    engine = create_engine(migration_schema.scoped_url, pool_pre_ping=True)
+    try:
+        _run_alembic(migration_schema, "upgrade", "head")
+        with engine.begin() as connection:
+            household_id = connection.execute(text(
+                "SELECT id FROM households WHERE slug='legacy-quarantine'"
+            )).scalar_one()
+            connection.execute(text(insert_statement), {"household_id": household_id})
+        result = _alembic_result(migration_schema, "downgrade", "c7f2e19d4a63")
+        assert result.returncode != 0 and reason in result.stderr
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == EXPECTED_HEAD
+            assert connection.execute(text(f"SELECT count(*) FROM {table}")).scalar_one() == 1
+        assert {"meal_plans", "leftovers", "cooking_sessions"} <= set(
+            inspect(engine).get_table_names(schema=migration_schema.schema)
+        )
     finally:
         engine.dispose()

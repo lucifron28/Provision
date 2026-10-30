@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.models.batch import InventoryBatch
 from app.models.event import EventType, InventoryEvent
@@ -24,6 +24,9 @@ def test_recipe_budget_reports_historical_price_basis_and_serving_scale(client, 
     batch.grocery_session_id = session.id
     batch.unit_price = Decimal("0.25")
     batch.purchased_at = datetime.now(timezone.utc)-timedelta(days=30)
+    # This fixture explicitly records catalog metadata predating the purchase.
+    db.execute(update(Product).where(Product.id == product["id"]).values(
+        created_at=batch.purchased_at-timedelta(days=1), updated_at=batch.purchased_at-timedelta(days=1)))
     db.commit()
     recipe = create(client, ingredients=[dict(display_name="rice", amount=100, unit="g")])
     response = client.post(f"/api/v1/meal-insights/recipes/{recipe['id']}/budget",
@@ -74,12 +77,14 @@ def test_budget_uses_explicit_package_factor_and_respects_budget_goal(client, db
     receipt = client.post("/api/v1/batches/", json=dict(product_id=product["id"], original_quantity=1, unit_price="25"))
     assert receipt.status_code == 201
     batch = db.get(InventoryBatch, receipt.json()["id"])
+    assert batch.purchased_at >= db.get(Product, product["id"]).updated_at
     assert client.put("/api/v1/food-profiles/me", json=dict(allergy_status="NONE_DECLARED",
         preferences=dict(meal_budget_php="10"))).status_code == 200
     recipe = create(client, ingredients=[dict(display_name="rice", amount=100, unit="g")])
     url = f"/api/v1/meal-insights/recipes/{recipe['id']}/budget"
     response = client.post(url, json=dict(expected_recipe_revision=1, servings=2))
     assert response.status_code == 200, response.text
+    assert response.json()["complete"] is True
     assert Decimal(response.json()["estimated_total_php"]) == 5
     assert response.json()["estimated_within_budget"] is True
     batch.unit_price = Decimal("0")
@@ -100,6 +105,30 @@ def test_older_price_is_unknown_after_product_unit_changes(client, db, catalog):
     assert client.patch(f"/api/v1/products/{product['id']}", json=dict(unit="kg")).status_code == 200
     result = client.post(url, json=request).json()
     assert result["complete"] is False and result["estimated_total_php"] is None
+
+
+def test_backdated_purchase_recorded_after_unit_edit_has_unknown_cost(client, db, catalog, auth_household):
+    product, _ = stock(client, catalog, name="rice")
+    before_edit = datetime.now(timezone.utc)-timedelta(days=2)
+    assert client.patch(f"/api/v1/products/{product['id']}", json=dict(unit="kg")).status_code == 200
+    receipt = client.post("/api/v1/batches/", json=dict(product_id=product["id"],
+        original_quantity=2, unit_price="25", purchased_at=before_edit.isoformat()))
+    assert receipt.status_code == 201, receipt.text
+    batch_id = receipt.json()["id"]
+    recipe = create(client, ingredients=[dict(display_name="rice", amount=100, unit="g")])
+    budget = client.post(f"/api/v1/meal-insights/recipes/{recipe['id']}/budget",
+        json=dict(expected_recipe_revision=1, servings=2))
+    assert budget.status_code == 200, budget.text
+    assert budget.json()["estimated_total_php"] is None
+    at = datetime.now(timezone.utc)
+    db.add(InventoryEvent(batch_id=batch_id, event_type=EventType.DISCARDED, quantity=1, occurred_at=at))
+    db.commit()
+    waste = client.post("/api/v1/meal-insights/waste", json=dict(
+        start=(at-timedelta(seconds=1)).isoformat(), end=(at+timedelta(seconds=1)).isoformat()))
+    assert waste.status_code == 200, waste.text
+    event = waste.json()["events"][0]
+    assert event["unit"] is None and event["estimated_loss_php"] is None
+    assert event["cost_unknown_reason"] == "purchase_unit_history_unknown"
 
 
 def test_waste_interval_excludes_foreign_and_end_boundary_events(client, db, auth_household):

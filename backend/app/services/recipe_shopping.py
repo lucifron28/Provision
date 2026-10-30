@@ -10,7 +10,7 @@ import uuid
 
 import jwt
 from fastapi import HTTPException
-from sqlalchemy import or_, select, text
+from sqlalchemy import or_, select, text, tuple_
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, joinedload
 
@@ -162,6 +162,33 @@ def _context_fingerprint(
     lines: list[RecipeShoppingLine],
     unlinked: list[UnlinkedShoppingItemReview],
 ) -> str:
+    return _context_fingerprint_for_scope(
+        db,
+        household_id,
+        recipe_ids={recipe_id},
+        input_data=request.model_dump(mode="json"),
+        safety=safety,
+        lines=lines,
+        unlinked=unlinked,
+        scope_context={"workflow": "recipe-shopping"},
+    )
+
+
+def _context_fingerprint_for_scope(
+    db: Session,
+    household_id: int,
+    *,
+    recipe_ids: set[int],
+    input_data: dict,
+    safety,
+    lines: list[RecipeShoppingLine],
+    unlinked: list[UnlinkedShoppingItemReview],
+    scope_context: dict,
+    pinned_revision_keys: set[tuple[int, int]] | None = None,
+) -> str:
+    recipe_ids = set(recipe_ids)
+    if not recipe_ids:
+        raise ValueError("A shopping preview must reference at least one recipe")
     profile_ids = select(FoodPreference.id).where(FoodPreference.household_id == household_id)
     member_rows = db.execute(
         select(HouseholdMembership, User)
@@ -171,15 +198,52 @@ def _context_fingerprint(
         .execution_options(populate_existing=True)
     ).all()
     household = db.get(Household, household_id)
-    reference = db.scalar(
-        select(RecipeSourceReference).where(
-            RecipeSourceReference.household_id == household_id,
-            RecipeSourceReference.recipe_id == recipe_id,
-        ).execution_options(populate_existing=True)
-    )
+    pinned_snapshots = pinned_revision_keys is not None
+    if pinned_snapshots:
+        recipe_rows = [
+            {"id": recipe_id, "is_active": is_active}
+            for recipe_id, is_active in db.execute(
+                select(Recipe.id, Recipe.is_active)
+                .where(Recipe.household_id == household_id, Recipe.id.in_(recipe_ids))
+                .order_by(Recipe.id)
+                .execution_options(populate_existing=True)
+            ).all()
+        ]
+        recipe_ingredient_rows = []
+        revision_statement = select(RecipeRevision).where(
+            RecipeRevision.household_id == household_id,
+            tuple_(RecipeRevision.recipe_id, RecipeRevision.revision).in_(
+                sorted(pinned_revision_keys)
+            ),
+        )
+        recipe_revision_rows = [
+            _model_row(row)
+            for row in db.scalars(
+                revision_statement.order_by(RecipeRevision.id).execution_options(
+                    populate_existing=True
+                )
+            ).all()
+        ]
+    else:
+        recipe_rows = _rows(
+            db, Recipe, Recipe.household_id == household_id, Recipe.id.in_(recipe_ids)
+        )
+        recipe_ingredient_rows = _rows(
+            db,
+            RecipeIngredient,
+            RecipeIngredient.household_id == household_id,
+            RecipeIngredient.recipe_id.in_(recipe_ids),
+        )
+        recipe_revision_rows = _rows(
+            db,
+            RecipeRevision,
+            RecipeRevision.household_id == household_id,
+            RecipeRevision.recipe_id.in_(recipe_ids),
+        )
     context = {
         "manila_date": household_today().isoformat(),
-        "input": request.model_dump(mode="json"),
+        "input": input_data,
+        "scope": scope_context,
         "household": _model_row(household) if household else None,
         "members": [
             {
@@ -190,20 +254,15 @@ def _context_fingerprint(
         ],
         "profiles": _rows(db, FoodPreference, FoodPreference.household_id == household_id),
         "allergies": _rows(db, FoodAllergy, FoodAllergy.profile_id.in_(profile_ids)),
-        "recipe": _rows(db, Recipe, Recipe.household_id == household_id, Recipe.id == recipe_id),
-        "recipe_ingredients": _rows(
+        "recipes": recipe_rows,
+        "recipe_ingredients": recipe_ingredient_rows,
+        "recipe_revisions": recipe_revision_rows,
+        "source_references": _rows(
             db,
-            RecipeIngredient,
-            RecipeIngredient.household_id == household_id,
-            RecipeIngredient.recipe_id == recipe_id,
+            RecipeSourceReference,
+            RecipeSourceReference.household_id == household_id,
+            RecipeSourceReference.recipe_id.in_(recipe_ids),
         ),
-        "recipe_revisions": _rows(
-            db,
-            RecipeRevision,
-            RecipeRevision.household_id == household_id,
-            RecipeRevision.recipe_id == recipe_id,
-        ),
-        "source_reference": _model_row(reference) if reference else None,
         "sources": _rows(db, RecipeSource),
         "source_reviews": _rows(db, RecipeSourceReview),
         "products": _rows(db, Product, Product.household_id == household_id),
@@ -609,11 +668,15 @@ def _encode_preview(
     shopping_revision: int,
     inventory_revision: int,
     fingerprint: str,
+    *,
+    purpose: str = _PREVIEW_PURPOSE,
+    extra_claims: dict | None = None,
 ) -> tuple[str, datetime]:
     now = datetime.now(timezone.utc)
     expires_at = datetime.fromtimestamp(int(now.timestamp()) + int(_PREVIEW_TTL.total_seconds()), timezone.utc)
     claims = {
-        "purpose": _PREVIEW_PURPOSE,
+        **(extra_claims or {}),
+        "purpose": purpose,
         "jti": uuid.uuid4().hex,
         "household_id": household_id,
         "actor_user_id": actor_id,
@@ -670,8 +733,15 @@ def preview_recipe_shopping(
         )
 
 
-def _request_hash(actor_id: int, household_id: int, request: RecipeShoppingConfirmRequest) -> str:
+def _request_hash(
+    actor_id: int,
+    household_id: int,
+    request: RecipeShoppingConfirmRequest,
+    *,
+    workflow: str = "recipe-shopping",
+) -> str:
     payload = {
+        "workflow": workflow,
         "actor_user_id": actor_id,
         "household_id": household_id,
         "body": request.model_dump(mode="json", exclude={"idempotency_key"}),
@@ -680,7 +750,7 @@ def _request_hash(actor_id: int, household_id: int, request: RecipeShoppingConfi
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
-def _decode_preview(token: str) -> dict:
+def _decode_preview(token: str, *, purpose: str = _PREVIEW_PURPOSE) -> dict:
     try:
         claims = jwt.decode(
             token,
@@ -692,7 +762,7 @@ def _decode_preview(token: str) -> dict:
         raise HTTPException(status_code=409, detail="STALE_PREVIEW") from exc
     except jwt.PyJWTError as exc:
         raise HTTPException(status_code=409, detail="STALE_PREVIEW") from exc
-    if claims.get("purpose") != _PREVIEW_PURPOSE:
+    if claims.get("purpose") != purpose:
         raise HTTPException(status_code=409, detail="STALE_PREVIEW")
     return claims
 
@@ -714,6 +784,8 @@ def _snapshot_deleted_item(item: ShoppingListItem) -> ShoppingItemDeletionSnapsh
         notes=item.notes,
         origin_recipe_id=item.origin_recipe_id,
         origin_recipe_revision=item.origin_recipe_revision,
+        origin_plan_id=item.origin_plan_id,
+        origin_plan_revision=item.origin_plan_revision,
     )
 
 
@@ -731,12 +803,23 @@ def _read_item(db: Session, household_id: int, item_id: int) -> ShoppingListItem
     return ShoppingListItemRead.model_validate(item)
 
 
-def _create_recipe_item(db: Session, household_id: int, recipe, line, quantity: Decimal):
+def _create_recipe_item(
+    db: Session,
+    household_id: int,
+    recipe,
+    line,
+    quantity: Decimal,
+    *,
+    origin_plan: tuple[int, int] | None = None,
+):
+    plan_id, plan_revision = origin_plan if origin_plan is not None else (None, None)
     item = ShoppingListItem(
         household_id=household_id,
         ingredient_id=line.ingredient_id,
-        origin_recipe_id=recipe.id,
-        origin_recipe_revision=recipe.revision,
+        origin_recipe_id=recipe.id if recipe is not None else None,
+        origin_recipe_revision=recipe.revision if recipe is not None else None,
+        origin_plan_id=plan_id,
+        origin_plan_revision=plan_revision,
         name=line.canonical_name,
         quantity=quantity,
         unit=line.unit,
@@ -832,6 +915,8 @@ def _apply_accepted_line(
     line: RecipeShoppingLine,
     accepted: RecipeShoppingAcceptedLine,
     response: RecipeShoppingConfirmRead,
+    *,
+    origin_plan: tuple[int, int] | None = None,
 ) -> bool:
     if line.status != "ready" or line.target_quantity is None or line.pending_quantity is None:
         raise HTTPException(status_code=422, detail="REVIEW_REQUIRED")
@@ -921,7 +1006,9 @@ def _apply_accepted_line(
         response.updated.append(_read_item(db, household_id, item.id))
         return True
 
-    created = _create_recipe_item(db, household_id, recipe, line, delta)
+    created = _create_recipe_item(
+        db, household_id, recipe, line, delta, origin_plan=origin_plan
+    )
     response.created.append(_read_item(db, household_id, created.id))
     return True
 

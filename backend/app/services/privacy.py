@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import secrets
 from uuid import uuid4
 
-from sqlalchemy import case, delete, distinct, exists, func, select
+from sqlalchemy import case, delete, distinct, exists, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, selectinload
 
@@ -19,6 +19,9 @@ from app.models.session import GrocerySession
 from app.models.shopping import ShoppingListItem
 from app.models.user import User
 from app.models.recipe import Recipe, SavedRecipe
+from app.models.meal_plan import MealPlan, MealPlanRevision
+from app.models.cooking import CookingSession, CookingIdempotency
+from app.models.leftover import Leftover, LeftoverEvent
 from app.schemas.batch import InventoryBatchWithDetails
 from app.schemas.event import InventoryEventRead
 from app.schemas.location import StorageLocationRead
@@ -35,6 +38,9 @@ from app.schemas.session import GrocerySessionRead
 from app.schemas.shopping import ShoppingListItemRead
 from app.services.preferences import read_profile
 from app.services.recipes import read_recipe, saved_read
+from app.services.meal_plans import get_plan, plan_history
+from app.services.leftovers import read_leftover
+from app.services.cooking import list_cooking_sessions
 
 CONSENT_PURPOSE = "deepseek_recipes_v1"
 CONSENT_CONSTRAINT = "uq_processing_consent_scope"
@@ -233,6 +239,8 @@ def export_account_data(
         household_id=household_id,
         user_id=user.id,
     )
+    meal_plan_ids = db.scalars(select(MealPlan.id).where(MealPlan.household_id == household_id)
+        .order_by(MealPlan.id)).all()
     return AccountExport(
         exported_at=datetime.now(timezone.utc),
         account=own_profile,
@@ -243,6 +251,11 @@ def export_account_data(
             .order_by(Recipe.id)).all()],
         saved_recipes=[saved_read(row) for row in db.scalars(select(SavedRecipe).where(
             SavedRecipe.household_id == household_id, SavedRecipe.member_user_id == user.id).order_by(SavedRecipe.recipe_id)).all()],
+        meal_plans=[get_plan(db, household_id, plan_id) for plan_id in meal_plan_ids],
+        meal_plan_history={plan_id: plan_history(db, household_id, plan_id) for plan_id in meal_plan_ids},
+        leftovers=[read_leftover(db, row) for row in db.scalars(select(Leftover).where(
+            Leftover.household_id == household_id).order_by(Leftover.id)).all()],
+        cooking_sessions=list_cooking_sessions(db, household_id),
         pantry=PantryExport(
             products=[ProductRead.model_validate(row) for row in products],
             storage_locations=[StorageLocationRead.model_validate(row) for row in locations],
@@ -361,6 +374,12 @@ def delete_account(
 
     try:
         db.execute(delete(ProcessingConsent).where(ProcessingConsent.user_id == user_id))
+        for model, field in (
+            (CookingSession, "actor_user_id"), (CookingIdempotency, "actor_user_id"),
+            (Leftover, "created_by_user_id"), (LeftoverEvent, "actor_user_id"),
+            (MealPlan, "created_by_user_id"), (MealPlanRevision, "created_by_user_id"),
+        ):
+            db.execute(update(model).where(getattr(model, field) == user_id).values({field: None}))
         for membership in memberships:
             db.delete(membership)
 

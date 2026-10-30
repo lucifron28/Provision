@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import AwareDatetime, model_validator
+from pydantic import AwareDatetime, Field, model_validator
 
 from app.schemas.ingredients import StrictSchema
 from app.schemas.recipe import RecipeEvaluationInput
@@ -71,15 +71,29 @@ class WasteEventRead(StrictSchema):
     cost_unknown_reason: str | None = None
 
 
+class LeftoverWasteRead(StrictSchema):
+    event_id: int
+    leftover_id: int
+    quantity: Decimal
+    unit: str
+    occurred_at: datetime
+    cooking_session_id: int | None
+    estimated_loss_php: None = None
+    cost_unknown_reason: Literal["leftover_cost_not_recorded"] = "leftover_cost_not_recorded"
+
+
 class WastePeriodRead(StrictSchema):
     start: datetime
     end: datetime
     currency: Literal["PHP"] = "PHP"
     event_count: int
+    inventory_event_count: int
+    leftover_event_count: int
     priced_event_count: int
     unpriced_event_count: int
     known_loss_subtotal_php: Decimal
     estimated_total_loss_php: Decimal | None
     quantities_by_unit: list[WasteUnitTotal]
     events: list[WasteEventRead]
-    methodology: str = "Explicit DISCARDED and EXPIRED ledger events in [start, end). Quantities are grouped by unit. No inferred savings or automatic waste."
+    leftover_events: list[LeftoverWasteRead] = Field(default_factory=list)
+    methodology: str = "Explicit DISCARDED and EXPIRED inventory events plus DISCARDED leftover events in [start, end). Quantities grouped by unit. Leftover costs unknown. No inferred savings or automatic waste."

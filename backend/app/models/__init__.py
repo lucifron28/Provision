@@ -14,6 +14,9 @@ from app.models.product_label import ProductAllergenLabel
 from app.models.recipe import Recipe, RecipeIngredient, RecipeRevision, SavedRecipe
 from app.models.recipe_source import RecipeSource, RecipeSourceReference, RecipeSourceReview
 from app.models.recipe_shopping import RecipeShoppingIdempotency
+from app.models.meal_plan import MealPlan, MealPlanEntry, MealPlanRevision
+from app.models.cooking import CookingSession, CookingConsumption, CookingIdempotency
+from app.models.leftover import Leftover, LeftoverEvent, LeftoverEventType
 from app.models.ingredient import (
     Ingredient,
     IngredientAlias,
@@ -52,6 +55,15 @@ __all__ = [
     "RecipeSourceReference",
     "RecipeSourceReview",
     "RecipeShoppingIdempotency",
+    "MealPlan",
+    "MealPlanEntry",
+    "MealPlanRevision",
+    "CookingSession",
+    "CookingConsumption",
+    "CookingIdempotency",
+    "Leftover",
+    "LeftoverEvent",
+    "LeftoverEventType",
     "Ingredient",
     "IngredientAlias",
     "ProductIngredientMapping",
