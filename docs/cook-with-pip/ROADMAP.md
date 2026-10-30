@@ -8,7 +8,7 @@ Status: **IN PROGRESS / partial backend implementation** | Last reviewed: 2026-1
 
 ## Existing system and non-goals
 
-Current technology: iOS SwiftUI; FastAPI + SQLAlchemy 2.0 + PostgreSQL 18 (via Docker Compose); JWT/Keychain; product/catalog, inventory batches with expiry and FEFO consumption, shopping list, price/waste analytics, camera/receipt intake, and Home's **heuristic** Chef Pip hints. Current `HomeViewModel.chefPipRecipeIdeas` is NOT AI recipe generation. Shopping has a `ShoppingListItem` (name, optional product_id, quantity, unit, is_bought, notes) and `POST /api/v1/shopping-list`. The README declares **one shared pantry across authenticated users**; there is no authorized user/household scope for personalized food data. The existing backend low-stock generator checks product ID, but general shopping entry creation does not prevent duplicates. The current catalog does not identify canonical culinary ingredients or reliable packaged-food allergen labels.
+Current technology: iOS SwiftUI; FastAPI + SQLAlchemy 2.0 + PostgreSQL 18 via Docker Compose; JWT/Keychain; product/catalog, inventory batches with expiry and FEFO consumption, shopping, analytics, camera/receipt intake, and Home's heuristic Chef Pip hints. `HomeViewModel.chefPipRecipeIdeas` is not AI recipe generation. Backend records now have household authorization, canonical ingredient mappings and explicit label-review records. Recipe-shopping confirmation reconciles compatible pending quantities; the general manual shopping API still permits deliberate separate entries. Label review records a member's declaration and does not certify food safety. Client household cache integration remains in the Mac handoff.
 
 Preserve barcode acceptance/rearm, receipt OCR, pending commit persistence/reconciliation, FEFO, shopping manual entry, offline cache, and Pip artwork. Do not infer inventory from an AI response, auto-buy, silently consume stock, promise allergen safety, scrape disallowed sites, or put provider API keys on-device. Do not merge any branch without approval.
 
@@ -94,8 +94,9 @@ English aliases, versioned household product mappings, explicit package factors,
 and a read-only availability API. Both backend and iOS jobs
 [passed for that commit](https://github.com/lucifron28/Provision/actions/runs/41036483959).
 See [the API contract](INGREDIENT_API.md) for uncertainty rules and request shapes.
-This is partial P1 evidence. Recipe persistence, allergen declarations and the
-remaining acceptance audit are still pending, so the phase stays unchecked.
+Later recipe persistence and allergen declarations have separate evidence below.
+Final acceptance, including the realistic Filipino recipe fixtures, remains
+pending for the integrated head.
 
 - [ ] Design `ingredients` taxonomy with normalized names, Filipino/English aliases (bawang/garlic, sibuyas/onion, calamansi, kangkong, etc.), food family, density/portion reference where reliable, and allergen declarations.
 - [ ] Implement curated `product_ingredient_mappings`: a brand/item may map to one ingredient or an explicitly reviewed composite; store confidence, method, verifier, mapping version and unknown state. Never treat flavor/brand text as an allergy-safe label.
@@ -164,7 +165,7 @@ one optional-file skip**. This does not complete the provider or SwiftUI phase.
 DeepSeek and web calls remain disabled; no publisher provenance is asserted for
 household-entered content. Both backend and iOS
 [passed for `0454e72`](https://github.com/lucifron28/Provision/actions/runs/41044660011).
-The source-policy additions above have their own pending CI verification.
+Source-policy integration has separate verified evidence in P2 above.
 
 - [ ] Add provider interface `RecipeAIProvider` and server-side DeepSeek implementation; model, base URL, search feature flags, budgets, timeouts, and retries belong in env/config, NEVER app bundle.
 - [ ] Use structured JSON/Pydantic DTOs for recipes; validate source attribution, recipe ID, title, description, cuisine/region, category tags, prep/cook duration, servings, ingredients, instructions, substitutions, uncertainty flags, provenance, and generated/adapted marker.
@@ -177,8 +178,7 @@ The source-policy additions above have their own pending CI verification.
 
 ### P5 — "Add Missing Ingredients to Shopping List" (primary integrated milestone)
 
-The [recipe shopping contract](RECIPE_SHOPPING_API.md) is under implementation
-and review by two Luna executors. It adds shared household write serialization,
+The [recipe shopping contract](RECIPE_SHOPPING_API.md) implements shared household write serialization,
 read-only snapshot previews and explicit idempotent confirmation. Local migration
 tests and schema-drift verification pass. The final reviewed PostgreSQL suite
 recorded **503 passed, one optional historical-file skip**. Independent review
@@ -200,6 +200,19 @@ until the relevant remaining gates pass.
 
 ### P6 — Saved recipes, guided cooking, meal planner
 
+The [plan API](MEAL_PLANS_API.md) and [cooking/leftover API](COOKING_LEFTOVERS_API.md)
+now implement weekly revision history, pinned recipes, aggregate shopping,
+read-only cooking previews, explicit consumption and audited leftovers. Two Luna
+executors completed focused PostgreSQL runs of 70 and 23 tests, respectively.
+Main's pricing/batch/privacy integration recorded 18 passing focused tests;
+two new migration tests prove history-loss downgrades refuse atomically.
+Alembic upgrade and schema-drift verification pass on the separate Windows
+verification database. The foundation through `11e99fa` passed the complete
+local suite, **568 passed, one optional historical-file skip**, with two existing
+dependency deprecation warnings. Exact-head CI acceptance remains pending.
+Plans describe intended meals without reserving inventory; actual cooking
+confirmation rechecks stock under the household write lock.
+
 - [ ] Save/unsave recipe references and user adaptations with provenance, default portions, categories and household scope; allow revalidation after source/stock changes.
 - [ ] Guided Cooking mode: steps, timers where supported, serving adjustments, checklist, ingredients reviewed before cooking; never change inventory simply by viewing a recipe.
 - [ ] On **explicit** "Record Cooking", present consumed ingredient quantities and FEFO allocation preview; user adjusts quantities, then use existing inventory service/ledger for audited consumption, stock revision guards and retries.
@@ -209,10 +222,13 @@ until the relevant remaining gates pass.
 
 ### P7 — Leftovers, budget, food waste, and household insights
 
-The [historical budget and waste API](MEAL_INSIGHTS_API.md) is under development.
-Focused PostgreSQL tests pass. It reports price provenance, unknown costs
-and quantities grouped by unit. Integrated plan/cooking/leftover records and
-exact-head acceptance remain pending; this phase is not complete.
+The initial [historical budget and waste API](MEAL_INSIGHTS_API.md) through
+`05f0f31` passed 13 focused PostgreSQL tests and the complete backend CI suite,
+**516 passed, one optional-file skip**. Both backend and iOS
+[passed on that head](https://github.com/lucifron28/Provision/actions/runs/41066131363).
+It reports price provenance, unknown costs and quantities grouped by unit.
+Subsequent plan/cooking/leftover integration and its exact-head acceptance remain
+pending; this phase is not complete.
 
 - [ ] Add leftovers (name/recipe, quantity, storage location, prepared_at, optional use-by guidance explicitly user-verified, portions); avoid pretending generated food-safety dates are guaranteed.
 - [ ] Leftover reminders and reuse suggestions, respecting allergy/preference rules and user opt-in; no recommendation of spoiled/expired food.

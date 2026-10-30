@@ -294,7 +294,7 @@ All 49 catalog products are authentic Philippine supermarket items with valid 48
 
 ## Important Domain Limitation
 
-Household isolation is being implemented and verified on this branch. New
+Household isolation is implemented and tested on this branch. New
 registrations receive private households; membership is required to select
 another household. Client cache integration remains pending on Mac.
 
@@ -302,7 +302,7 @@ another household. Client cache integration remains pending on Mac.
 
 ## Midterm Project Status (~50% Complete)
 
-This project is intentionally at **approximately 50% completion** for the iOS Development midterm milestone:
+The original iOS Development midterm targeted approximately 50% of the app's planned scope. Backend work has since advanced independently. The following lists describe that iOS milestone; current Cook with Pip backend evidence is in the roadmap.
 
 ### Implemented (Midterm Scope):
 - User registration, login, and `/auth/me` verification with Argon2 password hashing.
@@ -318,6 +318,19 @@ This project is intentionally at **approximately 50% completion** for the iOS De
 - Offline-first local database caching (SwiftData / Core Data).
 - Background expiration alert notifications.
 
-## Planned: Cook with Pip (AI Recipes and Smart Shopping)
+## Cook with Pip backend
 
-**Planning only — not yet implemented.** See [Agent Handoff](AGENTS.md), [Phased Roadmap](docs/cook-with-pip/ROADMAP.md), [Technical Spec](docs/cook-with-pip/TECHNICAL_SPEC.md) and [Filipino-First Trusted Recipe Source Policy](docs/cook-with-pip/RECIPE_SOURCE_POLICY.md). Covers DeepSeek recipe discovery and optional wider search; approved Filipino publisher prioritization; cuisines, food categories, preferences and allergies; deterministic stock matching; explicit shopping-list confirmation/deduplication; saved recipes, cooking, meal plans, leftovers, budgets and waste. **Household isolation is a release prerequisite.** Existing Chef Pip hints are not AI-powered.
+The backend implements household authorization, canonical ingredient matching,
+food profiles and allergy checks, versioned household recipes, deterministic
+recommendations, source governance, explicit shopping preview/confirmation, and
+historical PHP budget and waste reports. See the [roadmap](docs/cook-with-pip/ROADMAP.md)
+for acceptance evidence and the current meal-planning, cooking, and leftover work.
+Backend and iOS CI [passed for `05f0f31`](https://github.com/lucifron28/Provision/actions/runs/41066131363),
+with 516 backend tests passing and one optional historical-file test skipped.
+That run predates the current planning/cooking/leftover integration.
+
+Live DeepSeek and web calls remain disabled. Household-entered recipes carry no
+asserted publisher provenance. Chef Pip hints in the iOS app remain heuristic,
+and the new backend workflows still require SwiftUI integration on Mac.
+See the [agent guide](AGENTS.md), [technical specification](docs/cook-with-pip/TECHNICAL_SPEC.md),
+and [recipe source policy](docs/cook-with-pip/RECIPE_SOURCE_POLICY.md).

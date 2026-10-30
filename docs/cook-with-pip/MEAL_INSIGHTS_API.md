@@ -29,9 +29,10 @@ the latest recorded, nonfuture purchase with an available nonnegative unit price
 among compatible mapped products. A zero recorded price is valid; a missing
 price is unknown. It never derives a package conversion from a name or size hint.
 Legacy batches do not capture a purchase-unit snapshot. If product metadata was
-edited after a batch was created, that older price is excluded rather than
+edited after a batch was created or after its recorded purchase timestamp, that price is excluded rather than
 reinterpreted under a possibly changed unit. This conservative rule also excludes
-prices after unrelated product edits until a fresh purchase record exists.
+prices after unrelated product edits until a later purchase record exists.
+Backdating a newly entered batch does not establish its purchase-time unit.
 
 The line exposes the source batch/product IDs, purchase timestamp, store when
 recorded, native inventory unit, historical unit price and estimated ingredient
@@ -79,14 +80,21 @@ If later product metadata makes the purchase unit ambiguous, the report marks
 that event's unit and cost unknown and supplies `purchase_unit_history_unknown`.
 It still reports the recorded quantity and event rather than dropping the waste.
 
-Leftover disposal and cooking/plan attribution require the corresponding
-foundation records. Integration with those new records remains pending until
-their schemas and tests are complete. No savings baseline or efficiency ratio
-is fabricated from the inventory-only report.
+The integrated report includes explicit `DISCARDED` leftover events separately
+from inventory events. It exposes leftover and linked cooking-session IDs,
+counts those events as unpriced, and reports `leftover_cost_not_recorded`.
+Leftover `CONSUMED` events are excluded. Consumed raw ingredients are not counted
+as waste when the later leftover is discarded. No savings baseline or efficiency
+ratio is inferred from these records.
 
 ## Verification boundary
 
-Focused PostgreSQL tests cover historical scaling, explicit package
-factors, future/missing/zero prices, budget goals, interval boundaries, unit
-grouping, changed product units, household isolation and authentication. The complete integrated suite
-and CI for this additional foundation work remain pending.
+The initial inventory-only implementation through `05f0f31` passed 13 focused
+PostgreSQL tests and the complete backend CI suite, **516 passed, one optional
+historical-file skip**. Both backend and iOS
+[passed on that commit](https://github.com/lucifron28/Provision/actions/runs/41066131363).
+Those checks cover historical scaling, explicit package factors,
+future/missing/zero prices, budget goals, interval boundaries, changed product
+units, unit grouping, household isolation and authentication. The subsequent
+leftover-waste and planning/privacy integrations require their own final
+integrated suite and exact-head CI before they are considered verified.

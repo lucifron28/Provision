@@ -6,7 +6,7 @@ Before changing code, read `README.md` and these three documents in order:
 2. [Cook with Pip technical implementation specification](docs/cook-with-pip/TECHNICAL_SPEC.md)
 3. [Filipino-first recipe source governance and trust registry](docs/cook-with-pip/RECIPE_SOURCE_POLICY.md)
 
-**Current status:** Cook with Pip is planned, NOT implemented. Existing Home Chef Pip hints are heuristic, not DeepSeek recipe results. Do not mark milestones done without code, tests, CI, and acceptance evidence.
+**Current status:** Cook with Pip has backend implementations for household isolation, ingredient matching, food profiles and safety, recipes, source governance, shopping confirmation, and historical budget/waste reporting. See the roadmap for commit-specific test and CI evidence and the status of meal planning, cooking, and leftovers. SwiftUI integration remains pending on Mac. Existing Home Chef Pip hints are heuristic; live DeepSeek and web calls remain disabled. Mark milestones done only with code, tests, CI, and acceptance evidence.
 
 ## System Overview
 
@@ -20,7 +20,7 @@ Provision is a household pantry and food inventory management system consisting 
 ## Development Environment & Workflow
 
 ### 1. Database Infrastructure
-PostgreSQL 18 runs containerized via Docker Compose on macOS:
+PostgreSQL 18 runs containerized via Docker Compose on Windows or macOS:
 ```bash
 # Start PostgreSQL 18 (localhost:5432)
 docker compose up -d

@@ -1,8 +1,8 @@
 # Cook with Pip — Technical Implementation Specification
 
-Status: **PROPOSED**, no endpoint/model in this document is implemented yet. Parent: [ROADMAP.md](./ROADMAP.md). Source rules: [RECIPE_SOURCE_POLICY.md](./RECIPE_SOURCE_POLICY.md). Date: 2026-10-29.
+Status: **Backend implementation in progress; provider and SwiftUI work deferred.** Parent: [ROADMAP.md](./ROADMAP.md). Source rules: [RECIPE_SOURCE_POLICY.md](./RECIPE_SOURCE_POLICY.md). Last reviewed: 2026-10-30.
 
-This is the engineering contract for an agent to implement phases P0–P8 incrementally. Paths, endpoint shapes and table names are **proposals**, not statements about existing code. Start by reading `backend/app/api/v1/api.py`, `backend/app/services/inventory.py`, `backend/app/api/v1/endpoints/shopping.py`, SwiftUI `ShoppingViewModel`, `HomeViewModel`, `ScanViewModel`, plus migrations/tests.
+This is the engineering design for phases P0–P8. The roadmap records implementation and verification evidence. The feature-specific API documents describe current contracts; original route sketches below remain design proposals where they differ. Start by reading `backend/app/api/v1/api.py`, `backend/app/services/inventory.py`, `backend/app/api/v1/endpoints/shopping.py`, SwiftUI `ShoppingViewModel`, `HomeViewModel`, `ScanViewModel`, plus migrations/tests.
 
 ## 1. Principles and boundaries
 
@@ -22,7 +22,7 @@ This is the engineering contract for an agent to implement phases P0–P8 increm
 - `models/ingredient.py` — canonical ingredient, aliases, unit_conversion_reference, product-ingredient mapping, allergen graph.
 - `models/recipe.py` — saved/curated recipe metadata, normalized recipe ingredients, categories, provenance, source registry, version.
 - `models/preferences.py` — household/member diet preferences and allergen declarations, consent/retention.
-- `models/meal_plan.py`, `models/leftover.py` — future milestones.
+- `models/meal_plan.py`, `models/cooking.py`, `models/leftover.py` hold weekly-plan revisions, explicit cooking records and leftover events. Their current contracts are in [meal plans](MEAL_PLANS_API.md) and [cooking/leftovers](COOKING_LEFTOVERS_API.md).
 - `models/shopping.py` — extend existing shopping row with optional canonical `ingredient_id`, provenance, household scope and revision.
 - `schemas/recipes.py`, `schemas/preferences.py`, `schemas/recipe_shopping.py` — Pydantic request/response validation, strict enums, bounds.
 - `services/ingredient_matching.py` — alias resolution, confidence, composite packaging, verified conversions.
@@ -31,7 +31,7 @@ This is the engineering contract for an agent to implement phases P0–P8 increm
 - `services/recipe_ai.py` — typed provider abstraction, bounded DeepSeek calls, error handling, privacy minimization.
 - `services/allergen_policy.py` — hard-block and review-required decisions, with reasons.
 - `services/recipe_shopping.py` — preview/version, atomic shopping changes, idempotency and concurrency.
-- `api/v1/endpoints/recipes.py`, `preferences.py`, `recipe_shopping.py`, later `meal_plans.py` and `leftovers.py`.
+- `api/v1/endpoints/recipes.py`, `preferences.py`, `recipe_shopping.py`, `meal_plans.py`, `plan_shopping.py`, `cooking.py` and `leftovers.py`.
 
 ### SwiftUI (add under `frontend/frontend/`)
 - `Models/Recipe.swift`, `RecipeAvailability.swift`, `FoodPreferences.swift`, `RecipeShoppingPreview.swift`.
@@ -158,7 +158,7 @@ Input `recipe_id`, `recipe_version`, `servings`, `diners[]`, optional selected i
 `POST /api/v1/recipe-shopping/confirm`:
 Input `preview_id`, `idempotency_key`, `accepted_lines[]` (identifier + reviewed target quantity), `expected_revision`. Verify membership and all scope keys; verify same preview and same content hash; re-evaluate stock/shopping/preference versions in one DB write transaction. If stale, return `409 STALE_PREVIEW` with no writes and a regenerate action. If unverified units, return `422 REVIEW_REQUIRED`. On success update/create in one transaction and return `created[]`, `updated[]`, `unchanged[]` with persisted IDs and quantities.
 
-Use a SQLite-safe **serialized write transaction** or optimistic revision/update checks; do not assume PostgreSQL `SELECT ... FOR UPDATE` semantics work on SQLite. A unique (scope, idempotency_key) entry with request digest yields same stored result on retry; same key with different body -> 409. Keep stock and list revisions per household (increment on relevant mutations). For stale ingredient stock, return updated preview rather than silently changing planned amounts.
+The current PostgreSQL 18 implementation serializes household writes using a household row lock and checks stock/list revisions plus the preview context. Read-only previews use a repeatable-read snapshot. A unique scope/key entry with a request digest yields the stored result on an exact retry; the same key with a different body returns 409. Stock and shopping revisions increment on relevant mutations. Stale previews require a fresh review instead of silently changing planned quantities. SQLite remains a legacy import source, not the execution database for these workflows.
 
 **Do not** rely on client state or DeepSeek response for authorization, matching, stock, allergen guard, or write operation. Never silently mutate shopping while generating recipes. Post-confirm should refresh existing `ShoppingViewModel`.
 
@@ -181,7 +181,7 @@ Use a SQLite-safe **serialized write transaction** or optimistic revision/update
     confirm(preview_id, idempotency_key, accepted):
       authenticate_and_authorize()
       validate_key_and_preview()
-      begin SQLite-safe write transaction
+      begin PostgreSQL transaction and acquire household write lock
       if repeated exact request: return saved response
       recheck revisions, dietary guard, canonical mapping and unit policy
       if stale: rollback and return 409
@@ -197,7 +197,7 @@ Proposed routes (version under `/api/v1`; confirm names before implementation):
 - `POST /recipes/recommendations` (Cook Now/Almost There), `POST /recipes/discover` (search/filter, opt-in broad-web), `GET /recipes/{id}`.
 - `GET/POST/DELETE /recipes/saved`; versioned adapted recipes.
 - `POST /recipe-shopping/preview`, `POST /recipe-shopping/confirm` as above.
-- Later `/meal-plans`, `/leftovers`, `/cooking-sessions`, `/analytics/recipe-usage`.
+- Current additional foundations: `/meal-plans`, `/plan-shopping`, `/leftovers`, `/cooking/preview`, `/cooking/confirm`, `/cooking/sessions`, and `/meal-insights`. See the corresponding API documents for exact contracts; the route sketches above describe the original design.
 
 SwiftUI screen requirements:
 - Home: concise Chef Pip CTA ("Cook with Pip") without new tab; keep status alerts and branding.

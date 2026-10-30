@@ -48,6 +48,19 @@ navigation while implementing them.
 - Implement saved recipes, weekly plans, cooking confirmation and leftovers
   against the final backend contracts. Viewing or completing a recipe screen
   must not consume inventory automatically.
+- Weekly plans pin recipe revisions. Show the plan revision when editing and
+  request a new combined shopping preview after any plan, pantry, shopping,
+  diner, label, or source-policy change. Planned meals do not reserve stock.
+- Cooking confirmation requires the literal `RECORD COOKING`, explicit history
+  consent, a current preview, and acknowledgement of every batch with unknown
+  expiry. Preserve the confirmation payload and retry key across interrupted
+  responses. Show allocated batches and native quantities before recording.
+- Leftover use-by dates require user verification. Display unknown dates and
+  recorded expiry without generating a guaranteed safe date. Consumption and
+  disposal require the current leftover revision and an explicit quantity.
+- Budget and waste screens must show historical PHP prices, price timestamps,
+  unknown costs, and separate quantity units. Leftover disposal has unknown cost;
+  the API does not infer savings or treat all expired stock as recorded waste.
 
 ## Required acceptance on Mac and device
 
