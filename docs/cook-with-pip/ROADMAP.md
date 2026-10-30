@@ -183,7 +183,8 @@ read-only snapshot previews and explicit idempotent confirmation. Local migratio
 tests and schema-drift verification pass. The final reviewed PostgreSQL suite
 recorded **503 passed, one optional historical-file skip**. Independent review
 found and corrected table-lock ordering, truncated alias matching, fingerprint
-credential fields and stale cached rows. Exact-head CI remains pending, and
+credential fields and stale cached rows. Backend and iOS
+[passed on `3a0b57b`](https://github.com/lucifron28/Provision/actions/runs/41064764193), and
 SwiftUI confirmation remains in the Mac handoff. This milestone stays unchecked
 until the relevant remaining gates pass.
 
@@ -207,6 +208,11 @@ until the relevant remaining gates pass.
 - [ ] Gate: no accidental auto-consumption; concurrent plans don't silently oversubscribe scarce stock; grocery consolidation correct.
 
 ### P7 — Leftovers, budget, food waste, and household insights
+
+The [historical budget and waste API](MEAL_INSIGHTS_API.md) is under development.
+Focused PostgreSQL tests pass. It reports price provenance, unknown costs
+and quantities grouped by unit. Integrated plan/cooking/leftover records and
+exact-head acceptance remain pending; this phase is not complete.
 
 - [ ] Add leftovers (name/recipe, quantity, storage location, prepared_at, optional use-by guidance explicitly user-verified, portions); avoid pretending generated food-safety dates are guaranteed.
 - [ ] Leftover reminders and reuse suggestions, respecting allergy/preference rules and user opt-in; no recommendation of spoiled/expired food.
