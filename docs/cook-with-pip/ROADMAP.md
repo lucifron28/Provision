@@ -107,6 +107,16 @@ remaining acceptance audit are still pending, so the phase stays unchecked.
 
 ### P2 — Trusted recipe source registry and source discovery
 
+The [registry API and maintainer workflow](SOURCE_REGISTRY_API.md) now implement
+candidate records, dated review evidence, audit history, exact host policy,
+household link references, source-aware recommendation gates and offline query
+planning. Two Luna executors added URL-security, policy, CLI and concurrency
+coverage. Local PostgreSQL verification recorded **469 passed, one optional-file
+skip**, migration upgrade/downgrade tests and no Alembic drift. CI for this source
+implementation is pending. The four real publisher candidates remain disabled
+and unapproved. No live fetch, search, content extraction or image reuse is
+implemented or authorized by a registry flag.
+
 - [ ] Implement a reviewed `recipe_sources` registry with host allowlisting, source tier, ownership/publisher, cuisine tags, terms/robots review, permitted fetch/use mode, review date, and disable flag.
 - [ ] Seed **candidates** Panlasang Pinoy, Kawaling Pinoy, Yummy.ph, and Ang Sarap (see source policy); do NOT label them licensed/verified for ingestion until individually reviewed.
 - [ ] Implement DeepSeek Search and Fetch as server-side adapters with configurable timeouts, limits, caching, dedup by canonical URL, SSRF/redirect protections and audit traces. Check live API docs during implementation.
@@ -151,7 +161,9 @@ regional classification, immutable revisions, private bookmarks and deterministi
 recommendations. Local PostgreSQL verification recorded **379 tests passing and
 one optional-file skip**. This does not complete the provider or SwiftUI phase.
 DeepSeek and web calls remain disabled; no publisher provenance is asserted for
-household-entered content. CI evidence for this implementation is still pending.
+household-entered content. Both backend and iOS
+[passed for `0454e72`](https://github.com/lucifron28/Provision/actions/runs/41044660011).
+The source-policy additions above have their own pending CI verification.
 
 - [ ] Add provider interface `RecipeAIProvider` and server-side DeepSeek implementation; model, base URL, search feature flags, budgets, timeouts, and retries belong in env/config, NEVER app bundle.
 - [ ] Use structured JSON/Pydantic DTOs for recipes; validate source attribution, recipe ID, title, description, cuisine/region, category tags, prep/cook duration, servings, ingredients, instructions, substitutions, uncertainty flags, provenance, and generated/adapted marker.

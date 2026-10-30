@@ -31,6 +31,7 @@ to the authenticated member and are private.
 {
   "title": "My garlic rice",
   "cuisine": "Filipino",
+  "content_permission": "OWNED_OR_PERMISSION_GRANTED",
   "ph_regions": ["region_unknown"],
   "course_categories": ["breakfast"],
   "dish_types": ["rice"],
@@ -45,7 +46,11 @@ to the authenticated member and are private.
 }
 ```
 
-The example is user-entered content, not a publisher attribution. Regional
+The example is user-entered content, not a publisher attribution.
+Content permission is an explicit member declaration. Its default is
+`NOT_DECLARED`, which requires review before recommendation. See the
+[source registry contract](SOURCE_REGISTRY_API.md) for link attribution and
+maintainer approvals. Regional
 classification is supplied by the author. `region_unknown` is the default and
 cannot be combined with a claimed region. Supported regional labels are Ilocano,
 Bicolano, Kapampangan, Tagalog, Visayan and Mindanao. Course and dish enums,
