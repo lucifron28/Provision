@@ -50,7 +50,12 @@ jobs:
           python-version: "3.13"
       - name: Run Alembic migrations
         working-directory: backend
-        run: uv run alembic upgrade head
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
+          uv run alembic downgrade base
+          uv run alembic upgrade head
+          uv run alembic check
       - name: Run backend tests
         working-directory: backend
         run: uv run pytest
