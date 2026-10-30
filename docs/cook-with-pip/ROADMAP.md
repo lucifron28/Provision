@@ -14,6 +14,24 @@ Preserve barcode acceptance/rearm, receipt OCR, pending commit persistence/recon
 
 ## Completed Prerequisites
 
+### PostgreSQL stabilization audit, 2026-10-30
+
+The original migration milestone below is historical evidence. Its safety claims
+are under correction: the test fixture allowed a development URL and silent
+SQLite fallback, and the transfer utility verified counts after committing.
+Stabilization is **in progress**, not complete.
+
+- `cfa8373`: corrected the PostgreSQL 18 volume mount to `/var/lib/postgresql`;
+  loaded a secret DeepSeek key placeholder without enabling provider calls.
+- `9b1efe7`: CI now checks schema drift and an upgrade/downgrade/re-upgrade cycle.
+- Local PostgreSQL 18.6 on Windows, port 55432: upgrade to head, downgrade to
+  base, re-upgrade and `alembic check` passed on a separate verification database.
+- [CI for 9b1efe7](https://github.com/lucifron28/Provision/actions/runs/41024254918)
+  is pending at the time of this entry. These checks do not prove the safety
+  corrections complete. Importer and test-isolation regressions remain in progress.
+- Live DeepSeek/search integration is deferred until credentials are supplied.
+  SwiftUI implementation and device acceptance remain Mac-dependent work.
+
 - [x] **PostgreSQL 18 Backend Migration** (Completed: 2026-10-29, base: `feat/complete-ui-ux-refinement`)
   - Migrated backend from SQLite to PostgreSQL 18 containerized via Docker Compose (`compose.yaml`).
   - Preserved synchronous SQLAlchemy 2.0 architecture with `psycopg` (psycopg 3) and connection pooling (`pool_pre_ping=True`).
