@@ -17,6 +17,7 @@ from test_food_safety import catalog, declare
 
 def recipe_payload(**kwargs):
     payload = dict(title="Garlic rice", cuisine="Filipino", ph_regions=["region_unknown"],
+        content_permission="OWNED_OR_PERMISSION_GRANTED",
         course_categories=["breakfast"], dish_types=["rice"], servings=2, prep_minutes=5, cook_minutes=10,
         instructions=["Prepare the measured ingredients.", "Cook the rice with garlic until done."],
         ingredients=[dict(display_name="bigas", amount=100, unit="g"), dict(display_name="bawang", amount=5, unit="g")])

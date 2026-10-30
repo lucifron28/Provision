@@ -7,6 +7,7 @@ from app.schemas.food_safety import FoodSafetyRead
 from app.schemas.ingredients import StrictSchema
 from app.schemas.preferences import Tag
 from app.schemas.recipe import Course, RecipeRead, Region, Servings
+from app.schemas.recipe_source import SourceReferenceRead
 
 
 class RecommendationInput(StrictSchema):
@@ -40,6 +41,7 @@ class RecipeRecommendation(StrictSchema):
     missing_ingredient_count: int
     near_expiry_batch_count: int
     preference_match: bool
+    source_reference: SourceReferenceRead | None = None
 
 
 class RecommendationRead(StrictSchema):

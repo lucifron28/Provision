@@ -120,8 +120,15 @@ def evaluate_recipe(db, household_id, recipe_id, request: RecipeEvaluationInput)
         for item in record.ingredients]
     evaluation = FoodSafetyRequest(recipe_servings=record.servings, servings=request.servings,
         diner_user_ids=request.diner_user_ids, requirements=requirements, substitutions=request.substitutions)
-    return RecipeEvaluationRead(recipe_id=recipe.id, recipe_revision=recipe.revision,
-        result=evaluate_food_safety(db, household_id, evaluation))
+    result = evaluate_food_safety(db, household_id, evaluation)
+    from app.services.recipe_sources import recipe_source_context
+    source_allowed, _, _ = recipe_source_context(db, household_id, recipe.id)
+    if record.content_permission == "NOT_DECLARED" or not source_allowed:
+        if result.decision != "blocked":
+            result.decision = "review_required"
+        result.reasons = sorted(set(result.reasons) | ({"recipe_content_permission_not_declared"}
+            if record.content_permission == "NOT_DECLARED" else set()) | ({"recipe_source_unavailable"} if not source_allowed else set()))
+    return RecipeEvaluationRead(recipe_id=recipe.id, recipe_revision=recipe.revision, result=result)
 
 
 def _saved(db, household_id, member_id, recipe_id):

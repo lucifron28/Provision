@@ -14,6 +14,7 @@ from app.schemas.recommendations import RecommendationRead, RecipeRecommendation
 from app.services.preferences import read_profile
 from app.services.ingredient_matching import resolve_ingredient
 from app.services.recipes import evaluate_recipe, read_recipe
+from app.services.recipe_sources import recipe_source_context
 
 
 def recommend_recipes(db, household_id, actor_id, request):
@@ -83,11 +84,13 @@ def recommend_recipes(db, household_id, actor_id, request):
         preference_match = recipe.cuisine.casefold() in cuisine_preferences
         disliked = sum(1 for ingredient in recipe.ingredients
             if ingredient.display_name.casefold() in dislikes or ingredient.ingredient_id in disliked_ids)
-        pantry_key = (-coverage, missing, -near_expiry, -int(preference_match), disliked, total_minutes)
+        _, source_rank, source_reference = recipe_source_context(db, household_id, recipe.id)
+        pantry_key = (-coverage, missing, -near_expiry, -source_rank, -int(preference_match), disliked, total_minutes)
         key = (total_minutes, *pantry_key) if request.priority == "quick" else (
             (-int(preference_match), *pantry_key) if request.priority == "preferred_cuisine" else pantry_key)
         ranked.append(((*key, recipe.title.casefold(), recipe.id), RecipeRecommendation(recipe=recipe, evaluation=result,
-            coverage=coverage, missing_ingredient_count=missing, near_expiry_batch_count=near_expiry, preference_match=preference_match)))
+            coverage=coverage, missing_ingredient_count=missing, near_expiry_batch_count=near_expiry,
+            preference_match=preference_match, source_reference=source_reference)))
     ranked.sort(key=lambda item: item[0])
     return RecommendationRead(items=[item for _, item in ranked[:request.limit]], candidates_evaluated=evaluated,
         has_more_candidates=has_more, excluded_blocked=blocked, excluded_review_required=review, excluded_unknown_quantities=unknown)

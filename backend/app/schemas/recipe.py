@@ -17,6 +17,7 @@ class RecipeFields(StrictSchema):
     title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
     summary: Annotated[str, StringConstraints(strip_whitespace=True, max_length=1000)] | None = None
     cuisine: Tag = "Filipino"
+    content_permission: Literal["NOT_DECLARED", "OWNED_OR_PERMISSION_GRANTED"] = "NOT_DECLARED"
     ph_regions: list[Region] = Field(default_factory=lambda: ["region_unknown"], min_length=1, max_length=7)
     course_categories: list[Course] = Field(default_factory=list, max_length=9)
     dish_types: list[DishType] = Field(default_factory=list, max_length=11)
