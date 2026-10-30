@@ -221,7 +221,7 @@ local suite, **568 passed, one optional historical-file skip**, with two existin
 dependency deprecation warnings. Backend and the unchanged scanner XCTest job
 [passed on `2a5a8cf`](https://github.com/lucifron28/Provision/actions/runs/41080845054).
 CI independently recorded 568 passed and one skipped backend test. Subsequent
-adaptation and canned-product acceptance additions have separate pending checks.
+adaptation and canned-product checks have their own evidence below.
 The canned-product tests subsequently passed on `37ff2b4` as recorded in P1.
 The user-authored adaptation addition now pins same-household parent revisions,
 keeps lineage on edits and rechecks ancestor permissions/source history across
@@ -249,8 +249,9 @@ The initial [historical budget and waste API](MEAL_INSIGHTS_API.md) through
 **516 passed, one optional-file skip**. Both backend and iOS
 [passed on that head](https://github.com/lucifron28/Provision/actions/runs/41066131363).
 It reports price provenance, unknown costs and quantities grouped by unit.
-Subsequent plan/cooking/leftover integration and its exact-head acceptance remain
-pending; this phase is not complete.
+Plan/cooking/leftover integration is included in the final 578-test backend CI
+result above. Native reminders, reuse presentation and dashboards remain
+deferred; the complete client phase is not finished.
 
 - [x] Add leftovers (name/recipe, quantity, storage location, prepared_at, optional use-by guidance explicitly user-verified, portions); avoid pretending generated food-safety dates are guaranteed.
 - [ ] Leftover reminders and reuse suggestions, respecting allergy/preference rules and user opt-in; no recommendation of spoiled/expired food.

@@ -1,6 +1,6 @@
 # Cook with Pip — Technical Implementation Specification
 
-Status: **Backend implementation in progress; provider and SwiftUI work deferred.** Parent: [ROADMAP.md](./ROADMAP.md). Source rules: [RECIPE_SOURCE_POLICY.md](./RECIPE_SOURCE_POLICY.md). Last reviewed: 2026-10-30.
+Status: **Windows backend foundations implemented; provider and SwiftUI work deferred.** Parent: [ROADMAP.md](./ROADMAP.md). Source rules: [RECIPE_SOURCE_POLICY.md](./RECIPE_SOURCE_POLICY.md). Last reviewed: 2026-10-30.
 
 This is the engineering design for phases P0–P8. The roadmap records implementation and verification evidence. The feature-specific API documents describe current contracts; original route sketches below remain design proposals where they differ. Start by reading `backend/app/api/v1/api.py`, `backend/app/services/inventory.py`, `backend/app/api/v1/endpoints/shopping.py`, SwiftUI `ShoppingViewModel`, `HomeViewModel`, `ScanViewModel`, plus migrations/tests.
 
@@ -44,8 +44,8 @@ This is the engineering design for phases P0–P8. The roadmap records implement
 
 ### Backend implementation decisions, 2026-10-30
 
-Implementation is in progress. These decisions define the P0 contract; they
-are not completion evidence.
+These decisions describe the implemented P0 backend contract. Verification
+evidence is recorded in the roadmap and backend acceptance audit.
 
 - Products are household-owned, including barcode uniqueness. Scanner create,
   lookup, edit and delete keep their existing route shapes. This avoids exposing
