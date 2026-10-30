@@ -55,7 +55,7 @@ from app.services.household_writes import bump_inventory_revision, lock_househol
 from app.services.ingredient_matching import resolve_ingredient
 from app.services.inventory import consume_batch_no_commit
 from app.services.leftovers import create_leftover_no_commit, read_leftover
-from app.services.recipe_sources import reference_policy
+from app.services.recipe_sources import recipe_source_context
 from app.services.recipes import get_recipe
 from app.services.units import UnitConversionError, convert_amount, normalize_unit
 
@@ -236,22 +236,11 @@ def _recipe_snapshot(db: Session, household_id: int, request: CookingPreviewRequ
     return recipe, revision.snapshot
 
 
-def _source_allowed(db: Session, household_id: int, recipe_id: int) -> tuple[bool, RecipeSourceReference | None]:
-    reference = db.scalar(
-        select(RecipeSourceReference)
-        .where(
-            RecipeSourceReference.household_id == household_id,
-            RecipeSourceReference.recipe_id == recipe_id,
-        )
-        .execution_options(populate_existing=True)
-    )
-    if reference is None or not reference.is_active:
-        return True, reference
-    source, allowed, _label = reference_policy(
-        db,
-        reference.canonical_url,
-        reference.broader_web_permission,
-        reference.source_id,
+def _source_allowed(
+    db: Session, household_id: int, recipe_id: int, recipe_revision: int
+):
+    allowed, _priority, reference = recipe_source_context(
+        db, household_id, recipe_id, recipe_revision=recipe_revision
     )
     return allowed, reference
 
@@ -609,7 +598,9 @@ def _build_preview_context(
     recipe, recipe_read = _recipe_snapshot(db, household_id, request)
     if recipe_read.get("content_permission") != "OWNED_OR_PERMISSION_GRANTED":
         raise HTTPException(status_code=422, detail="REVIEW_REQUIRED")
-    source_allowed, _reference = _source_allowed(db, household_id, recipe.id)
+    source_allowed, _reference = _source_allowed(
+        db, household_id, recipe.id, request.expected_recipe_revision
+    )
     if not source_allowed:
         raise HTTPException(status_code=422, detail="REVIEW_REQUIRED")
 

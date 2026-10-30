@@ -78,8 +78,36 @@ def write_recipe(db: Session, household_id: int, actor_id: int, request: RecipeW
         raise HTTPException(409, "RECIPE_REVISION_CONFLICT")
     if recipe and not recipe.is_active:
         raise HTTPException(409, "RECIPE_ARCHIVED")
-    ingredients = _ingredients(db, request)
     content = request.model_dump(mode="json", exclude={"title", "cuisine", "ingredients", "expected_revision"})
+    requested_origin = (
+        request.adapted_from_recipe_id,
+        request.adapted_from_recipe_revision,
+    )
+    if recipe is not None:
+        current_origin = (
+            recipe.content.get("adapted_from_recipe_id"),
+            recipe.content.get("adapted_from_recipe_revision"),
+        )
+        origin_was_submitted = bool(
+            {"adapted_from_recipe_id", "adapted_from_recipe_revision"}
+            & request.model_fields_set
+        )
+        if origin_was_submitted and requested_origin != current_origin:
+            raise HTTPException(409, "RECIPE_ORIGIN_IMMUTABLE")
+        content["adapted_from_recipe_id"], content["adapted_from_recipe_revision"] = current_origin
+    elif request.adapted_from_recipe_id is not None:
+        if request.content_permission != "OWNED_OR_PERMISSION_GRANTED":
+            raise HTTPException(422, "ADAPTATION_PERMISSION_REQUIRED")
+        from app.services.recipe_sources import validate_adaptation_parent
+
+        validate_adaptation_parent(
+            db,
+            household_id,
+            None,
+            request.adapted_from_recipe_id,
+            request.adapted_from_recipe_revision,
+        )
+    ingredients = _ingredients(db, request)
     if recipe is None:
         recipe = Recipe(household_id=household_id, title=request.title, cuisine=request.cuisine,
             content=content, revision=1, is_active=True, created_by_user_id=actor_id)
@@ -129,7 +157,9 @@ def evaluate_recipe(db, household_id, recipe_id, request: RecipeEvaluationInput)
         diner_user_ids=request.diner_user_ids, requirements=requirements)
     result = evaluate_food_safety(db, household_id, evaluation)
     from app.services.recipe_sources import recipe_source_context
-    source_allowed, _, _ = recipe_source_context(db, household_id, recipe.id)
+    source_allowed, _, _ = recipe_source_context(
+        db, household_id, recipe.id, request.expected_recipe_revision
+    )
     if record.content_permission == "NOT_DECLARED" or not source_allowed:
         if result.decision != "blocked":
             result.decision = "review_required"

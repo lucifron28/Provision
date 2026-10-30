@@ -18,6 +18,8 @@ class RecipeFields(StrictSchema):
     summary: Annotated[str, StringConstraints(strip_whitespace=True, max_length=1000)] | None = None
     cuisine: Tag = "Filipino"
     content_permission: Literal["NOT_DECLARED", "OWNED_OR_PERMISSION_GRANTED"] = "NOT_DECLARED"
+    adapted_from_recipe_id: int | None = Field(default=None, gt=0)
+    adapted_from_recipe_revision: int | None = Field(default=None, ge=1)
     ph_regions: list[Region] = Field(default_factory=lambda: ["region_unknown"], min_length=1, max_length=7)
     course_categories: list[Course] = Field(default_factory=list, max_length=9)
     dish_types: list[DishType] = Field(default_factory=list, max_length=11)
@@ -31,6 +33,8 @@ class RecipeFields(StrictSchema):
 
     @model_validator(mode="after")
     def unique_classification(self):
+        if (self.adapted_from_recipe_id is None) != (self.adapted_from_recipe_revision is None):
+            raise ValueError("Adaptation parent recipe and revision must be provided together")
         for field in ("ph_regions", "course_categories", "dish_types", "equipment"):
             values = [item.casefold() for item in getattr(self, field)]
             if len(values) != len(set(values)):

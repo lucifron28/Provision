@@ -5,10 +5,15 @@ from urllib.parse import urlsplit
 from fastapi import HTTPException
 from sqlalchemy import or_, select, text
 
+from app.models.recipe import Recipe, RecipeRevision
 from app.models.recipe_source import RecipeSource, RecipeSourceReference, RecipeSourceReview
 from app.schemas.recipe_source import SourcePolicy, SourceRead, SourceReferenceRead
 from app.services.recipes import _lock_member, get_recipe
 from app.services.source_urls import canonical_recipe_url
+
+
+_MAX_ADAPTATION_DEPTH = 4
+_OWNED_PERMISSION = "OWNED_OR_PERMISSION_GRANTED"
 
 
 def source_approved(source):
@@ -185,7 +190,146 @@ def remove_reference(db, household_id, actor_id, recipe_id, expected_revision):
     db.commit()
 
 
-def recipe_source_context(db, household_id, recipe_id):
+def _adaptation_parent(snapshot):
+    if not isinstance(snapshot, dict):
+        return False
+    parent_id = snapshot.get("adapted_from_recipe_id")
+    parent_revision = snapshot.get("adapted_from_recipe_revision")
+    if parent_id is None and parent_revision is None:
+        return None
+    if type(parent_id) is not int or parent_id <= 0 or type(parent_revision) is not int or parent_revision < 1:
+        return False
+    return parent_id, parent_revision
+
+
+def _parent_chain_is_allowed(db, household_id, parent_id, parent_revision, seen_ids, depth):
+    if depth > _MAX_ADAPTATION_DEPTH or parent_id in seen_ids:
+        return False
+    parent = db.scalar(
+        select(Recipe)
+        .where(Recipe.household_id == household_id, Recipe.id == parent_id)
+        .execution_options(populate_existing=True)
+    )
+    if (
+        parent is None
+        or not parent.is_active
+        or parent.content.get("content_permission") != _OWNED_PERMISSION
+    ):
+        return False
+    if db.scalar(
+        select(RecipeSourceReference.id)
+        .where(
+            RecipeSourceReference.household_id == household_id,
+            RecipeSourceReference.recipe_id == parent_id,
+        )
+        .limit(1)
+    ) is not None:
+        return False
+
+    pinned = db.scalar(
+        select(RecipeRevision)
+        .where(
+            RecipeRevision.household_id == household_id,
+            RecipeRevision.recipe_id == parent_id,
+            RecipeRevision.revision == parent_revision,
+        )
+        .execution_options(populate_existing=True)
+    )
+    if (
+        pinned is None
+        or pinned.snapshot.get("content_permission") != _OWNED_PERMISSION
+        or pinned.snapshot.get("provenance", "USER_ENTERED") != "USER_ENTERED"
+    ):
+        return False
+
+    seen_ids.add(parent_id)
+    ancestor = _adaptation_parent(pinned.snapshot)
+    if ancestor is False:
+        return False
+    if ancestor is None:
+        return True
+    return _parent_chain_is_allowed(
+        db, household_id, ancestor[0], ancestor[1], seen_ids, depth + 1
+    )
+
+
+def recipe_origin_context(db, household_id, recipe_id, recipe_revision=None):
+    """Check the immutable user-authored parent chain against current policy."""
+    recipe = db.scalar(
+        select(Recipe)
+        .where(Recipe.household_id == household_id, Recipe.id == recipe_id)
+        .execution_options(populate_existing=True)
+    )
+    if recipe is None:
+        return False
+
+    if recipe_revision is None:
+        snapshot = recipe.content
+    else:
+        revision = db.scalar(
+            select(RecipeRevision)
+            .where(
+                RecipeRevision.household_id == household_id,
+                RecipeRevision.recipe_id == recipe_id,
+                RecipeRevision.revision == recipe_revision,
+            )
+            .execution_options(populate_existing=True)
+        )
+        if revision is None:
+            return False
+        snapshot = revision.snapshot
+
+    parent = _adaptation_parent(snapshot)
+    if parent is False:
+        return False
+    if parent is None:
+        return True
+    return _parent_chain_is_allowed(
+        db, household_id, parent[0], parent[1], {recipe_id}, 1
+    )
+
+
+def validate_adaptation_parent(
+    db, household_id, child_recipe_id, parent_recipe_id, parent_revision
+):
+    """Reject an unusable parent before a new recipe revision is written."""
+    if child_recipe_id is not None and parent_recipe_id == child_recipe_id:
+        raise HTTPException(status_code=422, detail="ADAPTATION_PARENT_UNAVAILABLE")
+    parent = db.scalar(
+        select(Recipe)
+        .where(
+            Recipe.household_id == household_id,
+            Recipe.id == parent_recipe_id,
+        )
+        .execution_options(populate_existing=True)
+    )
+    if parent is None:
+        raise HTTPException(status_code=404, detail="ADAPTATION_PARENT_NOT_FOUND")
+    pinned = db.scalar(
+        select(RecipeRevision)
+        .where(
+            RecipeRevision.household_id == household_id,
+            RecipeRevision.recipe_id == parent_recipe_id,
+            RecipeRevision.revision == parent_revision,
+        )
+        .execution_options(populate_existing=True)
+    )
+    if pinned is None:
+        raise HTTPException(status_code=404, detail="ADAPTATION_PARENT_REVISION_NOT_FOUND")
+    if not _parent_chain_is_allowed(
+        db,
+        household_id,
+        parent_recipe_id,
+        parent_revision,
+        {child_recipe_id} if child_recipe_id is not None else set(),
+        1,
+    ):
+        raise HTTPException(status_code=422, detail="ADAPTATION_PARENT_UNAVAILABLE")
+
+
+def recipe_source_context(db, household_id, recipe_id, recipe_revision=None):
+    if not recipe_origin_context(db, household_id, recipe_id, recipe_revision):
+        return False, 0, None
     reference = _reference(db, household_id, recipe_id)
     if reference is None or not reference.is_active:
         return True, 0, None

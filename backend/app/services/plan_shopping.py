@@ -310,8 +310,12 @@ def _preview_context(
         for revision_key in (key for key in recipe_revision_keys if key[0] == recipe_id):
             if snapshots[revision_key].content_permission != "OWNED_OR_PERMISSION_GRANTED":
                 gate_reasons.add("recipe_content_permission_not_declared")
-        source_allowed, _priority, _source_reference = recipe_source_context(
-            db, household_id, recipe_id
+        source_allowed = all(
+            recipe_source_context(
+                db, household_id, recipe_id, recipe_revision=revision
+            )[0]
+            for pinned_recipe_id, revision in recipe_revision_keys
+            if pinned_recipe_id == recipe_id
         )
         if not source_allowed:
             gate_reasons.add("recipe_source_unavailable")

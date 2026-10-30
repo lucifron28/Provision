@@ -209,8 +209,9 @@ def _validate_entries(
             != "OWNED_OR_PERMISSION_GRANTED"
         ):
             raise HTTPException(status_code=422, detail="RECIPE_CONTENT_PERMISSION_REQUIRED")
+    for recipe_id, revision in needed_revisions:
         source_allowed, _priority, _reference = recipe_source_context(
-            db, household_id, recipe_id
+            db, household_id, recipe_id, recipe_revision=revision
         )
         if not source_allowed:
             raise HTTPException(status_code=409, detail="SOURCE_NOT_AVAILABLE")
