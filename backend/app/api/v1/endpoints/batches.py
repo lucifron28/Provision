@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select, nulls_last, func
 
 from app.core.database import get_db
+from app.api.v1.dependencies import get_current_household_id
 from app.models.batch import InventoryBatch
 from app.models.product import Product
 from app.models.location import StorageLocation
@@ -28,10 +29,12 @@ def list_batches(
     expiring_before: Optional[date] = Query(None, description="Filter batches expiring on or before this date"),
     skip: int = 0,
     limit: int = 100,
+    household_id: int = Depends(get_current_household_id),
     db: Session = Depends(get_db),
 ):
     stmt = (
         select(InventoryBatch)
+        .where(InventoryBatch.household_id == household_id)
         .options(
             joinedload(InventoryBatch.product),
             joinedload(InventoryBatch.storage_location),
@@ -64,10 +67,16 @@ def list_batches(
 @router.post("/", response_model=InventoryBatchWithDetails, status_code=status.HTTP_201_CREATED)
 def create_batch(
     batch_in: InventoryBatchCreate,
+    household_id: int = Depends(get_current_household_id),
     db: Session = Depends(get_db),
 ):
     # Verify Product exists
-    product = db.get(Product, batch_in.product_id)
+    product = db.scalar(
+        select(Product).where(
+            Product.id == batch_in.product_id,
+            Product.household_id == household_id,
+        )
+    )
     if not product:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -76,7 +85,12 @@ def create_batch(
 
     # Verify StorageLocation if provided
     if batch_in.storage_location_id is not None:
-        location = db.get(StorageLocation, batch_in.storage_location_id)
+        location = db.scalar(
+            select(StorageLocation).where(
+                StorageLocation.id == batch_in.storage_location_id,
+                StorageLocation.household_id == household_id,
+            )
+        )
         if not location:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -85,7 +99,12 @@ def create_batch(
 
     # Verify GrocerySession if provided
     if batch_in.grocery_session_id is not None:
-        session = db.get(GrocerySession, batch_in.grocery_session_id)
+        session = db.scalar(
+            select(GrocerySession).where(
+                GrocerySession.id == batch_in.grocery_session_id,
+                GrocerySession.household_id == household_id,
+            )
+        )
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -95,6 +114,7 @@ def create_batch(
     purchased_at = batch_in.purchased_at or datetime.now(timezone.utc)
 
     batch = InventoryBatch(
+        household_id=household_id,
         product_id=batch_in.product_id,
         storage_location_id=batch_in.storage_location_id,
         grocery_session_id=batch_in.grocery_session_id,
@@ -125,7 +145,10 @@ def create_batch(
             joinedload(InventoryBatch.product),
             joinedload(InventoryBatch.storage_location),
         )
-        .where(InventoryBatch.id == batch.id)
+        .where(
+            InventoryBatch.id == batch.id,
+            InventoryBatch.household_id == household_id,
+        )
     )
     return db.scalar(stmt)
 
@@ -133,6 +156,7 @@ def create_batch(
 @router.get("/{batch_id}", response_model=InventoryBatchWithDetails)
 def get_batch(
     batch_id: int,
+    household_id: int = Depends(get_current_household_id),
     db: Session = Depends(get_db),
 ):
     stmt = (
@@ -141,7 +165,10 @@ def get_batch(
             joinedload(InventoryBatch.product),
             joinedload(InventoryBatch.storage_location),
         )
-        .where(InventoryBatch.id == batch_id)
+        .where(
+            InventoryBatch.id == batch_id,
+            InventoryBatch.household_id == household_id,
+        )
     )
     batch = db.scalar(stmt)
     if not batch:
@@ -156,6 +183,7 @@ def get_batch(
 def update_batch(
     batch_id: int,
     batch_in: InventoryBatchUpdate,
+    household_id: int = Depends(get_current_household_id),
     db: Session = Depends(get_db),
 ):
     stmt = (
@@ -164,7 +192,10 @@ def update_batch(
             joinedload(InventoryBatch.product),
             joinedload(InventoryBatch.storage_location),
         )
-        .where(InventoryBatch.id == batch_id)
+        .where(
+            InventoryBatch.id == batch_id,
+            InventoryBatch.household_id == household_id,
+        )
     )
     batch = db.scalar(stmt)
     if not batch:
@@ -176,7 +207,12 @@ def update_batch(
     update_data = batch_in.model_dump(exclude_unset=True)
 
     if "storage_location_id" in update_data and update_data["storage_location_id"] is not None:
-        location = db.get(StorageLocation, update_data["storage_location_id"])
+        location = db.scalar(
+            select(StorageLocation).where(
+                StorageLocation.id == update_data["storage_location_id"],
+                StorageLocation.household_id == household_id,
+            )
+        )
         if not location:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -194,9 +230,15 @@ def update_batch(
 @router.delete("/{batch_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_batch(
     batch_id: int,
+    household_id: int = Depends(get_current_household_id),
     db: Session = Depends(get_db),
 ):
-    batch = db.get(InventoryBatch, batch_id)
+    batch = db.scalar(
+        select(InventoryBatch).where(
+            InventoryBatch.id == batch_id,
+            InventoryBatch.household_id == household_id,
+        )
+    )
     if not batch:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -204,7 +246,12 @@ def delete_batch(
         )
 
     event_count = db.scalar(
-        select(func.count(InventoryEvent.id)).where(InventoryEvent.batch_id == batch_id)
+        select(func.count(InventoryEvent.id))
+        .join(InventoryBatch, InventoryBatch.id == InventoryEvent.batch_id)
+        .where(
+            InventoryEvent.batch_id == batch_id,
+            InventoryBatch.household_id == household_id,
+        )
     ) or 0
     if event_count > 0:
         raise HTTPException(

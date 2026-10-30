@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select, func, and_
 
 from app.core.database import get_db
+from app.api.v1.dependencies import get_current_household_id
 from app.models.shopping import ShoppingListItem
 from app.models.product import Product
 from app.models.batch import InventoryBatch
@@ -22,9 +23,14 @@ def list_shopping_items(
     is_bought: Optional[bool] = Query(None, description="Filter by bought/unbought status"),
     skip: int = 0,
     limit: int = 100,
+    household_id: int = Depends(get_current_household_id),
     db: Session = Depends(get_db),
 ):
-    stmt = select(ShoppingListItem).options(joinedload(ShoppingListItem.product))
+    stmt = (
+        select(ShoppingListItem)
+        .options(joinedload(ShoppingListItem.product))
+        .where(ShoppingListItem.household_id == household_id)
+    )
     if is_bought is not None:
         stmt = stmt.where(ShoppingListItem.is_bought == is_bought)
     stmt = (
@@ -38,6 +44,7 @@ def list_shopping_items(
 @router.post("/", response_model=ShoppingListItemRead, status_code=status.HTTP_201_CREATED)
 def add_shopping_item(
     item_in: ShoppingListItemCreate,
+    household_id: int = Depends(get_current_household_id),
     db: Session = Depends(get_db),
 ):
     product = None
@@ -45,7 +52,12 @@ def add_shopping_item(
     unit = item_in.unit
 
     if item_in.product_id:
-        product = db.get(Product, item_in.product_id)
+        product = db.scalar(
+            select(Product).where(
+                Product.id == item_in.product_id,
+                Product.household_id == household_id,
+            )
+        )
         if not product:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -63,6 +75,7 @@ def add_shopping_item(
         )
 
     item = ShoppingListItem(
+        household_id=household_id,
         product_id=item_in.product_id,
         name=item_name,
         quantity=item_in.quantity,
@@ -74,16 +87,31 @@ def add_shopping_item(
     db.commit()
     db.refresh(item)
 
-    stmt = select(ShoppingListItem).options(joinedload(ShoppingListItem.product)).where(ShoppingListItem.id == item.id)
+    stmt = (
+        select(ShoppingListItem)
+        .options(joinedload(ShoppingListItem.product))
+        .where(
+            ShoppingListItem.id == item.id,
+            ShoppingListItem.household_id == household_id,
+        )
+    )
     return db.scalar(stmt)
 
 
 @router.get("/{item_id}", response_model=ShoppingListItemRead)
 def get_shopping_item(
     item_id: int,
+    household_id: int = Depends(get_current_household_id),
     db: Session = Depends(get_db),
 ):
-    stmt = select(ShoppingListItem).options(joinedload(ShoppingListItem.product)).where(ShoppingListItem.id == item_id)
+    stmt = (
+        select(ShoppingListItem)
+        .options(joinedload(ShoppingListItem.product))
+        .where(
+            ShoppingListItem.id == item_id,
+            ShoppingListItem.household_id == household_id,
+        )
+    )
     item = db.scalar(stmt)
     if not item:
         raise HTTPException(
@@ -97,9 +125,17 @@ def get_shopping_item(
 def update_shopping_item(
     item_id: int,
     item_in: ShoppingListItemUpdate,
+    household_id: int = Depends(get_current_household_id),
     db: Session = Depends(get_db),
 ):
-    stmt = select(ShoppingListItem).options(joinedload(ShoppingListItem.product)).where(ShoppingListItem.id == item_id)
+    stmt = (
+        select(ShoppingListItem)
+        .options(joinedload(ShoppingListItem.product))
+        .where(
+            ShoppingListItem.id == item_id,
+            ShoppingListItem.household_id == household_id,
+        )
+    )
     item = db.scalar(stmt)
     if not item:
         raise HTTPException(
@@ -109,7 +145,12 @@ def update_shopping_item(
 
     update_data = item_in.model_dump(exclude_unset=True)
     if "product_id" in update_data and update_data["product_id"] is not None:
-        product = db.get(Product, update_data["product_id"])
+        product = db.scalar(
+            select(Product).where(
+                Product.id == update_data["product_id"],
+                Product.household_id == household_id,
+            )
+        )
         if not product:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -127,9 +168,17 @@ def update_shopping_item(
 @router.post("/{item_id}/toggle", response_model=ShoppingListItemRead)
 def toggle_item_bought_status(
     item_id: int,
+    household_id: int = Depends(get_current_household_id),
     db: Session = Depends(get_db),
 ):
-    stmt = select(ShoppingListItem).options(joinedload(ShoppingListItem.product)).where(ShoppingListItem.id == item_id)
+    stmt = (
+        select(ShoppingListItem)
+        .options(joinedload(ShoppingListItem.product))
+        .where(
+            ShoppingListItem.id == item_id,
+            ShoppingListItem.household_id == household_id,
+        )
+    )
     item = db.scalar(stmt)
     if not item:
         raise HTTPException(
@@ -145,6 +194,7 @@ def toggle_item_bought_status(
 @router.post("/generate-from-low-stock", response_model=List[ShoppingListItemRead])
 def generate_from_low_stock(
     req: AutoGenerateShoppingRequest = AutoGenerateShoppingRequest(),
+    household_id: int = Depends(get_current_household_id),
     db: Session = Depends(get_db),
 ):
     """
@@ -158,7 +208,10 @@ def generate_from_low_stock(
             InventoryBatch.product_id,
             func.coalesce(func.sum(InventoryBatch.remaining_quantity), 0.0).label("total_stock"),
         )
-        .where(InventoryBatch.remaining_quantity > 0)
+        .where(
+            InventoryBatch.household_id == household_id,
+            InventoryBatch.remaining_quantity > 0,
+        )
         .group_by(InventoryBatch.product_id)
         .subquery()
     )
@@ -169,6 +222,7 @@ def generate_from_low_stock(
             func.coalesce(stock_subq.c.total_stock, 0.0).label("stock"),
         )
         .outerjoin(stock_subq, Product.id == stock_subq.c.product_id)
+        .where(Product.household_id == household_id)
     )
 
     results = db.execute(stmt).all()
@@ -180,11 +234,13 @@ def generate_from_low_stock(
             already_listed = db.scalar(
                 select(ShoppingListItem).where(
                     ShoppingListItem.product_id == product.id,
+                    ShoppingListItem.household_id == household_id,
                     ShoppingListItem.is_bought.is_(False),
                 )
             )
             if not already_listed:
                 new_item = ShoppingListItem(
+                    household_id=household_id,
                     product_id=product.id,
                     name=product.name,
                     quantity=1.0,
@@ -208,13 +264,24 @@ def generate_from_low_stock(
     return db.scalars(
         select(ShoppingListItem)
         .options(joinedload(ShoppingListItem.product))
-        .where(ShoppingListItem.id.in_(item_ids))
+        .where(
+            ShoppingListItem.household_id == household_id,
+            ShoppingListItem.id.in_(item_ids),
+        )
     ).all()
 
 
 @router.delete("/completed/clear", status_code=status.HTTP_200_OK)
-def clear_completed_items(db: Session = Depends(get_db)):
-    items = db.scalars(select(ShoppingListItem).where(ShoppingListItem.is_bought.is_(True))).all()
+def clear_completed_items(
+    household_id: int = Depends(get_current_household_id),
+    db: Session = Depends(get_db),
+):
+    items = db.scalars(
+        select(ShoppingListItem).where(
+            ShoppingListItem.household_id == household_id,
+            ShoppingListItem.is_bought.is_(True),
+        )
+    ).all()
     count = len(items)
     for item in items:
         db.delete(item)
@@ -225,9 +292,15 @@ def clear_completed_items(db: Session = Depends(get_db)):
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_shopping_item(
     item_id: int,
+    household_id: int = Depends(get_current_household_id),
     db: Session = Depends(get_db),
 ):
-    item = db.get(ShoppingListItem, item_id)
+    item = db.scalar(
+        select(ShoppingListItem).where(
+            ShoppingListItem.id == item_id,
+            ShoppingListItem.household_id == household_id,
+        )
+    )
     if not item:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

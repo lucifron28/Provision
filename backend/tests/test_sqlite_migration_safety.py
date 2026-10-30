@@ -1,4 +1,7 @@
+import os
 import sqlite3
+import subprocess
+import sys
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -8,7 +11,7 @@ from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.engine import URL
 from sqlalchemy.orm import Session
 
-from app.models import Base
+from app.models.household import Household, HouseholdMembership, HouseholdRole
 from app.models.batch import InventoryBatch
 from app.models.event import EventType, InventoryEvent
 from app.models.location import StorageLocation
@@ -16,6 +19,7 @@ from app.models.product import Product, ProductSource
 from app.models.session import GrocerySession, GrocerySessionStatus
 from app.models.shopping import ShoppingListItem
 from app.models.user import User
+from app.models.household import Household, HouseholdRole
 from database_safety import (
     create_owned_test_schema,
     drop_owned_test_schema,
@@ -30,73 +34,199 @@ from scripts.migrate_sqlite_to_postgres import (
 )
 
 
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+
+
 def _sqlite_url(path):
     return URL.create("sqlite", database=str(path))
 
 
 def create_legacy_database(path):
-    sqlite_engine = create_engine(_sqlite_url(path))
-    Base.metadata.create_all(sqlite_engine)
     purchased_at = datetime(2026, 10, 30, 8, 45, 12, tzinfo=timezone.utc)
-    with Session(sqlite_engine) as session:
-        session.add_all(
-            [
-                User(
-                    id=9,
-                    email="legacy@provision.local",
-                    hashed_password="legacy-hash",
-                    display_name="Legacy User",
-                    is_active=False,
-                ),
-                Product(
-                    id=41,
-                    name="Legacy Tuna",
-                    brand="Provision",
-                    category="Canned Goods",
-                    source=ProductSource.USER_CONFIRMED,
-                ),
-                StorageLocation(id=15, name="Legacy Pantry"),
-                GrocerySession(
-                    id=23,
-                    store_name="Legacy Market",
-                    purchase_date=purchased_at,
-                    total_amount=Decimal("108.50"),
-                    status=GrocerySessionStatus.COMPLETED,
-                    idempotency_key="legacy-session-key",
-                    idempotency_fingerprint="legacy-fingerprint",
-                ),
-                InventoryBatch(
-                    id=67,
-                    product_id=41,
-                    storage_location_id=15,
-                    grocery_session_id=23,
-                    purchased_at=purchased_at,
-                    expiration_date=date(2027, 10, 30),
-                    original_quantity=Decimal("4.00"),
-                    remaining_quantity=Decimal("3.00"),
-                    unit_price=Decimal("27.13"),
-                ),
-                ShoppingListItem(
-                    id=81,
-                    product_id=41,
-                    name="Legacy Tuna",
-                    quantity=Decimal("2.00"),
-                    unit="can",
-                    is_bought=True,
-                ),
-                InventoryEvent(
-                    id=102,
-                    batch_id=67,
-                    event_type=EventType.PURCHASED,
-                    quantity=Decimal("4.00"),
-                    occurred_at=purchased_at,
-                    reason="Legacy import test",
-                ),
-            ]
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.executescript(
+            """
+            CREATE TABLE users (
+                id INTEGER PRIMARY KEY,
+                email VARCHAR(255) NOT NULL,
+                hashed_password VARCHAR(255) NOT NULL,
+                display_name VARCHAR(100),
+                is_active BOOLEAN NOT NULL DEFAULT 1,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE UNIQUE INDEX ix_users_email ON users (email);
+            CREATE TABLE grocery_sessions (
+                id INTEGER PRIMARY KEY,
+                store_name VARCHAR(255) NOT NULL,
+                purchase_date DATETIME NOT NULL,
+                total_amount NUMERIC(10, 2),
+                status VARCHAR(9) NOT NULL,
+                notes TEXT,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                idempotency_key VARCHAR(36),
+                idempotency_fingerprint VARCHAR(64)
+            );
+            CREATE UNIQUE INDEX ix_grocery_sessions_idempotency_key
+                ON grocery_sessions (idempotency_key);
+            CREATE TABLE products (
+                id INTEGER PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                brand VARCHAR(255),
+                barcode VARCHAR(100),
+                category VARCHAR(100),
+                package_size FLOAT,
+                unit VARCHAR(50),
+                image_url VARCHAR(500),
+                source VARCHAR(20) NOT NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE UNIQUE INDEX ix_products_barcode ON products (barcode);
+            CREATE INDEX ix_products_category ON products (category);
+            CREATE INDEX ix_products_name ON products (name);
+            CREATE TABLE storage_locations (
+                id INTEGER PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                description TEXT,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE UNIQUE INDEX ix_storage_locations_name ON storage_locations (name);
+            CREATE TABLE inventory_batches (
+                id INTEGER PRIMARY KEY,
+                product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+                storage_location_id INTEGER REFERENCES storage_locations(id) ON DELETE SET NULL,
+                grocery_session_id INTEGER REFERENCES grocery_sessions(id) ON DELETE SET NULL,
+                purchased_at DATETIME NOT NULL,
+                expiration_date DATE,
+                original_quantity NUMERIC(10, 2) NOT NULL,
+                remaining_quantity NUMERIC(10, 2) NOT NULL,
+                unit_price NUMERIC(10, 2),
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX ix_inventory_batches_expiration_date ON inventory_batches (expiration_date);
+            CREATE INDEX ix_inventory_batches_grocery_session_id ON inventory_batches (grocery_session_id);
+            CREATE INDEX ix_inventory_batches_product_id ON inventory_batches (product_id);
+            CREATE INDEX ix_inventory_batches_remaining_quantity ON inventory_batches (remaining_quantity);
+            CREATE INDEX ix_inventory_batches_storage_location_id ON inventory_batches (storage_location_id);
+            CREATE TABLE shopping_list_items (
+                id INTEGER PRIMARY KEY,
+                product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+                name VARCHAR(255) NOT NULL,
+                quantity NUMERIC(10, 2) NOT NULL,
+                unit VARCHAR(50),
+                is_bought BOOLEAN NOT NULL,
+                notes TEXT,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX ix_shopping_list_items_is_bought ON shopping_list_items (is_bought);
+            CREATE INDEX ix_shopping_list_items_product_id ON shopping_list_items (product_id);
+            CREATE TABLE inventory_events (
+                id INTEGER PRIMARY KEY,
+                batch_id INTEGER NOT NULL REFERENCES inventory_batches(id) ON DELETE CASCADE,
+                event_type VARCHAR(20) NOT NULL,
+                quantity NUMERIC(10, 2) NOT NULL,
+                occurred_at DATETIME NOT NULL,
+                reason VARCHAR(255),
+                notes TEXT
+            );
+            CREATE INDEX ix_inventory_events_batch_id ON inventory_events (batch_id);
+            CREATE INDEX ix_inventory_events_event_type ON inventory_events (event_type);
+            CREATE INDEX ix_inventory_events_occurred_at ON inventory_events (occurred_at);
+            """
         )
-        session.commit()
-    sqlite_engine.dispose()
+        connection.execute(
+            "INSERT INTO users (id,email,hashed_password,display_name,is_active) VALUES (?,?,?,?,?)",
+            (9, "legacy@provision.local", "legacy-hash", "Legacy User", 0),
+        )
+        connection.execute(
+            "INSERT INTO products (id,name,brand,category,source) VALUES (?,?,?,?,?)",
+            (41, "Legacy Tuna", "Provision", "Canned Goods", ProductSource.USER_CONFIRMED.value),
+        )
+        connection.execute(
+            "INSERT INTO storage_locations (id,name) VALUES (?,?)", (15, "Legacy Pantry")
+        )
+        connection.execute(
+            "INSERT INTO grocery_sessions "
+            "(id,store_name,purchase_date,total_amount,status,idempotency_key,idempotency_fingerprint) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (
+                23,
+                "Legacy Market",
+                purchased_at.isoformat(),
+                "108.50",
+                GrocerySessionStatus.COMPLETED.value,
+                "legacy-session-key",
+                "legacy-fingerprint",
+            ),
+        )
+        connection.execute(
+            "INSERT INTO inventory_batches "
+            "(id,product_id,storage_location_id,grocery_session_id,purchased_at,expiration_date,"
+            "original_quantity,remaining_quantity,unit_price) VALUES (?,?,?,?,?,?,?,?,?)",
+            (
+                67,
+                41,
+                15,
+                23,
+                purchased_at.isoformat(),
+                date(2027, 10, 30).isoformat(),
+                "4.00",
+                "3.00",
+                "27.13",
+            ),
+        )
+        connection.execute(
+            "INSERT INTO shopping_list_items (id,product_id,name,quantity,unit,is_bought) "
+            "VALUES (?,?,?,?,?,?)",
+            (81, 41, "Legacy Tuna", "2.00", "can", 1),
+        )
+        connection.execute(
+            "INSERT INTO inventory_events "
+            "(id,batch_id,event_type,quantity,occurred_at,reason) VALUES (?,?,?,?,?,?)",
+            (
+                102,
+                67,
+                EventType.PURCHASED.value,
+                "4.00",
+                purchased_at.isoformat(),
+                "Legacy import test",
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
     return path
+
+
+def _run_alembic(engine, *arguments):
+    environment = os.environ.copy()
+    environment["DATABASE_URL"] = engine.url.difference_update_query(
+        ["options"]
+    ).render_as_string(hide_password=False)
+    environment["JWT_SECRET_KEY"] = "sqlite-import-migration-test-secret"
+    options = engine.url.query.get("options", "")
+    schema = options.partition("=")[2]
+    if schema:
+        environment["PGOPTIONS"] = f"-c search_path={schema}"
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", *arguments],
+        cwd=BACKEND_DIR,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"alembic {' '.join(arguments)} failed\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
 
 
 def _target_counts_are_zero(engine):
@@ -108,7 +238,7 @@ def import_target(postgres_test_schema):
     owned = create_owned_test_schema(postgres_test_schema.database_url)
     engine = create_engine(owned.scoped_url, pool_pre_ping=True)
     try:
-        Base.metadata.create_all(engine)
+        _run_alembic(engine, "upgrade", "a4d9c69b8f21")
         with schema_without_owner_marker(owned, engine):
             yield engine
     finally:
@@ -131,18 +261,6 @@ def test_legacy_transfer_converts_values_verifies_and_syncs_sequences(
             "SELECT is_bought FROM shopping_list_items WHERE id = 81"
         ).fetchone()[0] == 1
 
-    with Session(import_target) as session:
-        user = session.get(User, 9)
-        shopping_item = session.get(ShoppingListItem, 81)
-        batch = session.get(InventoryBatch, 67)
-        grocery_session = session.get(GrocerySession, 23)
-        assert user.is_active is False
-        assert shopping_item.is_bought is True
-        assert batch.unit_price == Decimal("27.13")
-        assert batch.expiration_date == date(2027, 10, 30)
-        assert batch.purchased_at == datetime(2026, 10, 30, 8, 45, 12, tzinfo=timezone.utc)
-        assert grocery_session.total_amount == Decimal("108.50")
-
     assert main(
         [
             "--sqlite-path",
@@ -153,8 +271,38 @@ def test_legacy_transfer_converts_values_verifies_and_syncs_sequences(
         ]
     ) == 0
 
+    _run_alembic(import_target, "upgrade", "head")
+
     with Session(import_target) as session:
+        user = session.get(User, 9)
+        shopping_item = session.get(ShoppingListItem, 81)
+        batch = session.get(InventoryBatch, 67)
+        grocery_session = session.get(GrocerySession, 23)
+        household = session.get(Household, batch.household_id)
+        default_membership = session.scalar(
+            select(HouseholdMembership).where(
+                HouseholdMembership.user_id == user.id,
+                HouseholdMembership.is_default.is_(True),
+            )
+        )
+        assert user.is_active is False
+        assert shopping_item.is_bought is True
+        assert batch.unit_price == Decimal("27.13")
+        assert batch.expiration_date == date(2027, 10, 30)
+        assert batch.purchased_at == datetime(2026, 10, 30, 8, 45, 12, tzinfo=timezone.utc)
+        assert grocery_session.total_amount == Decimal("108.50")
+        assert household.slug == "legacy-quarantine"
+        assert session.scalar(
+            select(func.count(HouseholdMembership.id)).where(
+                HouseholdMembership.household_id == household.id
+            )
+        ) == 0
+        assert default_membership is not None
+        assert default_membership.role == HouseholdRole.OWNER.value
+        assert session.get(Household, default_membership.household_id).slug == f"user-{user.id}"
+
         next_product = Product(
+            household_id=household.id,
             name="After import",
             source=ProductSource.USER_CONFIRMED,
         )
@@ -165,23 +313,22 @@ def test_legacy_transfer_converts_values_verifies_and_syncs_sequences(
 
 def test_import_refuses_nonempty_target_without_changing_existing_rows(import_target, tmp_path):
     source_path = create_legacy_database(tmp_path / "legacy.sqlite")
-    with Session(import_target) as session:
-        session.add(Product(name="Keep existing target data"))
-        session.commit()
-        existing_id = session.scalar(
-            select(Product.id).where(Product.name == "Keep existing target data")
-        )
+    with import_target.begin() as connection:
+        existing_id = connection.execute(
+            text(
+                "INSERT INTO products (name, source) "
+                "VALUES ('Keep existing target data', 'USER_CONFIRMED') RETURNING id"
+            )
+        ).scalar_one()
 
     success, message = migrate_data(source_path, import_target)
 
     assert not success
     assert "target is not empty" in message
-    with Session(import_target) as session:
-        products = session.scalars(select(Product)).all()
-        assert [(product.id, product.name) for product in products] == [
-            (existing_id, "Keep existing target data")
-        ]
-        assert session.scalar(select(func.count()).select_from(User)) == 0
+    with import_target.connect() as connection:
+        products = connection.execute(text("SELECT id, name FROM products")).all()
+        assert products == [(existing_id, "Keep existing target data")]
+        assert connection.execute(text("SELECT count(*) FROM users")).scalar_one() == 0
 
 
 def test_verification_mismatch_rolls_back_all_imported_rows(import_target, tmp_path):
@@ -214,11 +361,14 @@ def test_verification_mismatch_rolls_back_all_imported_rows(import_target, tmp_p
             )
             connection.execute(text("DROP FUNCTION IF EXISTS corrupt_imported_product()"))
 
-    with Session(import_target) as session:
-        next_product = Product(name="Sequence after rollback")
-        session.add(next_product)
-        session.commit()
-        assert next_product.id == 1
+    with import_target.begin() as connection:
+        next_product_id = connection.execute(
+            text(
+                "INSERT INTO products (name, source) "
+                "VALUES ('Sequence after rollback', 'USER_CONFIRMED') RETURNING id"
+            )
+        ).scalar_one()
+        assert next_product_id == 1
 
 
 def test_verify_only_exits_nonzero_when_postgres_values_do_not_match(import_target, tmp_path):
@@ -236,6 +386,22 @@ def test_verify_only_exits_nonzero_when_postgres_values_do_not_match(import_targ
 
     assert exit_code == 1
     _target_counts_are_zero(import_target)
+
+
+def test_current_household_head_is_rejected_as_legacy_import_target(
+    import_target, tmp_path
+):
+    source_path = create_legacy_database(tmp_path / "legacy.sqlite")
+    _run_alembic(import_target, "upgrade", "head")
+
+    success, message = migrate_data(source_path, import_target)
+
+    assert not success
+    assert "revision a4d9c69b8f21" in message
+    with import_target.connect() as connection:
+        assert connection.execute(text("SELECT count(*) FROM households")).scalar_one() == 1
+        assert connection.execute(text("SELECT count(*) FROM products")).scalar_one() == 0
+        assert connection.execute(text("SELECT count(*) FROM users")).scalar_one() == 0
 
 
 def test_sqlite_backup_includes_committed_wal_pages_without_source_writes(tmp_path):

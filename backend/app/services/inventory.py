@@ -19,13 +19,20 @@ from app.schemas.event import (
 
 class InventoryService:
     @staticmethod
-    def consume_product_fefo(db: Session, req: ConsumeRequest) -> ConsumeResponse:
+    def consume_product_fefo(
+        db: Session, household_id: int, req: ConsumeRequest
+    ) -> ConsumeResponse:
         """
         Consumes stock of a product using First Expired, First Out (FEFO).
         Prefers batches with the earliest expiration date.
         If expiration date is null or identical, tie-breaks by purchased_at ASC.
         """
-        product = db.get(Product, req.product_id)
+        product = db.scalar(
+            select(Product).where(
+                Product.id == req.product_id,
+                Product.household_id == household_id,
+            )
+        )
         if not product:
             raise ValueError(f"Product with ID {req.product_id} not found")
 
@@ -34,6 +41,7 @@ class InventoryService:
             select(InventoryBatch)
             .where(
                 InventoryBatch.product_id == req.product_id,
+                InventoryBatch.household_id == household_id,
                 InventoryBatch.remaining_quantity > 0,
             )
             .order_by(
@@ -99,12 +107,19 @@ class InventoryService:
         )
 
     @staticmethod
-    def discard_batch(db: Session, batch_id: int, req: DiscardRequest) -> InventoryBatch:
+    def discard_batch(
+        db: Session, household_id: int, batch_id: int, req: DiscardRequest
+    ) -> InventoryBatch:
         """
         Discards the entire remaining contents of a batch (e.g. spoilage, past expiration).
         Records a DISCARDED or EXPIRED event.
         """
-        batch = db.get(InventoryBatch, batch_id)
+        batch = db.scalar(
+            select(InventoryBatch).where(
+                InventoryBatch.id == batch_id,
+                InventoryBatch.household_id == household_id,
+            )
+        )
         if not batch:
             raise ValueError(f"Inventory batch with ID {batch_id} not found")
 
@@ -134,11 +149,18 @@ class InventoryService:
         return batch
 
     @staticmethod
-    def adjust_batch(db: Session, batch_id: int, req: AdjustmentRequest) -> InventoryBatch:
+    def adjust_batch(
+        db: Session, household_id: int, batch_id: int, req: AdjustmentRequest
+    ) -> InventoryBatch:
         """
         Performs an inventory reconciliation count adjustment and logs the discrepancy.
         """
-        batch = db.get(InventoryBatch, batch_id)
+        batch = db.scalar(
+            select(InventoryBatch).where(
+                InventoryBatch.id == batch_id,
+                InventoryBatch.household_id == household_id,
+            )
+        )
         if not batch:
             raise ValueError(f"Inventory batch with ID {batch_id} not found")
 

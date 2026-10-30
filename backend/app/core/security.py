@@ -18,7 +18,12 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return _password_hash.verify(plain_password, hashed_password)
 
 
-def create_access_token(subject: str, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(
+    subject: str,
+    expires_delta: Optional[timedelta] = None,
+    *,
+    user_id: int | None = None,
+) -> str:
     """
     Creates an HS256-signed JWT access token containing subject (email) and expiration.
     Uses timezone-aware UTC timestamps.
@@ -34,6 +39,8 @@ def create_access_token(subject: str, expires_delta: Optional[timedelta] = None)
         "iat": int(now.timestamp()),
         "exp": int(expire.timestamp()),
     }
+    if user_id is not None:
+        to_encode["uid"] = str(user_id)
     
     encoded_jwt = jwt.encode(
         to_encode,

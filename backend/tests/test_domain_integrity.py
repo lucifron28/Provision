@@ -112,7 +112,7 @@ def test_invariant_6_batch_patch_cannot_change_remaining_quantity(client):
     assert get_res["remaining_quantity"] == 4.0
 
 
-def test_invariants_7_and_8_deletion_protection(client, db):
+def test_invariants_7_and_8_deletion_protection(client, db, auth_household):
     """
     7. Product deletion cannot destroy inventory history (409 Conflict).
     8. Batch deletion cannot destroy inventory events (409 Conflict).
@@ -144,6 +144,7 @@ def test_invariants_7_and_8_deletion_protection(client, db):
     # Batch with no events can be deleted
     # Manually insert batch into DB with no events
     orphan_batch = InventoryBatch(
+        household_id=auth_household.id,
         product_id=p1["id"],
         original_quantity=1.0,
         remaining_quantity=1.0,

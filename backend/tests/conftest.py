@@ -13,6 +13,7 @@ from app.core.security import create_access_token, hash_password
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.base import Base
 from app.models.user import User
+from app.models.household import Household, HouseholdMembership, HouseholdRole
 import app.models  # noqa: F401
 
 from database_safety import (
@@ -84,6 +85,18 @@ def auth_user(db):
         is_active=True,
     )
     db.add(user)
+    db.flush()
+    household = Household(name="Test Home", slug=f"test-home-{user.id}")
+    db.add(household)
+    db.flush()
+    db.add(
+        HouseholdMembership(
+            household_id=household.id,
+            user_id=user.id,
+            role=HouseholdRole.OWNER.value,
+            is_default=True,
+        )
+    )
     db.commit()
     db.refresh(user)
     return user
@@ -91,8 +104,16 @@ def auth_user(db):
 
 @pytest.fixture
 def auth_headers(auth_user):
-    token = create_access_token(subject=auth_user.email)
+    token = create_access_token(subject=auth_user.email, user_id=auth_user.id)
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def auth_household(db, auth_user):
+    return db.query(Household).join(HouseholdMembership).filter(
+        HouseholdMembership.user_id == auth_user.id,
+        HouseholdMembership.is_default.is_(True),
+    ).one()
 
 
 @pytest.fixture

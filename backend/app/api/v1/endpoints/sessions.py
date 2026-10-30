@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
+from app.api.v1.dependencies import get_current_household_id
 from app.models.session import GrocerySession, GrocerySessionStatus
 from app.models.product import Product
 from app.models.location import StorageLocation
@@ -25,11 +26,16 @@ from app.schemas.session import (
 router = APIRouter()
 
 
-def _get_session_with_batches(db: Session, session_id: int) -> GrocerySession:
+def _get_session_with_batches(
+    db: Session, household_id: int, session_id: int
+) -> GrocerySession:
     stmt = (
         select(GrocerySession)
         .options(joinedload(GrocerySession.batches))
-        .where(GrocerySession.id == session_id)
+        .where(
+            GrocerySession.id == session_id,
+            GrocerySession.household_id == household_id,
+        )
     )
     session = db.scalar(stmt)
     if not session:
@@ -45,9 +51,10 @@ def list_sessions(
     status_filter: Optional[GrocerySessionStatus] = Query(None, alias="status", description="Filter by session status"),
     skip: int = 0,
     limit: int = 100,
+    household_id: int = Depends(get_current_household_id),
     db: Session = Depends(get_db),
 ):
-    stmt = select(GrocerySession)
+    stmt = select(GrocerySession).where(GrocerySession.household_id == household_id)
     if status_filter:
         stmt = stmt.where(GrocerySession.status == status_filter)
     stmt = stmt.order_by(GrocerySession.purchase_date.desc(), GrocerySession.id.desc()).offset(skip).limit(limit)
@@ -60,8 +67,15 @@ def _session_create_fingerprint(session_in: GrocerySessionCreate) -> str:
     return hashlib.sha256(canonical_payload.encode("utf-8")).hexdigest()
 
 
-def _find_idempotent_session(db: Session, key: str, fingerprint: str) -> Optional[GrocerySession]:
-    session = db.scalar(select(GrocerySession).where(GrocerySession.idempotency_key == key))
+def _find_idempotent_session(
+    db: Session, household_id: int, key: str, fingerprint: str
+) -> Optional[GrocerySession]:
+    session = db.scalar(
+        select(GrocerySession).where(
+            GrocerySession.household_id == household_id,
+            GrocerySession.idempotency_key == key,
+        )
+    )
     if session is not None and session.idempotency_fingerprint != fingerprint:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -72,17 +86,19 @@ def _find_idempotent_session(db: Session, key: str, fingerprint: str) -> Optiona
 @router.post("/", response_model=GrocerySessionRead, status_code=status.HTTP_201_CREATED)
 def start_grocery_session(
     session_in: GrocerySessionCreate,
+    household_id: int = Depends(get_current_household_id),
     db: Session = Depends(get_db),
 ):
     idempotency_key = str(session_in.idempotency_key) if session_in.idempotency_key else None
     fingerprint = _session_create_fingerprint(session_in) if idempotency_key else None
 
     if idempotency_key and fingerprint:
-        existing = _find_idempotent_session(db, idempotency_key, fingerprint)
+        existing = _find_idempotent_session(db, household_id, idempotency_key, fingerprint)
         if existing is not None:
             return existing
 
     session = GrocerySession(
+        household_id=household_id,
         store_name=session_in.store_name,
         purchase_date=session_in.purchase_date or datetime.now(timezone.utc),
         total_amount=session_in.total_amount,
@@ -97,7 +113,9 @@ def start_grocery_session(
     except IntegrityError:
         db.rollback()
         if idempotency_key and fingerprint:
-            existing = _find_idempotent_session(db, idempotency_key, fingerprint)
+            existing = _find_idempotent_session(
+                db, household_id, idempotency_key, fingerprint
+            )
             if existing is not None:
                 return existing
         raise
@@ -108,18 +126,25 @@ def start_grocery_session(
 @router.get("/{session_id}", response_model=GrocerySessionWithBatches)
 def get_grocery_session(
     session_id: int,
+    household_id: int = Depends(get_current_household_id),
     db: Session = Depends(get_db),
 ):
-    return _get_session_with_batches(db, session_id)
+    return _get_session_with_batches(db, household_id, session_id)
 
 
 @router.patch("/{session_id}", response_model=GrocerySessionRead)
 def update_grocery_session(
     session_id: int,
     session_in: GrocerySessionUpdate,
+    household_id: int = Depends(get_current_household_id),
     db: Session = Depends(get_db),
 ):
-    session = db.get(GrocerySession, session_id)
+    session = db.scalar(
+        select(GrocerySession).where(
+            GrocerySession.id == session_id,
+            GrocerySession.household_id == household_id,
+        )
+    )
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -144,9 +169,23 @@ def update_grocery_session(
 def commit_grocery_session(
     session_id: int,
     req: CommitSessionRequest,
+    household_id: int = Depends(get_current_household_id),
     db: Session = Depends(get_db),
 ):
-    session = _get_session_with_batches(db, session_id)
+    session = db.scalar(
+        select(GrocerySession)
+        .where(
+            GrocerySession.id == session_id,
+            GrocerySession.household_id == household_id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Grocery session with ID {session_id} not found",
+        )
     if session.status == GrocerySessionStatus.COMPLETED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -168,14 +207,24 @@ def commit_grocery_session(
 
     # Validate all referenced products and storage locations upfront
     for item in items_to_create:
-        product = db.get(Product, item.product_id)
+        product = db.scalar(
+            select(Product).where(
+                Product.id == item.product_id,
+                Product.household_id == household_id,
+            )
+        )
         if not product:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Product with ID {item.product_id} not found",
             )
         if item.storage_location_id:
-            location = db.get(StorageLocation, item.storage_location_id)
+            location = db.scalar(
+                select(StorageLocation).where(
+                    StorageLocation.id == item.storage_location_id,
+                    StorageLocation.household_id == household_id,
+                )
+            )
             if not location:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -186,6 +235,7 @@ def commit_grocery_session(
     created_batches: List[InventoryBatch] = []
     for item in items_to_create:
         batch = InventoryBatch(
+            household_id=household_id,
             product_id=item.product_id,
             storage_location_id=item.storage_location_id,
             grocery_session_id=session.id,
@@ -226,15 +276,21 @@ def commit_grocery_session(
         session.notes = req.notes
 
     db.commit()
-    return _get_session_with_batches(db, session_id)
+    return _get_session_with_batches(db, household_id, session_id)
 
 
 @router.delete("/{session_id}", response_model=GrocerySessionRead)
 def cancel_grocery_session(
     session_id: int,
+    household_id: int = Depends(get_current_household_id),
     db: Session = Depends(get_db),
 ):
-    session = db.get(GrocerySession, session_id)
+    session = db.scalar(
+        select(GrocerySession).where(
+            GrocerySession.id == session_id,
+            GrocerySession.household_id == household_id,
+        )
+    )
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

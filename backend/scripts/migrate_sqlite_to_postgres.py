@@ -36,6 +36,7 @@ TABLES_IN_DEPENDENCY_ORDER = [
     "inventory_events",
 ]
 SQLITE_METADATA_TABLES = {"alembic_version"}
+LEGACY_IMPORT_REVISION = "a4d9c69b8f21"
 
 
 class MigrationError(RuntimeError):
@@ -148,7 +149,24 @@ def _reflect_target_tables(connection: Connection) -> tuple[str, dict[str, Table
     if missing:
         raise MigrationError(
             "PostgreSQL target is missing tables: "
-            f"{sorted(missing)}. Run 'alembic upgrade head' first."
+            f"{sorted(missing)}. Prepare the target at Alembic revision "
+            f"{LEGACY_IMPORT_REVISION}, import the SQLite data, then upgrade to head."
+        )
+
+    if "alembic_version" not in existing:
+        raise MigrationError(
+            "Legacy SQLite imports require an Alembic target at revision "
+            f"{LEGACY_IMPORT_REVISION}; import the data before upgrading to head."
+        )
+
+    version_table = Table(
+        "alembic_version", MetaData(), schema=schema, autoload_with=connection
+    )
+    revision = connection.execute(select(version_table.c.version_num)).scalar_one_or_none()
+    if revision != LEGACY_IMPORT_REVISION:
+        raise MigrationError(
+            "Legacy SQLite imports require the PostgreSQL target at Alembic revision "
+            f"{LEGACY_IMPORT_REVISION}. Import the data at that revision, then upgrade to head."
         )
 
     metadata = MetaData()

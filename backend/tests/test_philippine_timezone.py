@@ -41,19 +41,25 @@ def test_household_today_manila_timezone():
         assert household_today() == date(2026, 9, 23)
 
 
-def test_discard_batch_expired_classification_at_utc_pht_boundary(db):
+def test_discard_batch_expired_classification_at_utc_pht_boundary(db, auth_household):
     """
     Verify that discard_batch classifies an item as EXPIRED using the Philippine
     household calendar date, rather than UTC date.
     """
     # Create product and location
-    product = Product(name="Gardenia Bread", unit="packs", source=ProductSource.USER_CONFIRMED)
-    location = StorageLocation(name="Pantry Shelf")
+    product = Product(
+        household_id=auth_household.id,
+        name="Gardenia Bread",
+        unit="packs",
+        source=ProductSource.USER_CONFIRMED,
+    )
+    location = StorageLocation(household_id=auth_household.id, name="Pantry Shelf")
     db.add_all([product, location])
     db.commit()
 
     # Batch expires on 2026-09-22
     batch = InventoryBatch(
+        household_id=auth_household.id,
         product_id=product.id,
         storage_location_id=location.id,
         original_quantity=2.0,
@@ -74,7 +80,9 @@ def test_discard_batch_expired_classification_at_utc_pht_boundary(db):
         mock_inv_dt.now.side_effect = lambda tz=None: frozen_utc if tz == timezone.utc else frozen_utc
 
         discard_req = DiscardRequest(reason="Moldy bread found in morning check")
-        updated_batch = InventoryService.discard_batch(db, batch.id, discard_req)
+        updated_batch = InventoryService.discard_batch(
+            db, auth_household.id, batch.id, discard_req
+        )
 
     assert updated_batch.remaining_quantity == 0.0
 
@@ -87,18 +95,26 @@ def test_discard_batch_expired_classification_at_utc_pht_boundary(db):
     assert event.occurred_at.minute == 30
 
 
-def test_analytics_expiring_soon_uses_philippine_calendar_date(client, db):
+def test_analytics_expiring_soon_uses_philippine_calendar_date(
+    client, db, auth_household
+):
     """
     Verify /analytics/expiring-soon calculates days_left and thresholds using
     household_today() (Asia/Manila), avoiding UTC calendar-day mismatch.
     """
-    product = Product(name="Magnolia Fresh Milk", unit="L", source=ProductSource.USER_CONFIRMED)
-    location = StorageLocation(name="Fridge Top Shelf")
+    product = Product(
+        household_id=auth_household.id,
+        name="Magnolia Fresh Milk",
+        unit="L",
+        source=ProductSource.USER_CONFIRMED,
+    )
+    location = StorageLocation(household_id=auth_household.id, name="Fridge Top Shelf")
     db.add_all([product, location])
     db.commit()
 
     # Batch expires on 2026-09-25
     batch = InventoryBatch(
+        household_id=auth_household.id,
         product_id=product.id,
         storage_location_id=location.id,
         original_quantity=1.0,
@@ -138,10 +154,20 @@ def test_seed_uses_philippine_household_date(db):
         seed_database(reset=True, db=db)
 
         # In seed.py: Gardenia Classic White Bread active batch expires in today + 2 days
-        bread = db.query(Product).filter(Product.name == "Gardenia Classic White Bread").first()
+        from app.models.household import Household
+
+        demo_household = db.query(Household).filter(Household.slug == "demo").one()
+        bread = db.query(Product).filter(
+            Product.household_id == demo_household.id,
+            Product.name == "Gardenia Classic White Bread",
+        ).first()
         active_batch = (
             db.query(InventoryBatch)
-            .filter(InventoryBatch.product_id == bread.id, InventoryBatch.remaining_quantity > 0)
+            .filter(
+                InventoryBatch.household_id == demo_household.id,
+                InventoryBatch.product_id == bread.id,
+                InventoryBatch.remaining_quantity > 0,
+            )
             .first()
         )
         assert active_batch is not None

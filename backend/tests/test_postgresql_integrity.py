@@ -35,9 +35,10 @@ def test_postgresql_dialect_active(engine):
         assert "PostgreSQL 18" in version_str
 
 
-def test_postgresql_foreign_key_restrict_product_deletion(db, engine):
+def test_postgresql_foreign_key_restrict_product_deletion(db, engine, auth_household):
     """PostgreSQL strictly enforces ON DELETE RESTRICT on product_id in inventory_batches."""
     prod = Product(
+        household_id=auth_household.id,
         name="Century Tuna Flakes",
         brand="Century",
         category="Canned Goods",
@@ -48,6 +49,7 @@ def test_postgresql_foreign_key_restrict_product_deletion(db, engine):
     db.refresh(prod)
 
     batch = InventoryBatch(
+        household_id=auth_household.id,
         product_id=prod.id,
         purchased_at=datetime.now(timezone.utc),
         original_quantity=10.0,
@@ -63,13 +65,19 @@ def test_postgresql_foreign_key_restrict_product_deletion(db, engine):
     db.rollback()
 
 
-def test_postgresql_foreign_key_restrict_batch_deletion(db):
+def test_postgresql_foreign_key_restrict_batch_deletion(db, auth_household):
     """PostgreSQL strictly enforces ON DELETE RESTRICT on batch_id in inventory_events."""
-    prod = Product(name="Eden Cheese", brand="Eden", source=ProductSource.USER_CONFIRMED)
+    prod = Product(
+        household_id=auth_household.id,
+        name="Eden Cheese",
+        brand="Eden",
+        source=ProductSource.USER_CONFIRMED,
+    )
     db.add(prod)
     db.commit()
 
     batch = InventoryBatch(
+        household_id=auth_household.id,
         product_id=prod.id,
         purchased_at=datetime.now(timezone.utc),
         original_quantity=5.0,
@@ -94,9 +102,15 @@ def test_postgresql_foreign_key_restrict_batch_deletion(db):
     db.rollback()
 
 
-def test_postgresql_unique_idempotency_key_constraint(db):
-    """PostgreSQL enforces unique constraint on grocery_sessions.idempotency_key."""
+def test_postgresql_idempotency_key_unique_within_household(db, auth_household):
+    """The idempotency key is unique within a household and reusable elsewhere."""
+    from app.models.household import Household
+
+    other_household = Household(name="Other", slug="other-idempotency-household")
+    db.add(other_household)
+    db.flush()
     session1 = GrocerySession(
+        household_id=auth_household.id,
         store_name="Robinsons Supermarket",
         purchase_date=datetime.now(timezone.utc),
         status=GrocerySessionStatus.COMPLETED,
@@ -106,20 +120,35 @@ def test_postgresql_unique_idempotency_key_constraint(db):
     db.commit()
 
     session2 = GrocerySession(
+        household_id=other_household.id,
         store_name="Puregold",
         purchase_date=datetime.now(timezone.utc),
         status=GrocerySessionStatus.COMPLETED,
         idempotency_key="idemp-key-unique-test",
     )
     db.add(session2)
+    db.commit()
+
+    same_household_duplicate = GrocerySession(
+        household_id=auth_household.id,
+        store_name="Another Store",
+        purchase_date=datetime.now(timezone.utc),
+        status=GrocerySessionStatus.COMPLETED,
+        idempotency_key="idemp-key-unique-test",
+    )
+    db.add(same_household_duplicate)
     with pytest.raises(IntegrityError):
         db.commit()
     db.rollback()
 
 
-def test_postgresql_numeric_precision_preservation(db):
+def test_postgresql_numeric_precision_preservation(db, auth_household):
     """PostgreSQL Numeric(10, 2) columns maintain exact currency and quantity decimals."""
-    prod = Product(name="Datu Puti Vinegar", source=ProductSource.USER_CONFIRMED)
+    prod = Product(
+        household_id=auth_household.id,
+        name="Datu Puti Vinegar",
+        source=ProductSource.USER_CONFIRMED,
+    )
     db.add(prod)
     db.commit()
 
@@ -127,6 +156,7 @@ def test_postgresql_numeric_precision_preservation(db):
     test_qty = 12.75
 
     batch = InventoryBatch(
+        household_id=auth_household.id,
         product_id=prod.id,
         purchased_at=datetime.now(timezone.utc),
         original_quantity=test_qty,
@@ -173,17 +203,18 @@ def test_postgresql_transaction_isolation_uncommitted_reads(engine):
         session_b.close()
 
 
-def test_postgresql_concurrent_write_idempotency_collision(engine):
+def test_postgresql_concurrent_write_idempotency_collision(engine, auth_household):
     """Concurrent writes with the same idempotency key are safely handled via unique constraints."""
     from sqlalchemy.orm import sessionmaker
 
     SessionLocal = sessionmaker(bind=engine)
     results = []
 
-    def attempt_insert(store_name: str, key: str):
+    def attempt_insert(store_name: str, key: str, household_id: int):
         session = SessionLocal()
         try:
             gs = GrocerySession(
+                household_id=household_id,
                 store_name=store_name,
                 purchase_date=datetime.now(timezone.utc),
                 status=GrocerySessionStatus.DRAFT,
@@ -199,8 +230,12 @@ def test_postgresql_concurrent_write_idempotency_collision(engine):
             session.close()
 
     shared_key = "concurrent-idemp-test-key"
-    t1 = threading.Thread(target=attempt_insert, args=("Store A", shared_key))
-    t2 = threading.Thread(target=attempt_insert, args=("Store B", shared_key))
+    t1 = threading.Thread(
+        target=attempt_insert, args=("Store A", shared_key, auth_household.id)
+    )
+    t2 = threading.Thread(
+        target=attempt_insert, args=("Store B", shared_key, auth_household.id)
+    )
 
     t1.start()
     t2.start()

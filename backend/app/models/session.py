@@ -2,7 +2,7 @@ import enum
 from decimal import Decimal
 from datetime import datetime
 from typing import Optional, List, TYPE_CHECKING
-from sqlalchemy import String, Enum as SQLEnum, DateTime, Numeric, Text, func
+from sqlalchemy import ForeignKey, String, Enum as SQLEnum, DateTime, Numeric, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
 
@@ -18,8 +18,17 @@ class GrocerySessionStatus(str, enum.Enum):
 
 class GrocerySession(Base, TimestampMixin):
     __tablename__ = "grocery_sessions"
+    __table_args__ = (
+        UniqueConstraint("household_id", "id", name="uq_grocery_sessions_household_id"),
+        UniqueConstraint(
+            "household_id", "idempotency_key", name="uq_grocery_sessions_household_idempotency_key"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    household_id: Mapped[int] = mapped_column(
+        ForeignKey("households.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
     store_name: Mapped[str] = mapped_column(String(255), nullable=False)
     purchase_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now(), nullable=False)
     total_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
@@ -29,7 +38,12 @@ class GrocerySession(Base, TimestampMixin):
         nullable=False,
     )
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    idempotency_key: Mapped[Optional[str]] = mapped_column(String(36), unique=True, index=True, nullable=True)
+    idempotency_key: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     idempotency_fingerprint: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
-    batches: Mapped[List["InventoryBatch"]] = relationship("InventoryBatch", back_populates="grocery_session")
+    batches: Mapped[List["InventoryBatch"]] = relationship(
+        "InventoryBatch",
+        primaryjoin="and_(GrocerySession.household_id == InventoryBatch.household_id, GrocerySession.id == InventoryBatch.grocery_session_id)",
+        foreign_keys="InventoryBatch.grocery_session_id",
+        back_populates="grocery_session",
+    )

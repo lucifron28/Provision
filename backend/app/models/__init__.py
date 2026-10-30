@@ -6,6 +6,8 @@ from app.models.event import InventoryEvent, EventType
 from app.models.session import GrocerySession, GrocerySessionStatus
 from app.models.shopping import ShoppingListItem
 from app.models.user import User
+from app.models.household import Household, HouseholdMembership, HouseholdRole
+from app.models.privacy import ProcessingConsent
 
 __all__ = [
     "Base",
@@ -20,4 +22,8 @@ __all__ = [
     "GrocerySessionStatus",
     "ShoppingListItem",
     "User",
+    "Household",
+    "HouseholdMembership",
+    "HouseholdRole",
+    "ProcessingConsent",
 ]
