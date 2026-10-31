@@ -36,6 +36,22 @@ use of site content and restrict copying recipes and photos. No written consent
 has been supplied, so this source remains a disabled candidate. This review does
 not grant fetch, extraction, retention, or reuse rights.
 
+### Open-license candidate: Wikibooks
+
+On 2026-10-31, a manual review located Filipino recipes on
+[Wikibooks](https://en.wikibooks.org/wiki/Cookbook:Adobo_Chicken_(Philippine)).
+The page says its text is available under Creative Commons Attribution-ShareAlike;
+attribution, share-alike, and any additional terms must be reviewed for the
+intended use. Images may have separate terms. The
+[Wikimedia robot policy](https://wikitech.wikimedia.org/wiki/Robot_policy)
+requires an identifiable user agent, compliance with robots.txt, and rate limits.
+Its [robots.txt](https://en.wikibooks.org/robots.txt) contains agent-specific
+rules. The documented [DeepSeek Fetch API](https://api-docs.deepseek.com/api/fetch/)
+does not expose caller-controlled fetch headers, destination IPs, or redirect
+history. Therefore this is a candidate for a compliant reviewed fetch adapter,
+not approval to send Wikibooks pages through DeepSeek Fetch. Keep the existing
+fetch gate closed until those requirements and attribution are verified.
+
 Publisher evidence checked 2026-10-29:
 - Panlasang Pinoy https://panlasangpinoy.com/categories/recipes/filipino-recipes/
 - Kawaling Pinoy https://www.kawalingpinoy.com/about/ and https://www.kawalingpinoy.com/
