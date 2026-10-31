@@ -2,8 +2,12 @@
 
 from decimal import Decimal
 
+from sqlalchemy import func, select
+
 from app.api.v1.endpoints.ai_recipes import get_provider
 from app.main import app
+from app.models.batch import InventoryBatch
+from app.models.shopping import ShoppingListItem
 from test_deepseek_discovery import FakeSearchProvider, _add_source, _grant, _search_result
 from test_recipe_shopping import add_pantry, confirm_payload, make_recipe, ready_profiles, setup_ingredient
 
@@ -15,7 +19,7 @@ def test_seeded_household_recommend_discover_and_confirm_shopping(
     ingredient = setup_ingredient(db)
     enough = make_recipe(db, auth_household, auth_user, ingredient, amount=2)
     almost = make_recipe(db, auth_household, auth_user, ingredient, amount=10)
-    add_pantry(db, auth_household, auth_user, ingredient, 8)
+    _, batch = add_pantry(db, auth_household, auth_user, ingredient, 8)
     _grant(db, auth_user, auth_household)
     host = "priority.publisher.example.com"
     _add_source(db, host)
@@ -40,8 +44,19 @@ def test_seeded_household_recommend_discover_and_confirm_shopping(
     })
     assert preview.status_code == 200, preview.text
     assert Decimal(preview.json()["lines"][0]["shortage"]) == 2
-    confirmation = client.post("/api/v1/recipe-shopping/confirm", json=confirm_payload(
+    db.expire_all()
+    assert db.get(InventoryBatch, batch.id).remaining_quantity == Decimal("8")
+    assert db.scalar(select(func.count()).select_from(ShoppingListItem)) == 0
+
+    payload = confirm_payload(
         preview.json(), ingredient.id, "2", key="seeded-flow-confirmation"
-    ))
+    )
+    confirmation = client.post("/api/v1/recipe-shopping/confirm", json=payload)
     assert confirmation.status_code == 200, confirmation.text
     assert len(confirmation.json()["created"]) == 1
+    replay = client.post("/api/v1/recipe-shopping/confirm", json=payload)
+    assert replay.status_code == 200, replay.text
+    assert replay.json() == confirmation.json()
+    db.expire_all()
+    assert db.get(InventoryBatch, batch.id).remaining_quantity == Decimal("8")
+    assert db.scalar(select(func.count()).select_from(ShoppingListItem)) == 1
