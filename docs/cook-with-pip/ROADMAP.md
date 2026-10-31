@@ -132,6 +132,10 @@ metadata-only broader-web search probe succeeded; see [DeepSeek verification](DE
 The backend now has a consent-gated search route, but live page fetching remains
 blocked because the provider does not expose redirect and destination evidence.
 No registry flag authorizes unreviewed extraction or image reuse.
+The guarded direct transport remains internal and is not a DeepSeek Fetch
+replacement. Docker verification passed 747 backend tests with six skips; both
+backend and iOS CI [passed for `280901b`](https://github.com/lucifron28/Provision/actions/runs/41193164812).
+Live fetch, shared publisher rate limits, and an approved source remain open.
 
 - [x] Implement a reviewed `recipe_sources` registry with host allowlisting, source tier, ownership/publisher, cuisine tags, terms/robots review, permitted fetch/use mode, review date, and disable flag.
 - [x] Seed **candidates** Panlasang Pinoy, Kawaling Pinoy, Yummy.ph, and Ang Sarap (see source policy); do NOT label them licensed/verified for ingestion until individually reviewed.
@@ -181,6 +185,10 @@ proposal endpoint are under verification; no publisher provenance is asserted fo
 household-entered content. Both backend and iOS
 [passed for `0454e72`](https://github.com/lucifron28/Provision/actions/runs/41044660011).
 Source-policy integration has separate verified evidence in P2 above.
+The seeded household test at `280901b` covers Cook Now, Almost There, mocked
+discovery, shopping preview, confirmation, and idempotent replay. It checks
+that the flow leaves pantry quantities unchanged; it does not prove live page
+extraction or SwiftUI integration.
 
 - [ ] Add provider interface `RecipeAIProvider` and server-side DeepSeek implementation; model, base URL, search feature flags, budgets, timeouts, and retries belong in env/config, NEVER app bundle.
 - [ ] Use structured JSON/Pydantic DTOs for recipes; validate source attribution, recipe ID, title, description, cuisine/region, category tags, prep/cook duration, servings, ingredients, instructions, substitutions, uncertainty flags, provenance, and generated/adapted marker.
