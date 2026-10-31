@@ -7,7 +7,7 @@ Smart household food inventory and pantry management system.
 ## Tech Stack
 
 - **Frontend:** Swift + native SwiftUI (Deployment Target: iOS 26.5+)
-- **Backend:** FastAPI + SQLAlchemy 2.0 + SQLite
+- **Backend:** FastAPI + SQLAlchemy 2.0 + PostgreSQL 18 (via Docker Compose)
 - **Authentication:** JWT access tokens (HS256) + Argon2 password hashing (`pwdlib[argon2]`)
 - **Token Storage:** Native iOS Keychain Services (`Security` framework)
 
@@ -17,8 +17,10 @@ Smart household food inventory and pantry management system.
 
 ```text
 Provision/
-├── backend/                      # FastAPI + SQLite REST API
+├── compose.yaml                  # PostgreSQL 18 Docker Compose configuration
+├── backend/                      # FastAPI + PostgreSQL REST API
 ├── frontend/                     # Native SwiftUI iOS application (Xcode project)
+├── docs/                         # Architecture, roadmaps, and feature specifications
 └── provision_reference_screens/  # Design and reference exports
 ```
 
@@ -26,36 +28,116 @@ Provision/
 
 ## Getting Started
 
+### Prerequisites
+
+- **macOS** with [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running.
+- Python 3.13+ with [`uv`](https://github.com/astral-sh/uv).
+- Xcode 17+ (for native iOS client).
+
 ### Backend Execution
+
+The backend also runs on Windows with Docker Desktop and PowerShell. If port 5432
+is reserved by Windows, set `$env:POSTGRES_PORT="55432"` before starting Compose
+and use port 55432 in `DATABASE_URL` and `TEST_DATABASE_URL`.
+
+### DeepSeek configuration
+
+`backend/.env.example` contains a placeholder `DEEPSEEK_API_KEY`. Replace it only
+in your local untracked environment file when credentials are available. Settings
+load the key as a secret value. Live DeepSeek calls and web search are disabled;
+adding a key alone does not enable provider requests.
 
 From the repository root:
 
 ```bash
-# 1. Enter backend directory
+# 1. Start PostgreSQL 18 container via Docker Compose
+docker compose up -d
+
+# 2. Enter backend directory
 cd backend
 
-# 2. Configure local environment variables
+# 3. Configure local environment variables
 cp .env.example .env
-# Set your local JWT_SECRET_KEY in .env
+# (Optional: customize credentials or JWT_SECRET_KEY in .env)
 
-# 3. Sync dependencies
+# 4. Sync dependencies
 uv sync
 
-# 4. Apply database migrations
+# 5. Apply database migrations
 uv run alembic upgrade head
 
-# 5. Seed Philippine supermarket demo data (optional / recommended)
-uv run python seed.py
+# 6. Seed Philippine supermarket demo data (optional / recommended)
+uv run python seed.py --demo
 
-# 6. Run automated test suite
+# 7. Run automated test suite
+export TEST_DATABASE_URL="postgresql+psycopg://provision:provision@127.0.0.1:5432/provision_test"
 uv run pytest
 
-# 7. Start local development server
+# 8. Start local development server
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 - Interactive OpenAPI Swagger Docs: `http://localhost:8000/docs`
 
+Create the dedicated test database once before running pytest:
+
+```bash
+docker compose exec postgres createdb -U provision provision_test
+```
+
+For PowerShell with PostgreSQL on port 55432:
+
+```powershell
+$env:TEST_DATABASE_URL="postgresql+psycopg://provision:provision@127.0.0.1:55432/provision_test"
+uv run pytest
+```
+
+Tests require PostgreSQL 18 and an explicit `TEST_DATABASE_URL` ending in `_test`.
+They must fail if PostgreSQL is unavailable, rather than using SQLite or the
+application database. Test tables live in a unique schema owned by each run.
+
+
+### Database Management (PostgreSQL 18 via Docker Compose)
+
+- **Start Database:** `docker compose up -d`
+- **Check Status & Health:** `docker compose ps`
+- **Stop Database:** `docker compose down`
+- **View Database Logs:** `docker compose logs -f postgres`
+- **Reset Database Volume (Destructive):** `docker compose down -v`
+
+### Migrating Existing SQLite Data to PostgreSQL
+
+If you previously ran Provision with local SQLite (`provision.db`), migrate your data safely:
+
+Use a fresh, empty PostgreSQL target and set `DATABASE_URL` to that target before
+running these commands. Legacy imports use the pre-household schema revision;
+do not downgrade a populated application database to make room for an import.
+
+```bash
+cd backend
+
+# Prepare the empty target at the legacy-compatible revision
+uv run alembic upgrade a4d9c69b8f21
+
+# 1. Simulate migration and inspect counts without modifying database
+uv run python scripts/migrate_sqlite_to_postgres.py --sqlite-path provision.db --dry-run
+
+# 2. Execute migration (automatically creates a timestamped backup of provision.db)
+uv run python scripts/migrate_sqlite_to_postgres.py --sqlite-path provision.db
+
+# 3. Verify counts between SQLite and PostgreSQL
+uv run python scripts/migrate_sqlite_to_postgres.py --sqlite-path provision.db --verify-only
+
+# Apply household isolation after the legacy transfer has been verified
+uv run alembic upgrade head
+```
+
+The household migration places records with no ownership evidence in a
+restricted legacy household with no members. Existing accounts receive private
+households. An operator must verify and assign legacy ownership before users can
+access those records. Registration never grants access to the quarantined pantry.
+
+**Safety Guarantee:** The migration script runs inside an atomic PostgreSQL transaction and rolls back completely on any error. The source SQLite database is never deleted or modified.
 ---
 
 ### Frontend Execution
@@ -71,6 +153,8 @@ open frontend/frontend.xcodeproj
 - **Simulator Development:** Connects by default to `http://127.0.0.1:8000/api/v1`.
 - **Physical Device Testing:** Set your development Mac's LAN IP in `APIEnvironment.localDeviceHost` (`frontend/frontend/Core/APIClient.swift`). Local HTTP traffic is permitted via `NSAllowsLocalNetworking`.
 
+- **Intake scanning:** Camera capture starts only after permission is granted; receipt-camera presentation has independent barcode suspension; explicit Resume releases only the user-pause hold. Pending grocery-session creation and commit requests persist their exact payload and idempotency key for safe replay after a lost response; editing remains locked until server reconciliation or confirmed draft cancellation.
+
 ---
 
 ## Philippine Supermarket Seed Data & Demo
@@ -83,17 +167,20 @@ Run the database seeder from the `backend/` directory:
 
 ```bash
 cd backend
-uv run python seed.py
+uv run python seed.py --demo
 ```
 
-> **Safe Re-seeding:** The seeder is idempotent. It preserves existing registered user accounts (such as `cronvincent@gmail.com`), guarantees the default demo credentials below, and refreshes the inventory tables with clean demonstration scenarios.
+Demo seeding is for disposable local development databases. Set
+`ENVIRONMENT=production` in production configuration; the seeder refuses to run
+there. The CLI requires `--demo` to acknowledge local demo accounts. Reset only
+refreshes the demo household and preserves other households' inventory.
 
-### Default Demo Credentials
+### Local demo accounts
 
-| Account | Email | Password | Display Name |
-| :--- | :--- | :--- | :--- |
-| **Primary Demo User** | `user@provision.local` | `password123` | Maria Santos |
-| **Secondary Demo User** | `demo@provision.local` | `password123` | Juan Dela Cruz |
+The explicitly enabled demo fixture creates Maria Santos and Juan Dela Cruz in
+one demo household. These fixtures use insecure test credentials defined in
+`backend/seed.py`. Use registration for real accounts. Never seed demo accounts
+into a deployed database.
 
 ---
 
@@ -207,13 +294,15 @@ All 49 catalog products are authentic Philippine supermarket items with valid 48
 
 ## Important Domain Limitation
 
-> **Notice:** Provision currently authenticates access to a single shared household pantry. Per-user and multi-household data isolation is reserved for future development.
+Household isolation is implemented and tested on this branch. New
+registrations receive private households; membership is required to select
+another household. Client cache integration remains pending on Mac.
 
 ---
 
 ## Midterm Project Status (~50% Complete)
 
-This project is intentionally at **approximately 50% completion** for the iOS Development midterm milestone:
+The original iOS Development midterm targeted approximately 50% of the app's planned scope. Backend work has since advanced independently. The following lists describe that iOS milestone; current Cook with Pip backend evidence is in the roadmap.
 
 ### Implemented (Midterm Scope):
 - User registration, login, and `/auth/me` verification with Argon2 password hashing.
@@ -228,3 +317,22 @@ This project is intentionally at **approximately 50% completion** for the iOS De
 - Automatic inventory commit from live intake scanning.
 - Offline-first local database caching (SwiftData / Core Data).
 - Background expiration alert notifications.
+
+## Cook with Pip backend
+
+The backend implements household authorization, canonical ingredient matching,
+food profiles and allergy checks, versioned household recipes, deterministic
+recommendations, source governance, explicit shopping preview/confirmation, and
+historical PHP budget and waste reports. See the [roadmap](docs/cook-with-pip/ROADMAP.md)
+for acceptance evidence and the current meal-planning, cooking, and leftover work.
+Backend CI [passed for `0e6977f`](https://github.com/lucifron28/Provision/actions/runs/41084343660),
+with 578 tests passing and one optional historical-file test skipped. This covers
+planning, cooking, leftovers, user adaptations and large-household shopping.
+[Draft PR #1](https://github.com/lucifron28/Provision/pull/1) tracks checks on the
+current published head, including the existing iOS scanner suite.
+
+Live DeepSeek and web calls remain disabled. Household-entered recipes carry no
+asserted publisher provenance. Chef Pip hints in the iOS app remain heuristic,
+and the new backend workflows still require SwiftUI integration on Mac.
+See the [agent guide](AGENTS.md), [technical specification](docs/cook-with-pip/TECHNICAL_SPEC.md),
+and [recipe source policy](docs/cook-with-pip/RECIPE_SOURCE_POLICY.md).

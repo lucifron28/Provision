@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import List
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func, nulls_last
@@ -15,17 +16,63 @@ from app.schemas.event import (
     DiscardRequest,
     AdjustmentRequest,
 )
+from app.services.household_writes import bump_inventory_revision, lock_household_write
+
+
+def consume_batch_no_commit(
+    db: Session,
+    batch: InventoryBatch,
+    quantity: Decimal,
+    *,
+    reason: str | None,
+    notes: str | None = None,
+    require_hundredths: bool = True,
+    occurred_at: datetime | None = None,
+) -> InventoryEvent:
+    """Apply one locked batch deduction and ledger event without committing."""
+    amount = Decimal(str(quantity))
+    remaining = Decimal(str(batch.remaining_quantity))
+    if not amount.is_finite() or amount <= 0 or amount > remaining:
+        raise ValueError("Batch consumption must be positive and no greater than remaining stock")
+    if require_hundredths:
+        try:
+            with_decimal_places = amount.quantize(Decimal("0.01"))
+        except ArithmeticError as exc:
+            raise ValueError("Batch consumption exceeds the stored precision") from exc
+        if with_decimal_places != amount:
+            raise ValueError("Batch consumption must be exactly representable in hundredths")
+
+    batch.remaining_quantity = float(remaining - amount)
+    event = InventoryEvent(
+        batch_id=batch.id,
+        event_type=EventType.CONSUMED,
+        quantity=amount,
+        occurred_at=occurred_at or datetime.now(timezone.utc),
+        reason=reason,
+        notes=notes,
+    )
+    db.add(event)
+    db.flush()
+    return event
 
 
 class InventoryService:
     @staticmethod
-    def consume_product_fefo(db: Session, req: ConsumeRequest) -> ConsumeResponse:
+    def consume_product_fefo(
+        db: Session, household_id: int, req: ConsumeRequest
+    ) -> ConsumeResponse:
         """
         Consumes stock of a product using First Expired, First Out (FEFO).
         Prefers batches with the earliest expiration date.
         If expiration date is null or identical, tie-breaks by purchased_at ASC.
         """
-        product = db.get(Product, req.product_id)
+        lock_household_write(db, household_id)
+        product = db.scalar(
+            select(Product).where(
+                Product.id == req.product_id,
+                Product.household_id == household_id,
+            ).execution_options(populate_existing=True)
+        )
         if not product:
             raise ValueError(f"Product with ID {req.product_id} not found")
 
@@ -34,6 +81,7 @@ class InventoryService:
             select(InventoryBatch)
             .where(
                 InventoryBatch.product_id == req.product_id,
+                InventoryBatch.household_id == household_id,
                 InventoryBatch.remaining_quantity > 0,
             )
             .order_by(
@@ -41,6 +89,7 @@ class InventoryService:
                 InventoryBatch.purchased_at.asc(),
                 InventoryBatch.id.asc(),
             )
+            .execution_options(populate_existing=True)
         )
         active_batches = db.scalars(stmt).all()
 
@@ -61,20 +110,16 @@ class InventoryService:
             available_in_batch = float(batch.remaining_quantity)
             deduct_amount = min(available_in_batch, remaining_needed)
 
-            # Update batch quantity
-            batch.remaining_quantity = float(batch.remaining_quantity) - deduct_amount
-            remaining_needed -= deduct_amount
-
-            # Record CONSUMED event
-            event = InventoryEvent(
-                batch_id=batch.id,
-                event_type=EventType.CONSUMED,
-                quantity=deduct_amount,
-                occurred_at=now,
+            consume_batch_no_commit(
+                db,
+                batch,
+                Decimal(str(deduct_amount)),
                 reason=req.reason,
                 notes=req.notes,
+                require_hundredths=False,
+                occurred_at=now,
             )
-            db.add(event)
+            remaining_needed -= deduct_amount
 
             deductions.append(
                 BatchDeduction(
@@ -85,6 +130,7 @@ class InventoryService:
                 )
             )
 
+        bump_inventory_revision(db, household_id)
         db.commit()
 
         # Calculate new total stock
@@ -99,12 +145,20 @@ class InventoryService:
         )
 
     @staticmethod
-    def discard_batch(db: Session, batch_id: int, req: DiscardRequest) -> InventoryBatch:
+    def discard_batch(
+        db: Session, household_id: int, batch_id: int, req: DiscardRequest
+    ) -> InventoryBatch:
         """
         Discards the entire remaining contents of a batch (e.g. spoilage, past expiration).
         Records a DISCARDED or EXPIRED event.
         """
-        batch = db.get(InventoryBatch, batch_id)
+        lock_household_write(db, household_id)
+        batch = db.scalar(
+            select(InventoryBatch).where(
+                InventoryBatch.id == batch_id,
+                InventoryBatch.household_id == household_id,
+            ).execution_options(populate_existing=True)
+        )
         if not batch:
             raise ValueError(f"Inventory batch with ID {batch_id} not found")
 
@@ -129,16 +183,25 @@ class InventoryService:
             notes=req.notes,
         )
         db.add(event)
+        bump_inventory_revision(db, household_id)
         db.commit()
         db.refresh(batch)
         return batch
 
     @staticmethod
-    def adjust_batch(db: Session, batch_id: int, req: AdjustmentRequest) -> InventoryBatch:
+    def adjust_batch(
+        db: Session, household_id: int, batch_id: int, req: AdjustmentRequest
+    ) -> InventoryBatch:
         """
         Performs an inventory reconciliation count adjustment and logs the discrepancy.
         """
-        batch = db.get(InventoryBatch, batch_id)
+        lock_household_write(db, household_id)
+        batch = db.scalar(
+            select(InventoryBatch).where(
+                InventoryBatch.id == batch_id,
+                InventoryBatch.household_id == household_id,
+            ).execution_options(populate_existing=True)
+        )
         if not batch:
             raise ValueError(f"Inventory batch with ID {batch_id} not found")
 
@@ -157,6 +220,7 @@ class InventoryService:
             notes=req.notes,
         )
         db.add(event)
+        bump_inventory_revision(db, household_id)
         db.commit()
         db.refresh(batch)
         return batch

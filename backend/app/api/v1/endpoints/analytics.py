@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select, func, or_
 
 from app.core.database import get_db
+from app.api.v1.dependencies import get_current_household_id
 from app.core.time import household_today
 from app.models.product import Product
 from app.models.batch import InventoryBatch
@@ -29,7 +30,9 @@ router = APIRouter()
 
 
 @router.get("/inventory-summary", response_model=List[InventorySummaryItem])
-def get_inventory_summary(db: Session = Depends(get_db)):
+def get_inventory_summary(
+    household_id: int = Depends(get_current_household_id), db: Session = Depends(get_db)
+):
     """
     What food do I currently own? How much remains? Where is it stored?
     Returns current on-hand inventory grouped by product.
@@ -40,7 +43,10 @@ def get_inventory_summary(db: Session = Depends(get_db)):
             joinedload(InventoryBatch.product),
             joinedload(InventoryBatch.storage_location),
         )
-        .where(InventoryBatch.remaining_quantity > 0)
+        .where(
+            InventoryBatch.household_id == household_id,
+            InventoryBatch.remaining_quantity > 0,
+        )
     )
     batches = db.scalars(stmt).all()
 
@@ -81,6 +87,7 @@ def get_inventory_summary(db: Session = Depends(get_db)):
 @router.get("/expiring-soon", response_model=List[ExpiringSoonItem])
 def get_expiring_soon(
     days: int = Query(7, ge=1, description="Days horizon to look ahead"),
+    household_id: int = Depends(get_current_household_id),
     db: Session = Depends(get_db),
 ):
     """
@@ -97,6 +104,7 @@ def get_expiring_soon(
             joinedload(InventoryBatch.storage_location),
         )
         .where(
+            InventoryBatch.household_id == household_id,
             InventoryBatch.remaining_quantity > 0,
             InventoryBatch.expiration_date.is_not(None),
             InventoryBatch.expiration_date <= max_date,
@@ -127,6 +135,7 @@ def get_expiring_soon(
 @router.get("/low-stock", response_model=List[LowStockItem])
 def get_low_stock(
     threshold: float = Query(1.0, ge=0, description="Threshold quantity"),
+    household_id: int = Depends(get_current_household_id),
     db: Session = Depends(get_db),
 ):
     """
@@ -137,7 +146,10 @@ def get_low_stock(
             InventoryBatch.product_id,
             func.coalesce(func.sum(InventoryBatch.remaining_quantity), 0.0).label("stock"),
         )
-        .where(InventoryBatch.remaining_quantity > 0)
+        .where(
+            InventoryBatch.household_id == household_id,
+            InventoryBatch.remaining_quantity > 0,
+        )
         .group_by(InventoryBatch.product_id)
         .subquery()
     )
@@ -148,6 +160,7 @@ def get_low_stock(
             func.coalesce(stock_subq.c.stock, 0.0).label("current_stock"),
         )
         .outerjoin(stock_subq, Product.id == stock_subq.c.product_id)
+        .where(Product.household_id == household_id)
     )
 
     rows = db.execute(stmt).all()
@@ -167,12 +180,15 @@ def get_low_stock(
 
 
 @router.get("/valuation", response_model=InventoryValuation)
-def get_inventory_valuation(db: Session = Depends(get_db)):
+def get_inventory_valuation(
+    household_id: int = Depends(get_current_household_id), db: Session = Depends(get_db)
+):
     """
     How much is my current food inventory worth?
     Sums (remaining_quantity * unit_price) across active batches.
     """
     stmt = select(InventoryBatch).where(
+        InventoryBatch.household_id == household_id,
         InventoryBatch.remaining_quantity > 0,
         InventoryBatch.unit_price.is_not(None),
     )
@@ -184,10 +200,16 @@ def get_inventory_valuation(db: Session = Depends(get_db)):
     ) if batches else Decimal("0.00")
 
     active_batch_count = db.scalar(
-        select(func.count(InventoryBatch.id)).where(InventoryBatch.remaining_quantity > 0)
+        select(func.count(InventoryBatch.id)).where(
+            InventoryBatch.household_id == household_id,
+            InventoryBatch.remaining_quantity > 0,
+        )
     ) or 0
     active_prod_count = db.scalar(
-        select(func.count(func.distinct(InventoryBatch.product_id))).where(InventoryBatch.remaining_quantity > 0)
+        select(func.count(func.distinct(InventoryBatch.product_id))).where(
+            InventoryBatch.household_id == household_id,
+            InventoryBatch.remaining_quantity > 0,
+        )
     ) or 0
 
     return InventoryValuation(
@@ -197,14 +219,19 @@ def get_inventory_valuation(db: Session = Depends(get_db)):
     )
 
 @router.get("/spending", response_model=SpendingSummary)
-def get_spending_summary(db: Session = Depends(get_db)):
+def get_spending_summary(
+    household_id: int = Depends(get_current_household_id), db: Session = Depends(get_db)
+):
     """
     How much have I spent on groceries?
     Aggregates completed grocery intake sessions.
     """
     sessions = db.scalars(
         select(GrocerySession)
-        .where(GrocerySession.status == GrocerySessionStatus.COMPLETED)
+        .where(
+            GrocerySession.household_id == household_id,
+            GrocerySession.status == GrocerySessionStatus.COMPLETED,
+        )
         .order_by(GrocerySession.purchase_date.desc())
     ).all()
 
@@ -229,17 +256,23 @@ def get_spending_summary(db: Session = Depends(get_db)):
     )
 
 @router.get("/waste", response_model=WasteSummary)
-def get_waste_summary(db: Session = Depends(get_db)):
+def get_waste_summary(
+    household_id: int = Depends(get_current_household_id), db: Session = Depends(get_db)
+):
     """
     What food am I wasting?
     Calculates quantity and estimated monetary loss from discarded and expired items.
     """
     stmt = (
         select(InventoryEvent)
+        .join(InventoryBatch, InventoryBatch.id == InventoryEvent.batch_id)
         .options(
             joinedload(InventoryEvent.batch).joinedload(InventoryBatch.product)
         )
-        .where(InventoryEvent.event_type.in_([EventType.DISCARDED, EventType.EXPIRED]))
+        .where(
+            InventoryBatch.household_id == household_id,
+            InventoryEvent.event_type.in_([EventType.DISCARDED, EventType.EXPIRED]),
+        )
         .order_by(InventoryEvent.occurred_at.desc())
     )
     events = db.scalars(stmt).all()
@@ -278,13 +311,19 @@ def get_waste_summary(db: Session = Depends(get_db)):
 @router.get("/price-history/{product_id}", response_model=ProductPriceHistory)
 def get_product_price_history(
     product_id: int,
+    household_id: int = Depends(get_current_household_id),
     db: Session = Depends(get_db),
 ):
     """
     How have prices changed over time?
     Tracks historical purchase prices across all batches for a specific product.
     """
-    product = db.get(Product, product_id)
+    product = db.scalar(
+        select(Product).where(
+            Product.id == product_id,
+            Product.household_id == household_id,
+        )
+    )
     if not product:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -295,6 +334,7 @@ def get_product_price_history(
         select(InventoryBatch)
         .options(joinedload(InventoryBatch.grocery_session))
         .where(
+            InventoryBatch.household_id == household_id,
             InventoryBatch.product_id == product_id,
             InventoryBatch.unit_price.is_not(None),
         )

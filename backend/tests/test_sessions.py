@@ -132,3 +132,31 @@ def test_grocery_session_commit_with_null_expiration_date(client):
     assert len(events) == 1
     assert events[0]["event_type"] == "PURCHASED"
     assert events[0]["quantity"] == 3.0
+
+
+def test_grocery_session_create_reuses_idempotency_key(client):
+    idempotency_key = "d52e1e6a-8b5f-4db1-baf1-06a9b608c409"
+    payload = {
+        "store_name": "SM Supermarket",
+        "purchase_date": "2026-10-16T12:00:00Z",
+        "total_amount": 125.50,
+        "notes": "Idempotent intake",
+        "idempotency_key": idempotency_key,
+    }
+
+    first = client.post("/api/v1/grocery-sessions/", json=payload)
+    retry = client.post("/api/v1/grocery-sessions/", json=payload)
+
+    assert first.status_code == 201
+    assert retry.status_code == 201
+    assert retry.json()["id"] == first.json()["id"]
+    assert retry.json()["status"] == "DRAFT"
+    assert len(client.get("/api/v1/grocery-sessions/").json()) == 1
+
+    conflicting_retry = client.post(
+        "/api/v1/grocery-sessions/",
+        json={**payload, "store_name": "Different Store"},
+    )
+    assert conflicting_retry.status_code == 409
+    assert "different session details" in conflicting_retry.json()["detail"].lower()
+    assert len(client.get("/api/v1/grocery-sessions/").json()) == 1

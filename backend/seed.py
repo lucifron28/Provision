@@ -5,13 +5,16 @@ realistic inventory batches (FEFO demonstration), grocery sessions (SM Supermark
 audit events (consumption, waste/expiration), and shopping list items.
 """
 
+import argparse
 import sys
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
+from sqlalchemy import delete, select
 
 from app.core.database import SessionLocal, engine
+from app.core.config import settings
 from app.core.security import hash_password
 from app.core.time import household_today
 from app.models.base import Base
@@ -22,9 +25,12 @@ from app.models.batch import InventoryBatch
 from app.models.event import InventoryEvent, EventType
 from app.models.shopping import ShoppingListItem
 from app.models.user import User
+from app.models.household import Household, HouseholdMembership, HouseholdRole
 
 
 def seed_database(reset: bool = True, db: Optional[Session] = None) -> Dict[str, int]:
+    if settings.ENVIRONMENT == "production":
+        raise RuntimeError("Demo seeding is disabled in production.")
     print("🌱 Starting Provision database seeding with Philippine grocery data...")
 
     should_close = False
@@ -59,15 +65,66 @@ def seed_database(reset: bool = True, db: Optional[Session] = None) -> Dict[str,
 
         db.commit()
 
+        demo_household = db.scalar(
+            select(Household).where(Household.slug == "demo")
+        )
+        if demo_household is None:
+            demo_household = Household(name="Provision Demo", slug="demo")
+            db.add(demo_household)
+            db.flush()
+
+        demo_users = db.query(User).filter(
+            User.email.in_([email for email, _, _ in demo_users_data])
+        ).all()
+        for demo_user in demo_users:
+            membership = db.scalar(
+                select(HouseholdMembership).where(
+                    HouseholdMembership.household_id == demo_household.id,
+                    HouseholdMembership.user_id == demo_user.id,
+                )
+            )
+            db.query(HouseholdMembership).filter(
+                HouseholdMembership.user_id == demo_user.id,
+                HouseholdMembership.household_id != demo_household.id,
+                HouseholdMembership.is_default.is_(True),
+            ).update({"is_default": False}, synchronize_session=False)
+            db.flush()
+            if membership is None:
+                membership = HouseholdMembership(
+                    household_id=demo_household.id,
+                    user_id=demo_user.id,
+                    role=HouseholdRole.OWNER.value,
+                    is_default=True,
+                )
+                db.add(membership)
+            else:
+                membership.is_default = True
+        db.commit()
+
         # 2. Reset Inventory Data if requested
         if reset:
             print("\n[2/7] Clearing previous inventory data (preserving users)...")
-            db.query(InventoryEvent).delete()
-            db.query(InventoryBatch).delete()
-            db.query(ShoppingListItem).delete()
-            db.query(GrocerySession).delete()
-            db.query(StorageLocation).delete()
-            db.query(Product).delete()
+            demo_batch_ids = select(InventoryBatch.id).where(
+                InventoryBatch.household_id == demo_household.id
+            )
+            db.execute(
+                delete(InventoryEvent).where(InventoryEvent.batch_id.in_(demo_batch_ids))
+            )
+            db.query(InventoryBatch).filter(
+                InventoryBatch.household_id == demo_household.id
+            ).delete(synchronize_session=False)
+            db.query(ShoppingListItem).filter(
+                ShoppingListItem.household_id == demo_household.id
+            ).delete(synchronize_session=False)
+            db.query(GrocerySession).filter(
+                GrocerySession.household_id == demo_household.id
+            ).delete(synchronize_session=False)
+            db.query(StorageLocation).filter(
+                StorageLocation.household_id == demo_household.id
+            ).delete(synchronize_session=False)
+            db.query(Product).filter(
+                Product.household_id == demo_household.id
+            ).delete(synchronize_session=False)
             db.commit()
             print("  ✓ Cleared previous inventory tables successfully.")
 
@@ -83,13 +140,22 @@ def seed_database(reset: bool = True, db: Optional[Session] = None) -> Dict[str,
             ("Spice & Seasoning Station", "Cooking oils, soy sauce, vinegars, salt, and seasoning packets"),
         ]
 
-        existing_locs = {loc.name: loc for loc in db.query(StorageLocation).all()}
+        existing_locs = {
+            loc.name: loc
+            for loc in db.query(StorageLocation)
+            .filter(StorageLocation.household_id == demo_household.id)
+            .all()
+        }
         loc_map: Dict[str, StorageLocation] = {}
         for name, desc in locations_data:
             if name in existing_locs:
                 loc = existing_locs[name]
             else:
-                loc = StorageLocation(name=name, description=desc)
+                loc = StorageLocation(
+                    household_id=demo_household.id,
+                    name=name,
+                    description=desc,
+                )
                 db.add(loc)
                 db.flush()
                 print(f"  + Storage Location: {name}")
@@ -132,13 +198,19 @@ def seed_database(reset: bool = True, db: Optional[Session] = None) -> Dict[str,
             ),
         ]
 
-        existing_sessions = {s.store_name: s for s in db.query(GrocerySession).all()}
+        existing_sessions = {
+            s.store_name: s
+            for s in db.query(GrocerySession)
+            .filter(GrocerySession.household_id == demo_household.id)
+            .all()
+        }
         session_map: Dict[str, GrocerySession] = {}
         for store, pdate, total, status, notes in sessions_data:
             if store in existing_sessions:
                 sess = existing_sessions[store]
             else:
                 sess = GrocerySession(
+                    household_id=demo_household.id,
                     store_name=store,
                     purchase_date=pdate,
                     total_amount=total,
@@ -606,8 +678,13 @@ def seed_database(reset: bool = True, db: Optional[Session] = None) -> Dict[str,
             },
         ]
 
-        existing_prods_by_name = {p.name: p for p in db.query(Product).all()}
-        existing_prods_by_barcode = {p.barcode: p for p in db.query(Product).all() if p.barcode}
+        household_products = db.query(Product).filter(
+            Product.household_id == demo_household.id
+        ).all()
+        existing_prods_by_name = {p.name: p for p in household_products}
+        existing_prods_by_barcode = {
+            p.barcode: p for p in household_products if p.barcode
+        }
         prod_map: Dict[str, Product] = {}
         for pdata in products_catalog:
             if pdata["name"] in existing_prods_by_name:
@@ -616,6 +693,7 @@ def seed_database(reset: bool = True, db: Optional[Session] = None) -> Dict[str,
                 prod = existing_prods_by_barcode[pdata["barcode"]]
             else:
                 prod = Product(
+                    household_id=demo_household.id,
                     name=pdata["name"],
                     brand=pdata["brand"],
                     barcode=pdata["barcode"],
@@ -1204,6 +1282,7 @@ def seed_database(reset: bool = True, db: Optional[Session] = None) -> Dict[str,
                     db.query(InventoryBatch)
                     .filter(
                         InventoryBatch.product_id == product.id,
+                        InventoryBatch.household_id == demo_household.id,
                         InventoryBatch.storage_location_id == location.id,
                         InventoryBatch.grocery_session_id == session.id,
                         InventoryBatch.expiration_date == bspec["expiration_date"],
@@ -1213,6 +1292,7 @@ def seed_database(reset: bool = True, db: Optional[Session] = None) -> Dict[str,
                 if existing_batch:
                     continue
             batch = InventoryBatch(
+                household_id=demo_household.id,
                 product_id=product.id,
                 storage_location_id=location.id,
                 grocery_session_id=session.id,
@@ -1332,13 +1412,17 @@ def seed_database(reset: bool = True, db: Optional[Session] = None) -> Dict[str,
             if not reset:
                 existing_item = (
                     db.query(ShoppingListItem)
-                    .filter(ShoppingListItem.name == sitem["name"])
+                    .filter(
+                        ShoppingListItem.household_id == demo_household.id,
+                        ShoppingListItem.name == sitem["name"],
+                    )
                     .first()
                 )
                 if existing_item:
                     continue
             prod_id = prod_map[sitem["product"]].id if sitem["product"] else None
             item = ShoppingListItem(
+                household_id=demo_household.id,
                 product_id=prod_id,
                 name=sitem["name"],
                 quantity=sitem["quantity"],
@@ -1357,13 +1441,28 @@ def seed_database(reset: bool = True, db: Optional[Session] = None) -> Dict[str,
         print("🎉 Provision Household Database Seeding Complete!")
         print("=" * 60)
         user_count = db.query(User).count()
-        loc_count = db.query(StorageLocation).count()
-        sess_count = db.query(GrocerySession).count()
-        prod_count = db.query(Product).count()
-        batch_count = db.query(InventoryBatch).count()
-        active_batches = db.query(InventoryBatch).filter(InventoryBatch.remaining_quantity > 0).count()
-        event_count = db.query(InventoryEvent).count()
-        shop_count = db.query(ShoppingListItem).count()
+        loc_count = db.query(StorageLocation).filter(
+            StorageLocation.household_id == demo_household.id
+        ).count()
+        sess_count = db.query(GrocerySession).filter(
+            GrocerySession.household_id == demo_household.id
+        ).count()
+        prod_count = db.query(Product).filter(
+            Product.household_id == demo_household.id
+        ).count()
+        batch_count = db.query(InventoryBatch).filter(
+            InventoryBatch.household_id == demo_household.id
+        ).count()
+        active_batches = db.query(InventoryBatch).filter(
+            InventoryBatch.household_id == demo_household.id,
+            InventoryBatch.remaining_quantity > 0,
+        ).count()
+        event_count = db.query(InventoryEvent).join(InventoryBatch).filter(
+            InventoryBatch.household_id == demo_household.id
+        ).count()
+        shop_count = db.query(ShoppingListItem).filter(
+            ShoppingListItem.household_id == demo_household.id
+        ).count()
 
         print(f"Users:              {user_count} accounts")
         print(f"Storage Locations:  {loc_count} locations")
@@ -1372,10 +1471,6 @@ def seed_database(reset: bool = True, db: Optional[Session] = None) -> Dict[str,
         print(f"Inventory Batches:  {batch_count} batches ({active_batches} active on-hand)")
         print(f"Inventory Events:   {event_count} ledger movements (purchases, consumptions, waste)")
         print(f"Shopping List:      {shop_count} items")
-        print("=" * 60)
-        print("Demo Credentials:")
-        print("  Email:    user@provision.local")
-        print("  Password: password123")
         print("=" * 60)
 
         return {
@@ -1397,6 +1492,14 @@ def seed_database(reset: bool = True, db: Optional[Session] = None) -> Dict[str,
         if should_close:
             db.close()
 
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Create local demo pantry data.")
+    parser.add_argument("--demo", action="store_true", required=True,
+                        help="Explicitly opt in to insecure local demo accounts.")
+    parser.add_argument("--no-reset", action="store_true")
+    args = parser.parse_args(argv)
+    seed_database(reset=not args.no_reset)
+
+
 if __name__ == "__main__":
-    reset_flag = "--no-reset" not in sys.argv
-    seed_database(reset=reset_flag)
+    main()

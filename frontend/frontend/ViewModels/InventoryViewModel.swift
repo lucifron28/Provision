@@ -2,6 +2,35 @@ import Foundation
 import SwiftUI
 import Combine
 
+public enum InventoryQuickFilter: String, CaseIterable, Identifiable, Sendable {
+    case all = "All"
+    case expiringSoon = "Expiring Soon"
+    case lowStock = "Low Stock"
+    case outOfStock = "Out of Stock"
+    
+    public var id: String { rawValue }
+    public var title: String { rawValue }
+    
+    public var icon: String {
+        switch self {
+        case .all: return "square.grid.2x2"
+        case .expiringSoon: return "clock.badge.exclamationmark"
+        case .lowStock: return "exclamationmark.triangle"
+        case .outOfStock: return "archivebox"
+        }
+    }
+}
+
+public enum InventorySortOption: String, CaseIterable, Identifiable, Sendable {
+    case nameAsc = "Name (A–Z)"
+    case nameDesc = "Name (Z–A)"
+    case expirationSoonest = "Expiration (Soonest)"
+    case stockLowest = "Stock (Lowest)"
+    case stockHighest = "Stock (Highest)"
+
+    public var id: String { rawValue }
+}
+
 @MainActor
 public class InventoryViewModel: ObservableObject {
     @Published public var products: [Product] = []
@@ -10,7 +39,9 @@ public class InventoryViewModel: ObservableObject {
     @Published public var searchText: String = ""
     @Published public var selectedCategory: String? = nil
     @Published public var selectedLocationId: Int? = nil
-    
+    @Published public var activeQuickFilter: InventoryQuickFilter = .all
+    @Published public var sortOption: InventorySortOption = .nameAsc
+    @Published public var productExpirations: [Int: Int] = [:]
     // Detail view state
     @Published public var selectedProduct: Product? = nil
     @Published public var productBatches: [InventoryBatch] = []
@@ -34,7 +65,7 @@ public class InventoryViewModel: ObservableObject {
     }
     
     public var filteredProducts: [Product] {
-        products.filter { product in
+        let filtered = products.filter { product in
             let matchesSearch = searchText.isEmpty ||
                 product.name.localizedCaseInsensitiveContains(searchText) ||
                 (product.brand?.localizedCaseInsensitiveContains(searchText) ?? false) ||
@@ -42,8 +73,49 @@ public class InventoryViewModel: ObservableObject {
                 (product.barcode?.contains(searchText) ?? false)
             
             let matchesCategory = selectedCategory == nil || product.category == selectedCategory
-            return matchesSearch && matchesCategory
+            
+            let daysUntilExp = product.daysUntilExpiration ?? productExpirations[product.id]
+            let matchesQuickFilter: Bool
+            switch activeQuickFilter {
+            case .all:
+                matchesQuickFilter = true
+            case .expiringSoon:
+                matchesQuickFilter = (daysUntilExp != nil && daysUntilExp! <= 7)
+            case .lowStock:
+                let stock = product.total_remaining_quantity ?? 0
+                matchesQuickFilter = product.isLowStock || (stock > 0 && stock <= 2)
+            case .outOfStock:
+                let stock = product.total_remaining_quantity ?? 0
+                matchesQuickFilter = product.isOutOfStock || stock <= 0
+            }
+            
+            return matchesSearch && matchesCategory && matchesQuickFilter
         }
+
+        return filtered.sorted { a, b in
+            switch sortOption {
+            case .nameAsc:
+                return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+            case .nameDesc:
+                return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedDescending
+            case .expirationSoonest:
+                let expA = a.daysUntilExpiration ?? productExpirations[a.id] ?? 9999
+                let expB = b.daysUntilExpiration ?? productExpirations[b.id] ?? 9999
+                return expA < expB
+            case .stockLowest:
+                let stockA = a.total_remaining_quantity ?? 0
+                let stockB = b.total_remaining_quantity ?? 0
+                return stockA < stockB
+            case .stockHighest:
+                let stockA = a.total_remaining_quantity ?? 0
+                let stockB = b.total_remaining_quantity ?? 0
+                return stockA > stockB
+            }
+        }
+    }
+    
+    public func applyFilter(_ filter: InventoryQuickFilter) {
+        self.activeQuickFilter = filter
     }
     
     public func loadData() async {
@@ -53,9 +125,27 @@ public class InventoryViewModel: ObservableObject {
         do {
             async let prodsTask = client.fetchProducts()
             async let locsTask = client.fetchLocations()
+            async let expiringTask = client.fetchExpiringSoon(days: 14)
             
             let (prods, locs) = try await (prodsTask, locsTask)
-            self.products = prods
+            var expirations: [Int: Int] = [:]
+            if let expiring = try? await expiringTask {
+                for item in expiring {
+                    if let existing = expirations[item.product_id] {
+                        expirations[item.product_id] = min(existing, item.days_until_expiration)
+                    } else {
+                        expirations[item.product_id] = item.days_until_expiration
+                    }
+                }
+            }
+            self.productExpirations = expirations
+            self.products = prods.map { prod in
+                var p = prod
+                if let days = expirations[prod.id] {
+                    p.daysUntilExpiration = days
+                }
+                return p
+            }
             self.locations = locs
         } catch {
             self.errorMessage = error.localizedDescription

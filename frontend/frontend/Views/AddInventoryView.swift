@@ -89,68 +89,145 @@ public struct AddInventoryView: View {
                         }
                     }
                 } else {
-                    Section("Product Source") {
+                    Section {
                         Picker("Mode", selection: $mode) {
-                            Text("Select Existing").tag(Mode.existing)
-                            Text("Create New").tag(Mode.new)
+                            Label("Catalog Item", systemImage: "books.vertical.fill").tag(Mode.existing)
+                            Label("New Item", systemImage: "plus.square.fill").tag(Mode.new)
                         }
                         .pickerStyle(.segmented)
+                        .padding(.vertical, 4)
                         
                         if mode == .existing {
-                            Picker("Product", selection: $selectedProductId) {
-                                Text("Select a Product").tag(Int?.none)
-                                ForEach(viewModel.products) { p in
-                                    Text("\(p.name) \(p.brand != nil ? "(\(p.brand!))" : "")").tag(Int?.some(p.id))
-                                }
-                            }
-                            
-                            if selectedProductId != nil {
-                                HStack {
-                                    Text("Unit")
-                                    Spacer()
-                                    Text(currentUnit)
+                            if viewModel.products.isEmpty {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "info.circle.fill")
+                                        .foregroundStyle(ProvisionTheme.amberWarning)
+                                    Text("No registered catalog products found. Select 'New Item' above to register a product.")
+                                        .font(.system(size: 13))
                                         .foregroundStyle(ProvisionTheme.textSecondary)
+                                }
+                                .padding(.vertical, 4)
+                            } else {
+                                SearchableProductSelector(
+                                    products: viewModel.products,
+                                    selectedProductId: $selectedProductId,
+                                    placeholder: "Search catalog by name, brand, or barcode..."
+                                )
+                                
+                                if let selectedId = selectedProductId, let p = viewModel.products.first(where: { $0.id == selectedId }) {
+                                    HStack {
+                                        Text("Unit")
+                                            .foregroundStyle(ProvisionTheme.textSecondary)
+                                        Spacer()
+                                        Text(currentUnit)
+                                            .fontWeight(.semibold)
+                                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                                    }
+                                    
+                                    if let cat = p.category, !cat.isEmpty {
+                                        HStack {
+                                            Text("Category")
+                                                .foregroundStyle(ProvisionTheme.textSecondary)
+                                            Spacer()
+                                            Text(cat)
+                                                .foregroundStyle(ProvisionTheme.textPrimary)
+                                        }
+                                    }
                                 }
                             }
                         } else {
-                            TextField("Product Name (Required)", text: $newProductName)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Product Name *")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(ProvisionTheme.textSecondary)
+                                TextField("e.g. Jasmine Rice", text: $newProductName)
+                                    .foregroundStyle(ProvisionTheme.textPrimary)
+                                    .tint(ProvisionTheme.provisionGreen)
+                            }
+                            .padding(.vertical, 2)
                             
                             Picker("Unit", selection: $newProductUnit) {
                                 ForEach(ProductUnits.allUnits, id: \.self) { u in
                                     Text(u).tag(u)
                                 }
                             }
+                            .tint(ProvisionTheme.provisionGreen)
                             
-                            TextField("Brand (Optional)", text: $newProductBrand)
-                            TextField("Category (Optional)", text: $newProductCategory)
-                            TextField("Barcode (Optional)", text: $newProductBarcode)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Brand (Optional)")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(ProvisionTheme.textSecondary)
+                                TextField("e.g. Royal Umbrella", text: $newProductBrand)
+                                    .foregroundStyle(ProvisionTheme.textPrimary)
+                                    .tint(ProvisionTheme.provisionGreen)
+                            }
+                            .padding(.vertical, 2)
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Category (Optional)")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(ProvisionTheme.textSecondary)
+                                TextField("e.g. Grains & Rice", text: $newProductCategory)
+                                    .foregroundStyle(ProvisionTheme.textPrimary)
+                                    .tint(ProvisionTheme.provisionGreen)
+                            }
+                            .padding(.vertical, 2)
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Barcode (Optional)")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(ProvisionTheme.textSecondary)
+                                TextField("e.g. 4800016644814", text: $newProductBarcode)
+                                    .keyboardType(.numberPad)
+                                    .foregroundStyle(ProvisionTheme.textPrimary)
+                                    .tint(ProvisionTheme.provisionGreen)
+                            }
+                            .padding(.vertical, 2)
                         }
+                    } header: {
+                        Text(mode == .existing ? "Catalog Selection" : "New Product Specification")
                     }
                 }
                 
                 Section("Stock Information") {
                     HStack {
                         Text("Amount")
+                            .foregroundStyle(ProvisionTheme.textPrimary)
                         Spacer()
                         TextField(ProductUnits.isMeasured(currentUnit) ? "e.g. 1.5" : "e.g. 1", text: $amountText)
                             .keyboardType(ProductUnits.isMeasured(currentUnit) ? .decimalPad : .numberPad)
                             .multilineTextAlignment(.trailing)
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+                            .tint(ProvisionTheme.provisionGreen)
                         Text(currentUnit)
                             .foregroundStyle(ProvisionTheme.textSecondary)
                     }
                     
                     Toggle("Track Expiration", isOn: $trackExpiration)
+                        .tint(ProvisionTheme.provisionGreen)
+                    
                     if trackExpiration {
                         HStack {
                             DatePicker("Expiration Date", selection: $expirationDate, displayedComponents: .date)
+                                .tint(ProvisionTheme.provisionGreen)
+                            
                             Button {
                                 showingExpirationOCRSheet = true
                             } label: {
-                                Image(systemName: "camera.viewfinder")
-                                    .font(.system(size: 15))
-                                    .foregroundStyle(ProvisionTheme.heroCard)
+                                HStack(spacing: 4) {
+                                    Image(systemName: "camera.viewfinder")
+                                        .font(.system(size: 14, weight: .semibold))
+                                    Text("Scan")
+                                        .font(.system(size: 12, weight: .bold))
+                                }
+                                .foregroundStyle(ProvisionTheme.provisionGreen)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 6)
+                                .background(ProvisionTheme.provisionGreenLight)
+                                .clipShape(Capsule())
                             }
                             .buttonStyle(.borderless)
+                            .accessibleTouchTarget()
                         }
                     }
                     
@@ -158,22 +235,27 @@ public struct AddInventoryView: View {
                         ProgressView("Loading locations...")
                     } else if !locations.isEmpty {
                         Picker("Storage Location", selection: $selectedLocationId) {
-                            Text("None").tag(Int?.none)
+                            Text("Select Location...").tag(Int?.none)
                             ForEach(locations) { loc in
                                 Text(loc.name).tag(Int?.some(loc.id))
                             }
                         }
+                        .tint(ProvisionTheme.provisionGreen)
                     }
                     
                     HStack {
                         Text("Unit Price (₱)")
+                            .foregroundStyle(ProvisionTheme.textPrimary)
                         Spacer()
                         TextField("Optional", text: $unitPriceStr)
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+                            .tint(ProvisionTheme.provisionGreen)
                     }
                     
                     DatePicker("Purchase Date", selection: $purchaseDate, displayedComponents: .date)
+                        .tint(ProvisionTheme.provisionGreen)
                 }
                 
                 Section {
@@ -182,18 +264,22 @@ public struct AddInventoryView: View {
                     } label: {
                         if isSubmitting {
                             ProgressView()
-                                .frame(maxWidth: .infinity)
+                                .tint(.white)
+                                .frame(maxWidth: .infinity, minHeight: 48)
                         } else {
                             Text(isRestockMode ? "Add Stock" : "Add to Inventory")
                                 .font(.system(size: 16, weight: .bold))
-                                .frame(maxWidth: .infinity)
-                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity, minHeight: 48)
+                                .foregroundStyle(ProvisionTheme.onAccent)
                         }
                     }
-                    .listRowBackground(ProvisionTheme.provisionGreen)
+                    .listRowBackground(isFormValid && !isSubmitting ? ProvisionTheme.provisionGreen : ProvisionTheme.provisionGreen.opacity(0.4))
                     .disabled(isSubmitting || !isFormValid)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(ProvisionTheme.background.ignoresSafeArea())
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle(isRestockMode ? "Add Stock" : "Add Inventory")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -223,6 +309,7 @@ public struct AddInventoryView: View {
     private var isFormValid: Bool {
         let parsedQty = Double(amountText.replacingOccurrences(of: ",", with: "."))
         guard let qty = parsedQty, qty > 0 else { return false }
+        guard selectedLocationId != nil else { return false }
         
         if isRestockMode || mode == .existing {
             return selectedProductId != nil
@@ -234,26 +321,24 @@ public struct AddInventoryView: View {
     private func fetchLocations() async {
         if !viewModel.locations.isEmpty {
             self.locations = viewModel.locations
-            if let first = locations.first, selectedLocationId == nil {
-                selectedLocationId = first.id
-            }
             return
         }
         if viewModel.isPreview { return }
         isLoadingLocations = true
         do {
             locations = try await APIClient.shared.fetchLocations()
-            if let first = locations.first, selectedLocationId == nil {
-                selectedLocationId = first.id
-            }
         } catch {
             errorMessage = "Could not load storage locations."
         }
         isLoadingLocations = false
     }
-    
     private func submit() {
+        guard !isSubmitting else { return }
         errorMessage = nil
+        guard selectedLocationId != nil else {
+            errorMessage = "Please select a storage location for this batch."
+            return
+        }
         let parsedQty = Double(amountText.replacingOccurrences(of: ",", with: "."))
         guard let qty = parsedQty, qty > 0 else {
             errorMessage = "Please enter a valid amount greater than zero."
