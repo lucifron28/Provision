@@ -355,6 +355,7 @@ def test_redirect_with_gzip_header_is_not_decoded_or_normalized(tls_server):
         (b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n", 4, PinnedResponseTooLarge),
         (b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nab", 4, (PinnedTransportError, ssl.SSLError)),
         (b"HTTP/1.1 200 OK\r\nContent-Length: 1\r\nContent-Length: 2\r\n\r\nx", 10, PinnedTransportError),
+        (b"HTTP/1.1 429 Too Many Requests\r\nRetry-After: 60\r\nRetry-After: 120\r\nContent-Length: 0\r\n\r\n", 10, PinnedTransportError),
         (b"HTTP/1.1 200 OK\r\nContent-Length: 1\r\nTransfer-Encoding: chunked\r\n\r\n", 10, PinnedTransportError),
         (b"HTTP/1.1 200 OK\r\nLocation: https://example.com/a\r\nLocation: https://example.com/b\r\n\r\n", 10, PinnedTransportError),
         (b"HTTP/1.1 200 OK\r\nX-Huge: " + b"a" * 32768 + b"\r\n\r\n", 10, PinnedResponseTooLarge),

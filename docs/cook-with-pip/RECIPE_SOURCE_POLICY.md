@@ -52,6 +52,15 @@ history. Therefore this is a candidate for a compliant reviewed fetch adapter,
 not approval to send Wikibooks pages through DeepSeek Fetch. Keep the existing
 fetch gate closed until those requirements and attribution are verified.
 
+The robot policy reviewed on 2026-10-31 applies its limits across Wikimedia
+properties, not separately per host. For website requests it sets fewer than
+10 concurrent requests and an average below 20 requests per second. It also
+requires honoring `Retry-After` on HTTP 429. Provision's direct transport does
+not yet enforce a shared limit or a shared retry delay, so do not enable it for
+live traffic. The operator's User-Agent must include a way to contact the
+operator; a syntactically valid placeholder is not sufficient. These are
+additional conditions, not approval to reproduce page content.
+
 Publisher evidence checked 2026-10-29:
 - Panlasang Pinoy https://panlasangpinoy.com/categories/recipes/filipino-recipes/
 - Kawaling Pinoy https://www.kawalingpinoy.com/about/ and https://www.kawalingpinoy.com/

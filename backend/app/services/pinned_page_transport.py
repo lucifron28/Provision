@@ -34,7 +34,7 @@ _USER_AGENT = re.compile(r"[A-Za-z][A-Za-z0-9._-]*/[A-Za-z0-9._-]+ \(([^()]*)\)\
 _EMAIL = re.compile(r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")
 _CONTACT_URL = re.compile(r"https?://[^\s;()]+", re.IGNORECASE)
 _WIKI_CONTACT = re.compile(r"[A-Za-z0-9_-]+:[A-Za-z0-9_-]+;\s*User:[A-Za-z0-9 _.-]+", re.IGNORECASE)
-_CRITICAL_HEADERS = {"content-length", "transfer-encoding", "content-encoding", "content-type", "location"}
+_CRITICAL_HEADERS = {"content-length", "transfer-encoding", "content-encoding", "content-type", "location", "retry-after"}
 
 
 class PinnedTransportError(Exception):
