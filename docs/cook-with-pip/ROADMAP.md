@@ -85,8 +85,9 @@ the optional historical `backend/provision.db` file. Client cache/scanner accoun
 binding and privacy UI are tracked
 in [Mac handoff](MAC_HANDOFF.md). DeepSeek is disabled by default. When enabled,
 explicit requests require current consent from every active member. The current
-notice covers submitted dish and search text; shared operational quotas remain
-unfinished. Grants to the earlier notice do not authorize provider requests.
+notice covers submitted dish and search text. A global PostgreSQL request cap
+is shared across workers; per-household quotas remain unfinished. Grants to the
+earlier notice do not authorize provider requests.
 
 - [x] Audit authenticated API routes and caching for cross-user access; enumerate household-owned entities. Existing pantry APIs now enforce household context. Client cache remediation remains in the Mac handoff.
 - [ ] Define household and membership tables; permission policy for household access and role changes. Establish clearly owned records for batches, locations, sessions, shopping, preferences, meal plans, saved recipes, leftovers, events, and caches; globally shared catalog may remain read-only as appropriate.

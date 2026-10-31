@@ -55,9 +55,19 @@ The Docker PostgreSQL backend suite passed with 622 tests and three skips before
 the final discovery-route and ingredient-unit edits. Their focused follow-up
 tests passed separately: 13 discovery tests, and five AI-recipe tests with three
 live smoke tests skipped by default. Live search was separately opted in and
-passed. The provider's request budget is process-local and resets on restart;
-it is not a durable or cross-worker spending limit. Production rollout still
-needs shared quotas and the remaining roadmap gates.
+passed. The API provider now uses a PostgreSQL counter shared across workers
+and restarts, with a global lifetime request cap and a one-minute request
+window. Attempts consume the budget before the network call, including failures.
+The counter stores no prompts or household details. Per-household quotas and
+the remaining production rollout gates are still unfinished. The lifetime cap
+does not reset automatically; an operator must explicitly raise it for further
+requests. Downgrading the migration refuses to discard a consumed counter.
+Apply the Alembic migration before enabling the provider; if budget storage is
+unavailable, the API rejects the request without contacting DeepSeek.
+The budget change passed 637 backend tests with six skips in Docker. A separate
+temporary PostgreSQL database passed upgrade, Alembic drift checks, downgrade
+to base, and upgrade again. Concurrency and failed-request tests cover the
+counter; the downgrade test protects an already consumed budget.
 
 After the consent change, the full Docker PostgreSQL suite passed with 630
 tests and five skips. Focused privacy and generation tests also passed.
