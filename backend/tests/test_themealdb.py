@@ -5,7 +5,7 @@ import pytest
 
 from app.services.deepseek_discovery import PageFetchResponse
 from app.services.pinned_page_transport import PinnedTLSTransport
-from app.services.themealdb import MealDBClient, MealDBError
+from app.services.themealdb import MealDBClient, MealDBError, MealDBRateLimited
 
 
 class FakeTransport:
@@ -64,6 +64,17 @@ def test_lookup_fails_closed_on_unsafe_or_invalid_responses(transport):
 def test_lookup_allows_no_results():
     client = MealDBClient(FakeTransport(body=b'{"meals":null}'))
     assert client.lookup("123") is None
+    client.close()
+
+
+def test_lookup_exposes_retry_after_for_shared_budget():
+    class RateLimitedTransport(FakeTransport):
+        def fetch_once_pinned(self, url, **kwargs):
+            return PageFetchResponse(429, {"retry-after": "120"}, b"")
+    client = MealDBClient(RateLimitedTransport())
+    with pytest.raises(MealDBRateLimited) as error:
+        client.lookup("123")
+    assert error.value.retry_after == "120"
     client.close()
 
 

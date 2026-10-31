@@ -1,16 +1,22 @@
+from contextlib import contextmanager
+
 import pytest
 from fastapi import HTTPException
 
 from app.services.themealdb_reviewed import lookup_reviewed_meal
+from app.services.themealdb import MealDBRateLimited
 from test_deepseek_discovery import _add_source, _grant
+from test_themealdb_budget import make_budget
 
 
 class Budget:
     def __init__(self):
         self.used = 0
 
-    def consume(self):
+    @contextmanager
+    def request(self):
         self.used += 1
+        yield
 
 
 class Client:
@@ -23,6 +29,8 @@ class Client:
         self.calls += 1
         if self.callback:
             self.callback()
+        if isinstance(self.meal, Exception):
+            raise self.meal
         return self.meal
 
 
@@ -89,11 +97,26 @@ def test_api_revocation_during_budget_check_prevents_fetch(db, auth_user, auth_h
     _grant(db, auth_user, auth_household)
     source = add_api_source(db)
     class RevokingBudget:
-        def consume(self):
+        @contextmanager
+        def request(self):
             source.policy = {**source.policy, "enabled": False}
             db.flush()
+            yield
     client = Client(None)
     with pytest.raises(HTTPException) as error:
         call(db, auth_user, auth_household, client, RevokingBudget())
     assert error.value.detail == "RECIPE_FETCH_NOT_AUTHORIZED"
     assert client.calls == 0
+
+
+def test_rate_limit_blocks_following_lookup_across_budget_instances(db, auth_user, auth_household):
+    _grant(db, auth_user, auth_household)
+    add_api_source(db)
+    client = Client(MealDBRateLimited("120"))
+    with pytest.raises(HTTPException) as first:
+        call(db, auth_user, auth_household, client, make_budget())
+    assert first.value.detail == "MEALDB_RATE_LIMITED"
+    with pytest.raises(HTTPException) as second:
+        call(db, auth_user, auth_household, client, make_budget())
+    assert second.value.detail == "MEALDB_REQUEST_RATE_LIMITED"
+    assert client.calls == 1

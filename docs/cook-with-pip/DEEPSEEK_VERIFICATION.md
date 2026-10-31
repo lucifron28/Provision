@@ -121,9 +121,18 @@ tests passed with 65 tests and one live-test skip.
 The source policy now distinguishes `api_json` from webpage extraction. An
 internal reviewed lookup checks current household consent, API approval, and
 permission for the original publisher before returning untrusted content. It
-requires a caller-supplied budget; no durable TheMealDB limiter or public route
-is implemented yet. The subsequent Docker suite passed 768 tests with seven
+requires a caller-supplied budget; no public route is implemented yet. The
+PostgreSQL budget serializes requests across workers, retains a lifetime count,
+and honors valid `Retry-After` values. A failed or interrupted request, or an
+unusable retry value, leaves the budget paused for operator review; it does not
+resume automatically. Review the provider status and any retry deadline before
+an operator clears that pause. The subsequent Docker suite passed 768 tests with seven
 skips, including the opt-in live checks.
+After the durable TheMealDB limiter was added, the full Docker PostgreSQL suite
+passed 776 tests with seven skips. An isolated database passed upgrade,
+downgrade, re-upgrade, and Alembic drift checks. The local application database
+was upgraded to revision `f56c9a214e0b`; the limiter is still not connected to a
+public recipe endpoint.
 
 A separate direct HTTPS transport and a Wikibooks robots policy check are under
 development. They pin each connection to a validated public IP, check robots

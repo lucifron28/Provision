@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     DEEPSEEK_MAX_RESPONSE_BYTES: int = Field(default=1000000, ge=1024, le=20000000)
     DEEPSEEK_MAX_SEARCH_RESULTS: int = Field(default=10, ge=1, le=50)
     DEEPSEEK_MAX_FETCH_CHARACTERS: int = Field(default=50000, ge=1, le=500000)
+    MEALDB_REQUEST_BUDGET: int = Field(default=100, ge=1, le=10000)
+    MEALDB_MIN_INTERVAL_SECONDS: int = Field(default=2, ge=1, le=3600)
 
     @field_validator("DEEPSEEK_BASE_URL")
     @classmethod

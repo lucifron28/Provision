@@ -2,7 +2,7 @@
 
 import re
 from dataclasses import dataclass
-from typing import Protocol
+from typing import ContextManager, Protocol
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -13,11 +13,11 @@ from app.services.deepseek_discovery import (
     authorize_recipe_fetch,
 )
 from app.services.household_writes import lock_household_write
-from app.services.themealdb import MealDBClient, MealDBError
+from app.services.themealdb import MealDBClient, MealDBError, MealDBRateLimited
 
 
 class MealDBBudget(Protocol):
-    def consume(self) -> None: ...
+    def request(self) -> ContextManager[None]: ...
 
 
 @dataclass(frozen=True)
@@ -46,12 +46,14 @@ def lookup_reviewed_meal(
     api = authorize_recipe_fetch(db, api_url, allow_broader_web=allow_broader_web)
     if "api_json" not in api.extraction_methods:
         raise HTTPException(403, "RECIPE_FETCH_METHOD_NOT_AUTHORIZED")
-    budget.consume()
-    if not _same_fetch_authorization(db, api, allow_broader_web=allow_broader_web):
-        raise HTTPException(403, "RECIPE_FETCH_NOT_AUTHORIZED")
-    _require_member_and_consent(db, household_id, actor_id)
     try:
-        meal = client.lookup(meal_id)
+        with budget.request():
+            if not _same_fetch_authorization(db, api, allow_broader_web=allow_broader_web):
+                raise HTTPException(403, "RECIPE_FETCH_NOT_AUTHORIZED")
+            _require_member_and_consent(db, household_id, actor_id)
+            meal = client.lookup(meal_id)
+    except MealDBRateLimited:
+        raise HTTPException(429, "MEALDB_RATE_LIMITED") from None
     except MealDBError:
         raise HTTPException(502, "MEALDB_UNAVAILABLE") from None
     if not _same_fetch_authorization(db, api, allow_broader_web=allow_broader_web):

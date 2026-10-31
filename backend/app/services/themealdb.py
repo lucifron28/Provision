@@ -23,6 +23,12 @@ class MealDBError(Exception):
     """The API could not be reached or returned an invalid response."""
 
 
+class MealDBRateLimited(MealDBError):
+    def __init__(self, retry_after: str | None):
+        super().__init__("TheMealDB rate limited the request")
+        self.retry_after = retry_after
+
+
 class _PinnedTransport(httpx.BaseTransport):
     def __init__(self, transport: PinnedTLSTransport):
         self._transport = transport
@@ -62,6 +68,8 @@ class MealDBClient:
         url = _BASE + endpoint + "?" + urlencode(params)
         try:
             response = self._client.get(url)
+            if response.status_code == 429:
+                raise MealDBRateLimited(response.headers.get("retry-after"))
             if response.status_code != 200 or response.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
                 raise MealDBError("TheMealDB returned an unsupported response")
             data = response.json()
