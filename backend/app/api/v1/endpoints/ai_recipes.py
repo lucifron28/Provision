@@ -13,13 +13,14 @@ from app.models.user import User
 from app.schemas.ai_recipe import AIRecipeRead, AIRecipeRequest
 from app.services.ai_recipes import generate_recipe
 from app.services.deepseek_provider import DeepSeekProvider, DeepSeekProviderError
+from app.services.deepseek_budget import PostgresDeepSeekBudget
 
 router = APIRouter()
 
 
 @lru_cache(maxsize=1)
 def get_provider():
-    return DeepSeekProvider(settings)
+    return DeepSeekProvider(settings, budget=PostgresDeepSeekBudget(settings))
 
 
 @router.post("/generate", response_model=AIRecipeRead)
@@ -31,7 +32,7 @@ def generate(request: AIRecipeRequest, response: Response,
     try:
         return generate_recipe(db, household_id, user.id, request, provider)
     except DeepSeekProviderError as exc:
-        if exc.code in {"disabled", "configuration"}:
+        if exc.code in {"disabled", "configuration", "budget_unavailable"}:
             status = 503
         elif exc.code in {"rate_limited", "request_budget_exhausted"}:
             status = 429

@@ -1,6 +1,7 @@
 """Bounded, server-side DeepSeek API client.
 
-Keep one provider instance for the process so its request budgets are shared.
+The API injects a PostgreSQL budget shared by all workers. Standalone provider
+instances use an in-process budget unless a budget is supplied.
 Search and fetch results are untrusted source material: callers must apply the
 recipe source registry and URL policy before deciding whether to use them.
 """
@@ -17,6 +18,7 @@ from typing import Any, Callable
 
 import httpx
 from pydantic import ValidationError
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import Settings
 from app.schemas.deepseek import (
@@ -230,8 +232,8 @@ def _get_process_budget(
 class DeepSeekProvider:
     """Synchronous adapter for bounded chat, search, and fetch requests.
 
-    Budget counters are shared by instances that use the same Settings object.
-    Reuse the application's settings singleton to enforce one process budget.
+    The default budget is shared by instances using the same Settings object.
+    Application routes inject a durable budget shared across workers.
     No method retries: a retry could duplicate a billable provider operation.
     """
 
@@ -241,6 +243,7 @@ class DeepSeekProvider:
         *,
         transport: httpx.BaseTransport | None = None,
         _clock: Callable[[], float] = monotonic,
+        budget=None,
     ) -> None:
         self._settings = settings
         self._clock = _clock
@@ -250,7 +253,7 @@ class DeepSeekProvider:
             trust_env=False,
             transport=transport,
         )
-        self._budget = _get_process_budget(settings, _clock)
+        self._budget = budget if budget is not None else _get_process_budget(settings, _clock)
 
     @property
     def max_search_results(self) -> int:
@@ -374,7 +377,14 @@ class DeepSeekProvider:
         self, path: str, payload: dict[str, Any], operation: str
     ) -> dict[str, Any]:
         self._require_enabled(operation)
-        self._budget.consume(operation)
+        try:
+            self._budget.consume(operation)
+        except SQLAlchemyError:
+            raise DeepSeekProviderError(
+                "DeepSeek request budget is unavailable.",
+                operation=operation,
+                code="budget_unavailable",
+            ) from None
         api_key = self._settings.DEEPSEEK_API_KEY
         assert api_key is not None  # Checked by _require_enabled.
         started_at = self._clock()

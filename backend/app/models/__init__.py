@@ -8,6 +8,7 @@ from app.models.shopping import ShoppingListItem
 from app.models.user import User
 from app.models.household import Household, HouseholdMembership, HouseholdRole
 from app.models.privacy import ProcessingConsent
+from app.models.deepseek_budget import DeepSeekBudget
 from app.models.preferences import FoodPreference, FoodAllergy
 from app.models.allergens import IngredientAllergen, IngredientDerivative
 from app.models.product_label import ProductAllergenLabel
@@ -42,6 +43,7 @@ __all__ = [
     "HouseholdMembership",
     "HouseholdRole",
     "ProcessingConsent",
+    "DeepSeekBudget",
     "FoodPreference",
     "FoodAllergy",
     "IngredientAllergen",
