@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from app.models.household import Household, HouseholdMembership, HouseholdRole
 from app.models.privacy import ProcessingConsent
@@ -205,6 +206,25 @@ def test_discovery_respects_provider_search_result_limit(db, auth_user, auth_hou
     result = discover_recipes(db, auth_household.id, auth_user.id, "adobo", provider=provider)
     assert len(result.results) == 1
     assert [call.count for call in provider.calls] == [1]
+
+
+def test_source_revoked_during_search_is_not_returned(db, auth_user, auth_household):
+    _grant(db, auth_user, auth_household)
+    host = "priority.publisher.example.com"
+    source = _add_source(db, host)
+    db.commit()
+
+    def revoke(_request):
+        with Session(db.get_bind()) as review_session:
+            reviewed = review_session.get(RecipeSource, source.id)
+            reviewed.policy = _source_policy(host, status="suspended")
+            reviewed.revision += 1
+            review_session.commit()
+        return DeepSeekSearchResponse(results=[_search_result(f"https://{host}/recipe/adobo")])
+
+    result = discover_recipes(db, auth_household.id, auth_user.id, "adobo",
+                              provider=FakeSearchProvider(callback=revoke))
+    assert result.results == ()
 
 
 @pytest.mark.parametrize("provider_error,expected_status", [
