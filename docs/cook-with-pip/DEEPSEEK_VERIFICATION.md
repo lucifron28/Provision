@@ -55,8 +55,12 @@ provider. The provider returned a successful 2xx response with these links:
 - [Knorr Philippines: Authentic Filipino Chicken Adobo](https://www.knorr.com/ph/r/authentic-filipino-chicken-adobo-recipe-with-deep-garlicky-flavor.html/214369)
 - [New York Times Cooking: Chicken Adobo](https://cooking.nytimes.com/recipes/1025489-chicken-adobo#1)
 
-This was one search call. The response did not provide token usage or monetary
-cost. These search results are not publisher approvals, and no page was fetched.
+This was one successful search call. The response did not provide token usage or
+monetary cost. The [DeepSeek Search and Fetch guide](https://api-docs.deepseek.com/guides/search/)
+listed Search at $0.75 per 1,000 successful requests when checked on 2026-10-31,
+which gives an estimated $0.00075 for this call before any taxes or other
+account-specific charges. This is an estimate, not a billed amount. These
+search results are not publisher approvals, and no page was fetched.
 
 The Docker PostgreSQL backend suite passed with 622 tests and three skips before
 the final discovery-route and ingredient-unit edits. Their focused follow-up
