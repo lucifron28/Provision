@@ -42,6 +42,10 @@ passed. The provider's request budget is process-local and resets on restart;
 it is not a durable or cross-worker spending limit. Production rollout still
 needs shared quotas and the remaining roadmap gates.
 
+A separate seeded-household Docker test passed through Cook Now, Almost There,
+mocked search of a synthetic approved publisher, and shopping preview and
+confirmation. It does not exercise publisher page extraction or live search.
+
 ## Fetch policy constraint
 
 The [DeepSeek Fetch API reference](https://api-docs.deepseek.com/api/fetch/)
