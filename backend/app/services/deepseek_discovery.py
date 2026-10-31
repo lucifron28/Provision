@@ -534,6 +534,8 @@ def fetch_recipe_page(
     authorization = authorize_recipe_fetch(
         db, url, allow_broader_web=allow_broader_web
     )
+    if not set(authorization.extraction_methods) & {"json_ld", "full_text"}:
+        raise HTTPException(status_code=403, detail="RECIPE_FETCH_METHOD_NOT_AUTHORIZED")
     chain = [authorization.canonical_url]
     addresses_by_host: dict[str, Sequence[str]] = {}
 

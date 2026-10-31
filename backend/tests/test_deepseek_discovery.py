@@ -530,6 +530,19 @@ def test_link_only_sources_cannot_use_fetch_and_deepseek_fetch_fails_closed(
     assert source.id != fetchable.id
 
 
+def test_api_json_approval_does_not_authorize_html_page_fetch(db, auth_user, auth_household):
+    _grant(db, auth_user, auth_household)
+    source = _add_source(db, "fetch.publisher.example.com", access_mode="structured_recipe_fetch")
+    source.policy = {**source.policy, "extraction_methods": ["api_json"]}
+    db.flush()
+    transport = FakePinnedTransport()
+    with pytest.raises(HTTPException) as denied:
+        fetch_recipe_page(db, auth_household.id, auth_user.id,
+                          "https://fetch.publisher.example.com/recipes/adobo", transport=transport)
+    assert denied.value.detail == "RECIPE_FETCH_METHOD_NOT_AUTHORIZED"
+    assert transport.resolved == []
+
+
 def test_pinned_fetch_checks_each_redirect_and_returns_untrusted_content(
     db, auth_user, auth_household
 ):

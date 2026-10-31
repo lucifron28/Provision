@@ -118,6 +118,12 @@ route. TheMealDB terms and record provenance are reviewed in the source policy.
 The Docker PostgreSQL suite passed with 760 tests and six skips. After the
 transport's JSON accept header was added, its focused tests and the new client
 tests passed with 65 tests and one live-test skip.
+The source policy now distinguishes `api_json` from webpage extraction. An
+internal reviewed lookup checks current household consent, API approval, and
+permission for the original publisher before returning untrusted content. It
+requires a caller-supplied budget; no durable TheMealDB limiter or public route
+is implemented yet. The subsequent Docker suite passed 768 tests with seven
+skips, including the opt-in live checks.
 
 A separate direct HTTPS transport and a Wikibooks robots policy check are under
 development. They pin each connection to a validated public IP, check robots

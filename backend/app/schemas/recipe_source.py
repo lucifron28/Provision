@@ -19,7 +19,7 @@ class SourcePolicy(StrictSchema):
     allowed_hosts: list[str] = Field(min_length=1, max_length=20)
     allowed_redirect_hosts: list[str] = Field(default_factory=list, max_length=20)
     access_mode: AccessMode = "search_link_only"
-    extraction_methods: list[Literal["json_ld", "full_text"]] = Field(default_factory=list, max_length=2)
+    extraction_methods: list[Literal["json_ld", "api_json", "full_text"]] = Field(default_factory=list, max_length=3)
     cuisine_tags: list[Text] = Field(default_factory=lambda: ["Filipino"], max_length=30)
     terms_reference: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)] | None = None
     terms_reviewed_at: AwareDatetime | None = None

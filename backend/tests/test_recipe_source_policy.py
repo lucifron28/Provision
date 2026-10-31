@@ -88,9 +88,10 @@ def test_approval_requires_terms_review_to_be_covered_by_the_audit() -> None:
     [
         ("search_link_only", ["json_ld"]),
         ("metadata_only", ["json_ld"]),
+        ("metadata_only", ["api_json"]),
         ("structured_recipe_fetch", ["full_text"]),
     ],
-    ids=["link-only", "metadata-only", "full-text-needs-license"],
+    ids=["link-only", "metadata-only", "metadata-only-api", "full-text-needs-license"],
 )
 def test_access_mode_rejects_unapproved_extraction(
     access_mode: str, methods: list[str]
@@ -101,6 +102,16 @@ def test_access_mode_rejects_unapproved_extraction(
         extraction_methods=methods,
     )
 
+    with pytest.raises(ValidationError):
+        SourcePolicy.model_validate(payload)
+
+
+def test_api_json_approval_requires_fetch_evidence():
+    payload = _policy_payload(
+        "api.synthetic.example.com", access_mode="structured_recipe_fetch", extraction_methods=["api_json"]
+    )
+    assert SourcePolicy.model_validate(payload).extraction_methods == ["api_json"]
+    payload["license_reference"] = None
     with pytest.raises(ValidationError):
         SourcePolicy.model_validate(payload)
 

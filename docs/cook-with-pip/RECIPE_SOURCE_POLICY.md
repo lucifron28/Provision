@@ -93,7 +93,7 @@ Publisher evidence checked 2026-10-29:
     tier: filipino_priority | reviewed_general | broad_web
     review_status: candidate | approved | suspended | rejected
     access: search_link_only | metadata_only | structured_recipe_fetch | licensed_full
-    approved_extraction_methods[] // e.g. HTML JSON-LD extraction only when lawful/permitted
+    approved_extraction_methods[] // json_ld, api_json, or full_text, with separate permission
     robots_reviewed_at
     terms_reviewed_at
     owner_contact/license_reference
