@@ -148,7 +148,7 @@ def test_robots_request_accepts_plain_text(tls_server):
     result = fetch(url="https://example.com/robots.txt")
     assert result.body == body
     assert result.headers["content-type"] == "text/plain"
-    assert b"\r\nAccept: text/html, application/xhtml+xml, text/plain\r\n" in seen["requests"][0]
+    assert b"\r\nAccept: application/json, text/html, application/xhtml+xml, text/plain\r\n" in seen["requests"][0]
 
 
 @pytest.mark.parametrize("scenario", ["allowed", "disallowed", "malformed_gzip"])

@@ -107,7 +107,17 @@ project's source policy requires validation of redirects and destination IPs.
 Passing an approved starting URL to that provider alone cannot establish that
 those checks were performed on subsequent hops. The implementation must
 retain the existing fail-closed policy until a compliant way to verify provider
-fetch redirects is established. No live publisher fetch has been performed.
+fetch redirects is established. No live publisher page fetch has been performed.
+
+On 2026-10-31, one separately opted-in Docker smoke test fetched an official
+TheMealDB lookup endpoint with its educational test key. It returned HTTP 200
+and the requested meal ID. No recipe text was sent to DeepSeek or saved. The
+new API client is internal; it does not itself authorize use of third-party
+recipe content, enforce publisher request limits, or expose an application
+route. TheMealDB terms and record provenance are reviewed in the source policy.
+The Docker PostgreSQL suite passed with 760 tests and six skips. After the
+transport's JSON accept header was added, its focused tests and the new client
+tests passed with 65 tests and one live-test skip.
 
 A separate direct HTTPS transport and a Wikibooks robots policy check are under
 development. They pin each connection to a validated public IP, check robots

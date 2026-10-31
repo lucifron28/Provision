@@ -314,7 +314,7 @@ class PinnedTLSTransport:
         destination = (str(address), _HTTPS_PORT) if address.version == 4 else (str(address), _HTTPS_PORT, 0, 0)
         target = parsed.path + ("?" + parsed.query if parsed.query else "")
         request = (f"GET {target} HTTP/1.1\r\nHost: {host}\r\n"
-                   f"User-Agent: {self.user_agent}\r\nAccept: text/html, application/xhtml+xml, text/plain\r\n"
+                   f"User-Agent: {self.user_agent}\r\nAccept: application/json, text/html, application/xhtml+xml, text/plain\r\n"
                    "Accept-Encoding: gzip, identity\r\nConnection: close\r\n\r\n").encode("ascii")
         deadline = time.monotonic() + float(timeout_seconds)
         with socket.socket(family, socket.SOCK_STREAM, socket.IPPROTO_TCP) as raw:
