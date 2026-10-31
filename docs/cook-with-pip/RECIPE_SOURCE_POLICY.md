@@ -52,6 +52,23 @@ history. Therefore this is a candidate for a compliant reviewed fetch adapter,
 not approval to send Wikibooks pages through DeepSeek Fetch. Keep the existing
 fetch gate closed until those requirements and attribution are verified.
 
+### API candidate: TheMealDB
+
+On 2026-10-31, [TheMealDB API documentation](https://www.themealdb.com/api.php)
+was reviewed. The test key is available for development and educational use;
+public app-store release requires paid access. The [terms](https://www.themealdb.com/terms_of_use.php)
+permit use of content returned by official API endpoints and prohibit scraping
+the website. They also place a separate restriction on third-party content.
+For example, the API's Filipino eggplant adobo record identifies an external
+source and does not provide a Creative Commons confirmation. The source URL
+alone is not evidence that the underlying recipe may be copied or sent to a
+model. Preserve attribution and notices, and review rights per record before
+reusing third-party text or images. This review does not approve the source for
+recipe-text extraction or model submission.
+Three more Filipino lookup records checked during this review pointed to
+Panlasang Pinoy or Kawaling Pinoy and had no Creative Commons confirmation.
+TheMealDB's API availability does not override those publishers' restrictions.
+
 The robot policy reviewed on 2026-10-31 applies its limits across Wikimedia
 properties, not separately per host. For website requests it sets fewer than
 10 concurrent requests and an average below 20 requests per second. It also
