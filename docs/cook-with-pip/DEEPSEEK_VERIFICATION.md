@@ -16,6 +16,12 @@ total. The response did not provide a monetary cost. These are transport/format
 probes, not evidence that the generated ingredients passed application safety
 or inventory checks.
 
+A later opt-in Docker smoke test used the application provider and validated
+the returned recipe against `AIRecipeProposal`. It passed with model
+`deepseek-flash`, 97 input and 224 output tokens (321 total). The API did not
+report monetary cost. It sent no household data and did not assess inventory
+or allergen safety.
+
 The opt-in authentication and generation smoke tests subsequently passed in a
 Python 3.13/uv Docker container connected to the existing PostgreSQL 18
 container: two passed. With the opt-in flag absent, the same two tests were

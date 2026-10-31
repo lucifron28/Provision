@@ -11,7 +11,8 @@ import httpx
 import pytest
 
 from app.core.config import settings
-from app.schemas.deepseek import DeepSeekSearchRequest
+from app.schemas.ai_recipe import AIRecipeProposal
+from app.schemas.deepseek import DeepSeekChatMessage, DeepSeekChatRequest, DeepSeekSearchRequest
 from app.services.deepseek_provider import DeepSeekProvider
 
 
@@ -53,6 +54,24 @@ def test_live_deepseek_original_recipe_json():
     result = json.loads(data["choices"][0]["message"]["content"])
     assert isinstance(result, dict)
     assert {"title", "servings", "ingredients", "steps"} <= result.keys()
+
+
+def test_live_provider_returns_validated_original_recipe():
+    _headers()
+    config = settings.model_copy(update={"DEEPSEEK_ENABLED": True, "DEEPSEEK_TIMEOUT_SECONDS": 45})
+    prompt = (
+        "Create one original Filipino garlic rice recipe as JSON with title, servings, "
+        "ingredients and steps. Each ingredient must have name, numeric amount, unit "
+        "(g, kg, ml, l, or count), and required boolean. Steps must be strings. "
+        "No extra fields or source claims."
+    )
+    with DeepSeekProvider(config) as provider:
+        response = provider.chat_json(DeepSeekChatRequest(
+            messages=[DeepSeekChatMessage(role="user", content=prompt)], max_tokens=512
+        ))
+    proposal = AIRecipeProposal.model_validate(response.json_object)
+    assert proposal.ingredients and proposal.steps
+    print(f"Model: {response.model}; token usage: {response.usage.model_dump()}")
 
 
 @pytest.mark.skipif(
