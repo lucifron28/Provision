@@ -25,6 +25,7 @@ from app.services.deepseek_discovery import (
     fetch_recipe_with_deepseek,
 )
 from app.services.privacy import CONSENT_PURPOSE
+from app.services.deepseek_provider import DeepSeekRateLimitError, DeepSeekTimeoutError
 
 
 def _grant(db, user: User, household: Household) -> None:
@@ -204,6 +205,33 @@ def test_discovery_respects_provider_search_result_limit(db, auth_user, auth_hou
     result = discover_recipes(db, auth_household.id, auth_user.id, "adobo", provider=provider)
     assert len(result.results) == 1
     assert [call.count for call in provider.calls] == [1]
+
+
+@pytest.mark.parametrize("provider_error,expected_status", [
+    (DeepSeekRateLimitError("search"), 429),
+    (DeepSeekTimeoutError("search"), 504),
+])
+@pytest.mark.parametrize("broader_web", [False, True])
+def test_discovery_api_reports_provider_limits_and_timeouts(
+    client, db, auth_user, auth_household, provider_error, expected_status, broader_web
+):
+    from app.api.v1.endpoints.ai_recipes import get_provider
+    from app.main import app
+
+    _grant(db, auth_user, auth_household)
+    if not broader_web:
+        _add_source(db, "priority.publisher.example.com")
+    db.commit()
+
+    def fail(_request):
+        raise provider_error
+
+    app.dependency_overrides[get_provider] = lambda: FakeSearchProvider(callback=fail)
+    response = client.post("/api/v1/recipe-sources/discover", json={
+        "query": "adobo", "allow_broader_web": broader_web
+    })
+    assert response.status_code == expected_status
+    assert response.json()["detail"] == {"code": provider_error.code}
 
 
 class FakePinnedTransport:

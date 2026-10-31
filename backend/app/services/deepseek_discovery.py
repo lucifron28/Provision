@@ -26,6 +26,7 @@ from app.schemas.deepseek import (
 from app.schemas.recipe_source import AccessMode, SourcePolicy, SourceTier
 from app.services.privacy import all_active_household_members_consented
 from app.services.household_writes import lock_household_write
+from app.services.deepseek_provider import DeepSeekProviderError
 from app.services.recipe_sources import (
     discovery_plan,
     reference_policy,
@@ -279,6 +280,18 @@ def _provider_hits(
     )
 
 
+def _discovery_provider_error(error: DeepSeekProviderError) -> HTTPException:
+    if error.code in {"rate_limited", "request_budget_exhausted"}:
+        status = 429
+    elif error.code == "timeout":
+        status = 504
+    elif error.code in {"disabled", "configuration", "budget_unavailable"}:
+        status = 503
+    else:
+        status = 502
+    return HTTPException(status_code=status, detail={"code": error.code})
+
+
 def discover_recipes(
     db: Session,
     household_id: int,
@@ -327,6 +340,8 @@ def discover_recipes(
             count = min(MAX_RESULTS_PER_REQUEST, max_results - len(results))
             try:
                 hits = _provider_hits(provider, provider_query, count=count)
+            except DeepSeekProviderError as error:
+                raise _discovery_provider_error(error) from None
             except Exception:
                 raise HTTPException(
                     status_code=503, detail="RECIPE_DISCOVERY_PROVIDER_UNAVAILABLE"
@@ -370,6 +385,8 @@ def discover_recipes(
                     broader_query,
                     count=min(MAX_RESULTS_PER_REQUEST, max_results - len(results)),
                 )
+            except DeepSeekProviderError as error:
+                raise _discovery_provider_error(error) from None
             except Exception:
                 raise HTTPException(
                     status_code=503, detail="RECIPE_DISCOVERY_PROVIDER_UNAVAILABLE"
