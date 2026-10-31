@@ -20,6 +20,7 @@ from app.schemas.privacy import CONSENT_POLICY_VERSION
 from app.schemas.recipe_source import SourcePolicy
 from app.services.deepseek_discovery import (
     PageFetchResponse,
+    RecipeFetchAuthorization,
     authorize_recipe_fetch,
     discover_recipes,
     fetch_recipe_page,
@@ -256,6 +257,7 @@ def test_discovery_api_reports_provider_limits_and_timeouts(
 
 class FakePinnedTransport:
     def __init__(self, addresses=None, responses=None):
+        self.user_agent = "ProvisionBot/1.0 (operator@example.com)"
         self.addresses = addresses or {}
         self.responses = list(responses or [])
         self.resolved: list[str] = []
@@ -564,6 +566,7 @@ def test_pinned_fetch_checks_each_redirect_and_returns_untrusted_content(
         auth_user.id,
         "https://fetch.publisher.example.com/recipes/adobo",
         transport=transport,
+        robots_policy=lambda url, *, transport: True,
     )
 
     assert page.final_url == "https://cdn.publisher.example.com/recipes/adobo"
@@ -598,6 +601,7 @@ def test_pinned_fetch_rejects_private_dns_and_off_allowlist_redirect_before_next
             auth_user.id,
             "https://fetch.publisher.example.com/recipes/adobo",
             transport=private_dns,
+            robots_policy=lambda url, *, transport: True,
         )
     assert blocked_dns.value.status_code == 403
     assert private_dns.requests == []
@@ -618,10 +622,171 @@ def test_pinned_fetch_rejects_private_dns_and_off_allowlist_redirect_before_next
             auth_user.id,
             "https://fetch.publisher.example.com/recipes/adobo",
             transport=offsite,
+            robots_policy=lambda url, *, transport: True,
         )
     assert blocked_redirect.value.status_code == 403
     assert len(offsite.requests) == 1
     assert "attacker.example.com" not in offsite.resolved
+
+
+def test_default_robots_policy_rejects_unsupported_host_before_dns(db, auth_user, auth_household):
+    _grant(db, auth_user, auth_household)
+    _add_source(db, "fetch.publisher.example.com", access_mode="structured_recipe_fetch")
+    transport = FakePinnedTransport()
+    with pytest.raises(HTTPException) as rejected:
+        fetch_recipe_page(db, auth_household.id, auth_user.id,
+                          "https://fetch.publisher.example.com/recipes/adobo", transport=transport)
+    assert rejected.value.status_code == 403
+    assert rejected.value.detail == "RECIPE_FETCH_ROBOTS_UNSUPPORTED_HOST"
+    assert transport.resolved == []
+    assert transport.requests == []
+
+
+def test_default_wikibooks_policy_checks_robots_before_each_same_host_hop(
+    db, auth_user, auth_household, monkeypatch
+):
+    import app.services.deepseek_discovery as discovery
+
+    _grant(db, auth_user, auth_household)
+    original = "https://en.wikibooks.org/wiki/Cookbook:Adobo"
+    redirected = "https://en.wikibooks.org/wiki/Cookbook:Chicken"
+    # Simulate an already reviewed policy without creating a real source approval.
+    approved = RecipeFetchAuthorization(
+        canonical_url=original, source_id=1, source_revision=1, publisher_name="Example",
+        access_mode="structured_recipe_fetch", extraction_methods=("json_ld",),
+        allowed_hosts=frozenset({"en.wikibooks.org"}), allowed_redirect_hosts=frozenset(),
+    )
+    monkeypatch.setattr(discovery, "authorize_recipe_fetch", lambda *args, **kwargs: approved)
+    robots = PageFetchResponse(200, {"content-type": "text/plain"}, b"User-agent: *\nAllow: /wiki/\n")
+    transport = FakePinnedTransport(responses=[
+        robots,
+        PageFetchResponse(302, {"location": redirected}, b""),
+        robots,
+        PageFetchResponse(200, {"content-type": "text/html"}, b"<p>recipe</p>"),
+    ])
+
+    page = fetch_recipe_page(db, auth_household.id, auth_user.id, original, transport=transport)
+
+    assert page.final_url == redirected
+    assert [request[0] for request in transport.requests] == [
+        "https://en.wikibooks.org/robots.txt", original,
+        "https://en.wikibooks.org/robots.txt", redirected,
+    ]
+
+
+@pytest.mark.parametrize("url", [
+    "https://en.wikibooks.org/wiki/Other_page",
+    "https://en.wikibooks.org/wiki/Cookbook:Adobo?oldid=1",
+])
+def test_default_wikibooks_policy_rejects_unreviewed_paths_before_dns(
+    db, auth_user, auth_household, monkeypatch, url
+):
+    import app.services.deepseek_discovery as discovery
+
+    _grant(db, auth_user, auth_household)
+    approved = RecipeFetchAuthorization(
+        canonical_url=url, source_id=1, source_revision=1, publisher_name="Example",
+        access_mode="structured_recipe_fetch", extraction_methods=("json_ld",),
+        allowed_hosts=frozenset({"en.wikibooks.org"}), allowed_redirect_hosts=frozenset(),
+    )
+    monkeypatch.setattr(discovery, "authorize_recipe_fetch", lambda *args, **kwargs: approved)
+    transport = FakePinnedTransport()
+    with pytest.raises(HTTPException) as rejected:
+        fetch_recipe_page(db, auth_household.id, auth_user.id, url, transport=transport)
+    assert rejected.value.detail == "RECIPE_FETCH_PATH_NOT_REVIEWED"
+    assert not transport.resolved and not transport.requests
+
+
+def test_injected_robots_policy_denies_redirect_before_second_page_request(
+    db, auth_user, auth_household
+):
+    _grant(db, auth_user, auth_household)
+    _add_source(db, "fetch.publisher.example.com", access_mode="structured_recipe_fetch",
+                allowed_redirect_hosts=["cdn.publisher.example.com"])
+    original = "https://fetch.publisher.example.com/recipes/adobo"
+    redirected = "https://cdn.publisher.example.com/recipes/adobo"
+    transport = FakePinnedTransport(responses=[PageFetchResponse(302, {"location": redirected}, b"")])
+    checked = []
+
+    def policy(url, *, transport):
+        checked.append(url)
+        return url == original
+
+    with pytest.raises(HTTPException) as rejected:
+        fetch_recipe_page(db, auth_household.id, auth_user.id, original,
+                          transport=transport, robots_policy=policy)
+    assert rejected.value.status_code == 403
+    assert rejected.value.detail == "RECIPE_FETCH_ROBOTS_DENIED"
+    assert checked == [original, redirected]
+    assert [request[0] for request in transport.requests] == [original]
+
+
+def test_robots_policy_failure_does_not_fetch_page(db, auth_user, auth_household):
+    _grant(db, auth_user, auth_household)
+    _add_source(db, "fetch.publisher.example.com", access_mode="structured_recipe_fetch")
+    transport = FakePinnedTransport()
+
+    def unavailable(url, *, transport):
+        raise RuntimeError("private robots error")
+
+    with pytest.raises(HTTPException) as rejected:
+        fetch_recipe_page(db, auth_household.id, auth_user.id,
+                          "https://fetch.publisher.example.com/recipes/adobo",
+                          transport=transport, robots_policy=unavailable)
+    assert rejected.value.status_code == 503
+    assert rejected.value.detail == "RECIPE_FETCH_ROBOTS_UNAVAILABLE"
+    assert transport.requests == []
+
+
+def test_transport_user_agent_change_after_robots_check_prevents_page_request(
+    db, auth_user, auth_household
+):
+    _grant(db, auth_user, auth_household)
+    _add_source(db, "fetch.publisher.example.com", access_mode="structured_recipe_fetch")
+    transport = FakePinnedTransport()
+
+    def change_agent(url, *, transport):
+        transport.user_agent = "Fetch/1.0 (operator@example.com)"
+        return True
+
+    with pytest.raises(HTTPException) as rejected:
+        fetch_recipe_page(db, auth_household.id, auth_user.id,
+                          "https://fetch.publisher.example.com/recipes/adobo",
+                          transport=transport, robots_policy=change_agent)
+    assert rejected.value.status_code == 503
+    assert rejected.value.detail == "RECIPE_FETCH_ROBOTS_UNAVAILABLE"
+    assert transport.requests == []
+
+
+@pytest.mark.parametrize("revoke", ["consent", "source"])
+def test_revocation_during_robots_check_prevents_page_request(db, auth_user, auth_household, revoke):
+    _grant(db, auth_user, auth_household)
+    source = _add_source(db, "fetch.publisher.example.com", access_mode="structured_recipe_fetch")
+    consent = db.scalar(select(ProcessingConsent).where(
+        ProcessingConsent.user_id == auth_user.id,
+        ProcessingConsent.household_id == auth_household.id,
+    ))
+    transport = FakePinnedTransport()
+
+    def revoke_during_check(url, *, transport):
+        if revoke == "consent":
+            consent.granted = False
+        else:
+            source.policy = {**source.policy, "review_status": "suspended", "enabled": False}
+            source.revision += 1
+        db.flush()
+        return True
+
+    with pytest.raises(HTTPException) as rejected:
+        fetch_recipe_page(db, auth_household.id, auth_user.id,
+                          "https://fetch.publisher.example.com/recipes/adobo",
+                          transport=transport, robots_policy=revoke_during_check)
+    assert rejected.value.status_code == 403
+    assert rejected.value.detail == (
+        "CURRENT_HOUSEHOLD_CONSENT_REQUIRED" if revoke == "consent"
+        else "RECIPE_FETCH_NOT_AUTHORIZED"
+    )
+    assert transport.requests == []
 
 
 def test_consent_revocation_during_search_prevents_results_from_returning(

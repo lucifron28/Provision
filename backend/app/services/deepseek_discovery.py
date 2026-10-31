@@ -33,6 +33,7 @@ from app.services.recipe_sources import (
     source_approved,
 )
 from app.services.source_urls import canonical_recipe_url, validate_redirect_hops
+from app.services.wikimedia_robots import HOST as WIKIMEDIA_ROBOTS_HOST, wikimedia_robots_allowed
 
 
 MAX_DISCOVERY_RESULTS = 20
@@ -114,10 +115,14 @@ class PinnedPageTransport(Protocol):
 
     ``fetch_once_pinned`` must connect directly to ``connect_ip``, retain the
     URL hostname for Host and TLS SNI checks, disable automatic redirects, and
-    stop reading after ``max_bytes``. It must not transparently decompress the
-    response and must bound response headers. The service validates every hop
+    stop reading after ``max_bytes``. If it decompresses a response, it must
+    bound both encoded and decoded bodies and normalize the content encoding.
+    It must also bound response headers. The service validates every hop
     before it asks the transport to make the next request.
     """
+
+    @property
+    def user_agent(self) -> str: ...
 
     def resolve(self, hostname: str) -> Sequence[str]: ...
 
@@ -129,6 +134,10 @@ class PinnedPageTransport(Protocol):
         timeout_seconds: float,
         max_bytes: int,
     ) -> PageFetchResponse: ...
+
+
+class RecipeRobotsPolicy(Protocol):
+    def __call__(self, url: str, *, transport: PinnedPageTransport) -> bool: ...
 
 
 @dataclass(frozen=True)
@@ -513,11 +522,13 @@ def fetch_recipe_page(
     *,
     transport: PinnedPageTransport,
     allow_broader_web: bool = False,
+    robots_policy: RecipeRobotsPolicy | None = None,
 ) -> FetchedRecipePage:
     """Fetch only under explicit registry rights, validating every pinned hop.
 
     This is a local transport seam, not a DeepSeek Fetch adapter. The transport
     has no redirect-following method and receives a validated destination IP.
+    Each hop requires a current robots decision using the same transport.
     """
     _require_member_and_consent(db, household_id, actor_id)
     authorization = authorize_recipe_fetch(
@@ -538,6 +549,12 @@ def fetch_recipe_page(
             raise HTTPException(status_code=403, detail="RECIPE_FETCH_DESTINATION_BLOCKED")
         if host not in authorization.allowed_hosts and host not in authorization.allowed_redirect_hosts:
             raise HTTPException(status_code=403, detail="RECIPE_FETCH_DESTINATION_BLOCKED")
+        if robots_policy is None and host != WIKIMEDIA_ROBOTS_HOST:
+            raise HTTPException(status_code=403, detail="RECIPE_FETCH_ROBOTS_UNSUPPORTED_HOST")
+        if robots_policy is None:
+            parts = urlsplit(current_url)
+            if not parts.path.startswith("/wiki/Cookbook:") or parts.query:
+                raise HTTPException(status_code=403, detail="RECIPE_FETCH_PATH_NOT_REVIEWED")
         if host not in addresses_by_host:
             try:
                 addresses_by_host[host] = tuple(transport.resolve(host))
@@ -553,6 +570,24 @@ def fetch_recipe_page(
         except (TypeError, ValueError):
             raise HTTPException(status_code=403, detail="RECIPE_FETCH_DESTINATION_BLOCKED") from None
         pinned_ip = validated[-1][1][0]
+        try:
+            original_agent = transport.user_agent
+            policy = wikimedia_robots_allowed if robots_policy is None else robots_policy
+            decision = policy(current_url, transport=transport)
+        except Exception:
+            raise HTTPException(status_code=503, detail="RECIPE_FETCH_ROBOTS_UNAVAILABLE") from None
+        if decision is not True:
+            raise HTTPException(status_code=403, detail="RECIPE_FETCH_ROBOTS_DENIED")
+        # Consent and source permissions can change while robots.txt is fetched.
+        _require_member_and_consent(db, household_id, actor_id)
+        if not _same_fetch_authorization(db, authorization, allow_broader_web=allow_broader_web):
+            raise HTTPException(status_code=403, detail="RECIPE_FETCH_NOT_AUTHORIZED")
+        try:
+            agent_changed = transport.user_agent != original_agent
+        except Exception:
+            raise HTTPException(status_code=503, detail="RECIPE_FETCH_ROBOTS_UNAVAILABLE") from None
+        if agent_changed:
+            raise HTTPException(status_code=503, detail="RECIPE_FETCH_ROBOTS_UNAVAILABLE")
         try:
             response = transport.fetch_once_pinned(
                 current_url,

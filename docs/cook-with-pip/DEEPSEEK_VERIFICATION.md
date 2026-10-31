@@ -105,6 +105,17 @@ those checks were performed on subsequent hops. The implementation must
 retain the existing fail-closed policy until a compliant way to verify provider
 fetch redirects is established. No live publisher fetch has been performed.
 
+A separate direct HTTPS transport and a Wikibooks robots policy check are under
+development. They pin each connection to a validated public IP, check robots
+rules before each page request, and require an identifying operator User-Agent.
+The focused Docker test run passed 117 tests covering these components and the
+fetch authorization boundary. This transport is not wired into a public route,
+does not replace DeepSeek Fetch, and does not approve Wikibooks for reuse. A
+publisher review, attribution handling, rate limiting, and a permitted live
+fetch still need verification before it can be enabled.
+The full backend suite subsequently passed in Docker with PostgreSQL: 747
+passed and six live tests skipped.
+
 The initial publisher records remain candidates. Publisher approval and
 permitted fetching require maintainer review; the authentication check does not
 grant either. Integration, opt-in generation/search/fetch smoke tests, and CI
