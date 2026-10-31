@@ -10,7 +10,7 @@ from database_safety import create_owned_test_schema, drop_owned_test_schema
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "b561d1e948a7"
+EXPECTED_HEAD = "e732bb5a4691"
 
 
 @pytest.fixture
@@ -79,6 +79,22 @@ def test_budget_downgrade_refuses_to_discard_consumed_requests(migration_schema)
         engine.dispose()
 
 
+def test_household_budget_downgrade_refuses_to_discard_consumed_requests(migration_schema):
+    engine = create_engine(migration_schema.scoped_url, pool_pre_ping=True)
+    try:
+        _run_alembic(migration_schema, "upgrade", "head")
+        with engine.begin() as connection:
+            household_id = connection.scalar(text("SELECT id FROM households WHERE slug='legacy-quarantine'"))
+            connection.execute(text(
+                "INSERT INTO household_deepseek_budget (household_id, used) VALUES (:household_id, 1)"
+            ), {"household_id": household_id})
+        result = _alembic_result(migration_schema, "downgrade", "b561d1e948a7")
+        assert result.returncode != 0
+        assert "Household DeepSeek request budget history would be lost" in result.stderr
+    finally:
+        engine.dispose()
+
+
 def test_postgresql18_migrations_upgrade_head_and_downgrade_base(migration_schema):
     engine = create_engine(migration_schema.scoped_url, pool_pre_ping=True)
     try:
@@ -98,6 +114,7 @@ def test_postgresql18_migrations_upgrade_head_and_downgrade_base(migration_schem
             "household_memberships",
             "processing_consents",
             "deepseek_budget",
+            "household_deepseek_budget",
             "food_preferences",
             "food_allergies",
             "ingredient_allergens",

@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     DEEPSEEK_MAX_PROMPT_CHARACTERS: int = Field(default=24000, ge=1, le=200000)
     DEEPSEEK_REQUESTS_PER_MINUTE: int = Field(default=10, ge=1, le=1000)
     DEEPSEEK_REQUEST_BUDGET: int = Field(default=100, ge=1, le=10000)
+    DEEPSEEK_HOUSEHOLD_REQUEST_BUDGET: int = Field(default=50, ge=1, le=10000)
     DEEPSEEK_MAX_RESPONSE_BYTES: int = Field(default=1000000, ge=1024, le=20000000)
     DEEPSEEK_MAX_SEARCH_RESULTS: int = Field(default=10, ge=1, le=50)
     DEEPSEEK_MAX_FETCH_CHARACTERS: int = Field(default=50000, ge=1, le=500000)

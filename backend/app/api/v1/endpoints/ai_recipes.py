@@ -1,8 +1,7 @@
 """Explicitly requested AI-original recipe proposals."""
 
-from functools import lru_cache
-
 from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.v1.dependencies import get_current_household_id
@@ -18,9 +17,15 @@ from app.services.deepseek_budget import PostgresDeepSeekBudget
 router = APIRouter()
 
 
-@lru_cache(maxsize=1)
-def get_provider():
-    return DeepSeekProvider(settings, budget=PostgresDeepSeekBudget(settings))
+def get_provider(household_id: int = Depends(get_current_household_id)):
+    budget = PostgresDeepSeekBudget(settings, household_id=household_id)
+    if settings.DEEPSEEK_ENABLED:
+        try:
+            budget.prepare_household()
+        except SQLAlchemyError:
+            raise HTTPException(status_code=503, detail={"code": "budget_unavailable"}) from None
+    with DeepSeekProvider(settings, budget=budget) as provider:
+        yield provider
 
 
 @router.post("/generate", response_model=AIRecipeRead)
