@@ -83,6 +83,7 @@ def test_consent_defaults_false_grants_explicitly_and_revokes(
     assert default.json()["granted"] is False
     assert default.json()["policy_version"] == CONSENT_POLICY_VERSION
     assert default.json()["provider_enabled"] is False
+    assert "dish or search text" in default.json()["notice"]
     assert default.headers["cache-control"] == "no-store"
 
     bad_confirmation = unauthed_client.post(
@@ -119,6 +120,26 @@ def test_consent_defaults_false_grants_explicitly_and_revokes(
     assert saved is not None
     assert saved.granted is False
     assert saved.policy_version == CONSENT_POLICY_VERSION
+
+
+def test_old_consent_does_not_authorize_provider_requests(client, db, auth_user, auth_household):
+    consent = _consent(db, auth_user, auth_household)
+    consent.policy_version = "2026-10-30"
+    db.commit()
+    assert not all_active_household_members_consented(db, household_id=auth_household.id)
+    response = client.get("/api/v1/privacy/consent")
+    assert response.json()["policy_version"] == CONSENT_POLICY_VERSION
+    assert response.json()["granted"] is False
+
+
+def test_consent_reports_provider_configuration(client, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "DEEPSEEK_ENABLED", True)
+    response = client.get("/api/v1/privacy/consent")
+    assert response.status_code == 200
+    assert response.json()["provider_enabled"] is True
+    assert response.json()["granted"] is False
 
 
 def test_provider_consent_gate_requires_every_active_current_grant(

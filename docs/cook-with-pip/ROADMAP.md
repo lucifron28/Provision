@@ -83,8 +83,10 @@ Evidence on PostgreSQL 18.6: full `uv run pytest -q` recorded **124 passed,
 privacy eight tests and household security six tests passed. The skip requires
 the optional historical `backend/provision.db` file. Client cache/scanner account
 binding and privacy UI are tracked
-in [Mac handoff](MAC_HANDOFF.md). Live DeepSeek/search and their operational
-quotas remain deferred; no consent grant enables external calls.
+in [Mac handoff](MAC_HANDOFF.md). DeepSeek is disabled by default. When enabled,
+explicit requests require current consent from every active member. The current
+notice covers submitted dish and search text; shared operational quotas remain
+unfinished. Grants to the earlier notice do not authorize provider requests.
 
 - [x] Audit authenticated API routes and caching for cross-user access; enumerate household-owned entities. Existing pantry APIs now enforce household context. Client cache remediation remains in the Mac handoff.
 - [ ] Define household and membership tables; permission policy for household access and role changes. Establish clearly owned records for batches, locations, sessions, shopping, preferences, meal plans, saved recipes, leftovers, events, and caches; globally shared catalog may remain read-only as appropriate.

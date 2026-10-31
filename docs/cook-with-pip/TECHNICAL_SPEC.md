@@ -58,9 +58,9 @@ evidence is recorded in the roadmap and backend acceptance audit.
   household without memberships. Existing accounts receive private households.
   An operator must verify ownership before granting legacy access. Demo seeding
   explicitly owns its demo household and may only reset that household's data.
-- Privacy consent defaults off and records a notice version. Granting consent
-  does not enable DeepSeek. Future sharing requires current consent from every
-  active household member whose household data would be shared.
+- Privacy consent defaults off and records a notice version. The provider is
+  disabled by default; explicit requests can call it when enabled and when every
+  active household member has granted the current consent.
 - Account deletion reauthenticates and removes access while preserving shared
   inventory history. A sole owner with remaining members must transfer ownership
   first. Keep an inactive anonymized account tombstone for audit references.

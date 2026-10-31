@@ -59,17 +59,19 @@ class HouseholdMembershipChanged(Exception):
 
 
 def _consent_read(consent: ProcessingConsent | None) -> ConsentRead:
+    from app.core.config import settings
+
     if consent is None:
-        return ConsentRead(policy_version=CONSENT_POLICY_VERSION, provider_enabled=False)
+        return ConsentRead(policy_version=CONSENT_POLICY_VERSION, provider_enabled=settings.DEEPSEEK_ENABLED)
     return ConsentRead(
         purpose=CONSENT_PURPOSE,
-        policy_version=consent.policy_version,
+        policy_version=CONSENT_POLICY_VERSION,
         granted=(
             consent.granted
             and consent.policy_version == CONSENT_POLICY_VERSION
         ),
         updated_at=consent.updated_at,
-        provider_enabled=False,
+        provider_enabled=settings.DEEPSEEK_ENABLED,
     )
 
 
@@ -151,7 +153,7 @@ def all_active_household_members_consented(
     *,
     household_id: int,
 ) -> bool:
-    """Return the fail-closed consent gate for a future household data export."""
+    """Require current consent from every active household member."""
     current_grant_exists = exists(
         select(ProcessingConsent.id).where(
             ProcessingConsent.household_id == household_id,

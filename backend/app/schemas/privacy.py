@@ -16,13 +16,21 @@ from app.schemas.leftover import LeftoverRead
 from app.schemas.cooking import CookingSessionRead
 
 
-CONSENT_POLICY_VERSION = "2026-10-30"
+CONSENT_POLICY_VERSION = "2026-10-31"
+CONSENT_NOTICE = (
+    "When DeepSeek is enabled and every active household member consents, "
+    "a recipe request can send the dish or search text you enter to DeepSeek. "
+    "Do not include sensitive information in that text. Provision does not "
+    "add pantry contents, allergy profiles, account identifiers, or shopping data. "
+    "DeepSeek processes requests under its own privacy policy. You can revoke "
+    "consent at any time; revocation blocks new household requests."
+)
 
 
 class ConsentUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    policy_version: Literal["2026-10-30"]
+    policy_version: Literal["2026-10-31"]
     granted: bool
 
 
@@ -32,6 +40,7 @@ class ConsentRead(BaseModel):
     granted: bool = False
     updated_at: datetime | None = None
     provider_enabled: bool = False
+    notice: str = CONSENT_NOTICE
 
 
 class AccountDeletion(BaseModel):

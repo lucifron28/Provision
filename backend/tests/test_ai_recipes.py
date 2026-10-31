@@ -41,6 +41,17 @@ def test_consent_and_diner_scope_are_checked_before_provider_call(db, auth_house
     assert error.value.status_code == 403 and provider.calls == []
 
 
+def test_previous_consent_notice_cannot_authorize_provider_call(db, auth_household, auth_user):
+    consent = _consent(db, auth_user, auth_household)
+    consent.policy_version = "2026-10-30"
+    db.commit()
+    provider = FakeProvider(_proposal())
+    with pytest.raises(HTTPException) as error:
+        generate_recipe(db, auth_household.id, auth_user.id, AIRecipeRequest(dish="rice"), provider)
+    assert error.value.status_code == 403
+    assert provider.calls == []
+
+
 def test_model_recipe_is_unpersisted_and_locally_allergy_checked(client, db, catalog, auth_household, auth_user):
     declare(client, "milk")
     _consent(db, auth_user, auth_household)
