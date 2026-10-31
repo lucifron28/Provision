@@ -32,6 +32,10 @@ The generation prompt was tightened afterward; model compliance is not
 guaranteed, and malformed output remains rejected. A subsequent API smoke
 test passed and confirmed no saved recipe or shopping item was created. It used
 153 input and 372 output tokens (525 total); cost was not reported.
+A later live API test used the PostgreSQL-backed budget in an isolated test
+schema. It passed, recorded one budgeted request, and created no recipe or
+shopping item. Usage was 153 input and 400 output tokens (553 total); the API
+did not report a monetary cost.
 
 The opt-in authentication and generation smoke tests subsequently passed in a
 Python 3.13/uv Docker container connected to the existing PostgreSQL 18

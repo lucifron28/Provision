@@ -79,6 +79,8 @@ def test_live_generation_api_with_consented_test_household(client, db, auth_user
     from app.main import app
     from app.models.recipe import Recipe
     from app.models.shopping import ShoppingListItem
+    from app.models.deepseek_budget import DeepSeekBudget
+    from app.services.deepseek_budget import PostgresDeepSeekBudget
     from sqlalchemy import func, select
     from test_privacy import _consent
 
@@ -86,7 +88,7 @@ def test_live_generation_api_with_consented_test_household(client, db, auth_user
     _consent(db, auth_user, auth_household)
     db.commit()
     config = settings.model_copy(update={"DEEPSEEK_ENABLED": True, "DEEPSEEK_TIMEOUT_SECONDS": 45})
-    with DeepSeekProvider(config) as provider:
+    with DeepSeekProvider(config, budget=PostgresDeepSeekBudget(config)) as provider:
         app.dependency_overrides[get_provider] = lambda: provider
         response = client.post("/api/v1/ai-recipes/generate", json={"dish": "Filipino garlic rice"})
     assert response.status_code == 200, response.text
@@ -95,6 +97,7 @@ def test_live_generation_api_with_consented_test_household(client, db, auth_user
     assert result["safety"]["decision"] in {"eligible", "blocked", "review_required"}
     assert db.scalar(select(func.count()).select_from(Recipe)) == 0
     assert db.scalar(select(func.count()).select_from(ShoppingListItem)) == 0
+    assert db.scalar(select(DeepSeekBudget.used)) == 1
     print(f"Model: {result['model']}; token usage: {result['usage']}")
 
 
