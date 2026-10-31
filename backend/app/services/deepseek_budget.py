@@ -17,6 +17,14 @@ class PostgresDeepSeekBudget:
         from app.core import database
 
         with database.engine.begin() as connection:
+            # Do not let a stalled worker hold up other requests indefinitely.
+            timeout_ms = max(1, int(self.settings.DEEPSEEK_TIMEOUT_SECONDS * 1000))
+            connection.execute(
+                select(func.set_config("lock_timeout", f"{timeout_ms}ms", True))
+            )
+            connection.execute(
+                select(func.set_config("statement_timeout", f"{timeout_ms}ms", True))
+            )
             now = connection.scalar(select(func.clock_timestamp()))
             connection.execute(
                 insert(DeepSeekBudget).values(id=1, used=0, window_used=0, window_started=now)

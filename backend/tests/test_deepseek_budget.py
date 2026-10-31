@@ -18,7 +18,8 @@ from test_deepseek_provider import make_settings
 
 
 def settings(*, budget=20, rate=20):
-    return SimpleNamespace(DEEPSEEK_REQUEST_BUDGET=budget, DEEPSEEK_REQUESTS_PER_MINUTE=rate)
+    return SimpleNamespace(DEEPSEEK_REQUEST_BUDGET=budget, DEEPSEEK_REQUESTS_PER_MINUTE=rate,
+                           DEEPSEEK_TIMEOUT_SECONDS=2)
 
 
 def test_budget_is_shared_across_instances_and_survives_caller_rollback(db):
@@ -82,3 +83,19 @@ def test_budget_database_failure_prevents_provider_request():
             provider.search(DeepSeekSearchRequest(query="adobo"))
     assert error.value.code == "budget_unavailable"
     assert "private database detail" not in str(error.value)
+
+
+def test_locked_budget_times_out_without_calling_provider():
+    config = make_settings(DEEPSEEK_TIMEOUT_SECONDS=0.1)
+    budget = PostgresDeepSeekBudget(config)
+    budget.consume("search")
+
+    def unexpected_request(request):
+        pytest.fail("provider must not be called while budget storage is locked")
+
+    with database.engine.begin() as connection:
+        connection.execute(select(DeepSeekBudget).where(DeepSeekBudget.id == 1).with_for_update())
+        with DeepSeekProvider(config, transport=httpx.MockTransport(unexpected_request), budget=budget) as provider:
+            with pytest.raises(DeepSeekProviderError) as error:
+                provider.search(DeepSeekSearchRequest(query="adobo"))
+    assert error.value.code == "budget_unavailable"
