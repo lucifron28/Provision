@@ -74,6 +74,30 @@ def test_live_provider_returns_validated_original_recipe():
     print(f"Model: {response.model}; token usage: {response.usage.model_dump()}")
 
 
+def test_live_generation_api_with_consented_test_household(client, db, auth_user, auth_household):
+    from app.api.v1.endpoints.ai_recipes import get_provider
+    from app.main import app
+    from app.models.recipe import Recipe
+    from app.models.shopping import ShoppingListItem
+    from sqlalchemy import func, select
+    from test_privacy import _consent
+
+    _headers()
+    _consent(db, auth_user, auth_household)
+    db.commit()
+    config = settings.model_copy(update={"DEEPSEEK_ENABLED": True, "DEEPSEEK_TIMEOUT_SECONDS": 45})
+    with DeepSeekProvider(config) as provider:
+        app.dependency_overrides[get_provider] = lambda: provider
+        response = client.post("/api/v1/ai-recipes/generate", json={"dish": "Filipino garlic rice"})
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["provenance"] == "AI_ORIGINAL"
+    assert result["safety"]["decision"] in {"eligible", "blocked", "review_required"}
+    assert db.scalar(select(func.count()).select_from(Recipe)) == 0
+    assert db.scalar(select(func.count()).select_from(ShoppingListItem)) == 0
+    print(f"Model: {result['model']}; token usage: {result['usage']}")
+
+
 @pytest.mark.skipif(
     os.getenv("PROVISION_DEEPSEEK_LIVE_SEARCH") != "1",
     reason="live broader-web search requires separate explicit opt-in",

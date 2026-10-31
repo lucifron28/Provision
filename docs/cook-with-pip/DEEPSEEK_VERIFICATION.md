@@ -22,6 +22,17 @@ the returned recipe against `AIRecipeProposal`. It passed with model
 report monetary cost. It sent no household data and did not assess inventory
 or allergen safety.
 
+An opt-in request through the generation API passed using an isolated test
+household with current consent. The API returned the structured recipe and a
+local safety assessment. The request used 125 input and 358 output tokens (483
+total); monetary cost was not reported. Only synthetic dish text was sent.
+One repeat returned HTTP 502 `INVALID_AI_RECIPE` after the model response
+failed strict validation. The response's usage and cost were not captured.
+The generation prompt was tightened afterward; model compliance is not
+guaranteed, and malformed output remains rejected. A subsequent API smoke
+test passed and confirmed no saved recipe or shopping item was created. It used
+153 input and 372 output tokens (525 total); cost was not reported.
+
 The opt-in authentication and generation smoke tests subsequently passed in a
 Python 3.13/uv Docker container connected to the existing PostgreSQL 18
 container: two passed. With the opt-in flag absent, the same two tests were
@@ -47,6 +58,15 @@ live smoke tests skipped by default. Live search was separately opted in and
 passed. The provider's request budget is process-local and resets on restart;
 it is not a durable or cross-worker spending limit. Production rollout still
 needs shared quotas and the remaining roadmap gates.
+
+After the consent change, the full Docker PostgreSQL suite passed with 630
+tests and five skips. Focused privacy and generation tests also passed.
+
+The consent API now exposes a notice for submitted dish and search text and
+requires policy version `2026-10-31`. Grants made under the earlier notice do
+not authorize provider requests. All active household members must grant the
+new version; the iOS consent screen still needs to present that notice and
+submit the current version.
 
 A separate seeded-household Docker test passed through Cook Now, Almost There,
 mocked search of a synthetic approved publisher, and shopping preview and
