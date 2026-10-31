@@ -54,6 +54,9 @@ class ProviderSearchHit:
 class DeepSeekRecipeSearchProvider(Protocol):
     """Injected search-only adapter; it must request metadata, never page content."""
 
+    @property
+    def max_search_results(self) -> int: ...
+
     def search(self, request: DeepSeekSearchRequest) -> DeepSeekSearchResponse: ...
 
 
@@ -261,7 +264,12 @@ def _provider_hits(
     count: int,
 ) -> Sequence[ProviderSearchHit]:
     """Request metadata only and discard long summaries/provider-only fields."""
-    response = provider.search(DeepSeekSearchRequest(query=query, count=count))
+    configured_limit = provider.max_search_results
+    if type(configured_limit) is not int or configured_limit < 1:
+        raise ValueError("Invalid provider search-result limit")
+    response = provider.search(
+        DeepSeekSearchRequest(query=query, count=min(count, configured_limit))
+    )
     if not isinstance(response, DeepSeekSearchResponse):
         raise TypeError("Unexpected DeepSeek search response")
     return tuple(

@@ -144,6 +144,7 @@ class FakeSearchProvider:
     def __init__(self, responses=None, callback=None):
         self.responses = responses or {}
         self.callback = callback
+        self.max_search_results = 10
         self.calls: list[DeepSeekSearchRequest] = []
 
     def search(self, request: DeepSeekSearchRequest) -> DeepSeekSearchResponse:
@@ -191,6 +192,18 @@ def test_discovery_api_requires_consent_and_searches_approved_sources(
         "query": "adobo", "allow_broader_web": "true"
     })
     assert response.status_code == 422
+
+
+def test_discovery_respects_provider_search_result_limit(db, auth_user, auth_household):
+    _grant(db, auth_user, auth_household)
+    host = "priority.publisher.example.com"
+    _add_source(db, host)
+    db.commit()
+    provider = FakeSearchProvider({host: [_search_result(f"https://{host}/recipe/adobo")]})
+    provider.max_search_results = 1
+    result = discover_recipes(db, auth_household.id, auth_user.id, "adobo", provider=provider)
+    assert len(result.results) == 1
+    assert [call.count for call in provider.calls] == [1]
 
 
 class FakePinnedTransport:

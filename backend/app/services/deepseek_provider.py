@@ -252,6 +252,10 @@ class DeepSeekProvider:
         )
         self._budget = _get_process_budget(settings, _clock)
 
+    @property
+    def max_search_results(self) -> int:
+        return self._settings.DEEPSEEK_MAX_SEARCH_RESULTS
+
     def chat_json(self, request: DeepSeekChatRequest) -> DeepSeekChatResponse:
         operation = "chat"
         self._validate_chat_request(request, operation)
