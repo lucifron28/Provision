@@ -45,7 +45,7 @@ Stabilization is complete for the audit scope, verified locally and in CI.
   `b1ec665` adds explicit CI test-database creation. Both backend and iOS jobs
   [passed on that SHA](https://github.com/lucifron28/Provision/actions/runs/41025491670).
   The backend job independently recorded 102 passed and one optional-file skip.
-- Live DeepSeek/search integration is deferred until credentials are supplied.
+- DeepSeek integration is under verification and remains disabled by default.
   SwiftUI implementation and device acceptance remain Mac-dependent work.
 
 - [x] **PostgreSQL 18 Backend Migration** (Completed: 2026-10-29, base: `feat/complete-ui-ux-refinement`)
@@ -124,9 +124,11 @@ planning. Two Luna executors added URL-security, policy, CLI and concurrency
 coverage. Local PostgreSQL verification recorded **469 passed, one optional-file
 skip**, migration upgrade/downgrade tests and no Alembic drift. Backend and iOS
 [passed on `361b8f1`](https://github.com/lucifron28/Provision/actions/runs/41048291822).
-The four real publisher candidates remain disabled
-and unapproved. No live fetch, search, content extraction or image reuse is
-implemented or authorized by a registry flag.
+The four real publisher candidates remain disabled and unapproved. A bounded
+metadata-only broader-web search probe succeeded; see [DeepSeek verification](DEEPSEEK_VERIFICATION.md).
+The backend now has a consent-gated search route, but live page fetching remains
+blocked because the provider does not expose redirect and destination evidence.
+No registry flag authorizes unreviewed extraction or image reuse.
 
 - [x] Implement a reviewed `recipe_sources` registry with host allowlisting, source tier, ownership/publisher, cuisine tags, terms/robots review, permitted fetch/use mode, review date, and disable flag.
 - [x] Seed **candidates** Panlasang Pinoy, Kawaling Pinoy, Yummy.ph, and Ang Sarap (see source policy); do NOT label them licensed/verified for ingestion until individually reviewed.
@@ -171,7 +173,8 @@ The [household recipe API](RECIPES_API.md) adds manual entries, typed categories
 regional classification, immutable revisions, private bookmarks and deterministic
 recommendations. Local PostgreSQL verification recorded **379 tests passing and
 one optional-file skip**. This does not complete the provider or SwiftUI phase.
-DeepSeek and web calls remain disabled; no publisher provenance is asserted for
+DeepSeek remains disabled by default. An opt-in backend provider and AI-original
+proposal endpoint are under verification; no publisher provenance is asserted for
 household-entered content. Both backend and iOS
 [passed for `0454e72`](https://github.com/lucifron28/Provision/actions/runs/41044660011).
 Source-policy integration has separate verified evidence in P2 above.
