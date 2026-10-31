@@ -36,6 +36,9 @@ A later live API test used the PostgreSQL-backed budget in an isolated test
 schema. It passed, recorded one budgeted request, and created no recipe or
 shopping item. Usage was 153 input and 400 output tokens (553 total); the API
 did not report a monetary cost.
+A subsequent live API test exercised both global and household counters in an
+isolated schema. It passed with 153 input and 422 output tokens (575 total);
+monetary cost was not reported.
 
 The opt-in authentication and generation smoke tests subsequently passed in a
 Python 3.13/uv Docker container connected to the existing PostgreSQL 18
@@ -62,16 +65,21 @@ live smoke tests skipped by default. Live search was separately opted in and
 passed. The API provider now uses a PostgreSQL counter shared across workers
 and restarts, with a global lifetime request cap and a one-minute request
 window. Attempts consume the budget before the network call, including failures.
-The counter stores no prompts or household details. Per-household quotas and
-the remaining production rollout gates are still unfinished. The lifetime cap
-does not reset automatically; an operator must explicitly raise it for further
-requests. Downgrading the migration refuses to discard a consumed counter.
+The global counter stores no prompts or household details. A separate counter
+enforces a lifetime cap per household and is deleted with that household. The
+caps do not reset automatically; an operator must explicitly raise them for
+further requests. Downgrading refuses to discard a consumed counter. Other
+production rollout gates remain unfinished.
 Apply the Alembic migration before enabling the provider; if budget storage is
 unavailable, the API rejects the request without contacting DeepSeek.
 The budget change passed 637 backend tests with six skips in Docker. A separate
 temporary PostgreSQL database passed upgrade, Alembic drift checks, downgrade
 to base, and upgrade again. Concurrency and failed-request tests cover the
 counter; the downgrade test protects an already consumed budget.
+The subsequent household-quota change passed 649 backend tests with six skips,
+including concurrent household requests and deletion of a household counter.
+Its migration also passed upgrade, downgrade, and drift checks in a temporary
+PostgreSQL database.
 
 After the consent change, the full Docker PostgreSQL suite passed with 630
 tests and five skips. Focused privacy and generation tests also passed.

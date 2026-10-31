@@ -30,6 +30,12 @@ The following are **confirmed existing publisher websites with Filipino recipe c
 
 Only use these domains in the `site:` default search after a review has enabled the source. Review redirects and aliases (`www` variants) on a per-site basis. Add/remove hosts through admin config/seed migration, not arbitrary prompt text. The display should name the actual publisher, not "AI recommended website".
 
+On 2026-10-31, the [Kawaling Pinoy terms](https://www.kawalingpinoy.com/privacy-policy/)
+were reviewed for the proposed fetch workflow. They request written consent for
+use of site content and restrict copying recipes and photos. No written consent
+has been supplied, so this source remains a disabled candidate. This review does
+not grant fetch, extraction, retention, or reuse rights.
+
 Publisher evidence checked 2026-10-29:
 - Panlasang Pinoy https://panlasangpinoy.com/categories/recipes/filipino-recipes/
 - Kawaling Pinoy https://www.kawalingpinoy.com/about/ and https://www.kawalingpinoy.com/
