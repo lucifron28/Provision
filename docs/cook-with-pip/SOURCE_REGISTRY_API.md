@@ -52,6 +52,9 @@ All routes below require authorized household membership and use
 | --- | --- | --- |
 | GET | `/` | Read public registry status, not private review notes or license documents. |
 | POST | `/discovery-plan` | Produce an offline query plan; execute nothing and return no search results. |
+| POST | `/discover` | Search reviewed sources and optionally the broader web. |
+| POST | `/wikibooks/adobo/preview` | Preview the single reviewed Wikibooks adobo page with attribution. |
+| POST | `/wikibooks/adobo/adapt` | Return a review-only DeepSeek adaptation with source and license details. |
 | POST | `/mealdb/discover` | Search a Filipino API listing and return review-required meal links. |
 | POST | `/mealdb/{meal_id}/preview` | Read a permitted source recipe and its content digest for review. |
 | POST | `/mealdb/{meal_id}/adapt` | Produce a review-only AI preview from a permitted TheMealDB recipe. |
@@ -62,9 +65,9 @@ All routes below require authorized household membership and use
 
 Use `currently_approved`, not just the stored review-state string, when displaying
 an approval badge. A previously approved record may have expired or been disabled.
-The registry's `live_fetch_enabled` field refers to publisher webpage
-ingestion, which remains disabled. It does not describe the API adaptation
-route below.
+The registry's `live_fetch_enabled` field refers to general publisher webpage
+ingestion, which remains disabled. It does not describe the fixed Wikibooks
+page routes or TheMealDB API routes below.
 
 The discovery route requires `MEALDB_ENABLED`, current household consent, and
 an approved API source. It retrieves the Filipino listing and filters the entered
