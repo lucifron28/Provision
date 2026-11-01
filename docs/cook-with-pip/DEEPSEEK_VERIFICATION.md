@@ -164,6 +164,11 @@ separate user-entered recipe creation and source linking, and shopping preview,
 confirmation and replay. It verifies that preview does not mutate inventory or
 the shopping list. This is a manual sequence of existing API calls, not an
 automatic source import or a live publisher test.
+For commit `6fc901d`, the full suite passed against the local PostgreSQL
+container from a Python 3.13 Docker container: 840 passed and eight skipped.
+[Backend and iOS CI passed](https://github.com/lucifron28/Provision/actions/runs/41260543821).
+A separate host-Windows run could not set up TLS tests because `openssl` was
+not on its PATH; the Docker run includes the executable and passed those tests.
 
 A separate direct HTTPS transport and a Wikibooks robots policy check are under
 development. They pin each connection to a validated public IP, check robots
