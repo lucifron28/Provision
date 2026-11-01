@@ -1,6 +1,7 @@
 """Apply a shared request budget to every Wikimedia HTTP request."""
 
-from urllib.parse import urlsplit
+REVIEWED_RECIPE_URL = "https://en.wikibooks.org/wiki/Cookbook:Adobo_Chicken_(Philippine)"
+ROBOTS_URL = "https://en.wikibooks.org/robots.txt"
 
 
 class WikimediaRateLimited(Exception):
@@ -30,7 +31,7 @@ class BudgetedWikimediaTransport:
         return self.transport.resolve(hostname)
 
     def fetch_once_pinned(self, url, *, connect_ip, timeout_seconds, max_bytes):
-        if urlsplit(url).hostname != "en.wikibooks.org":
+        if url not in {REVIEWED_RECIPE_URL, ROBOTS_URL}:
             raise ValueError("Unsupported Wikimedia destination")
         with self.budget.request():
             response = self.transport.fetch_once_pinned(
@@ -48,7 +49,7 @@ def fetch_reviewed_wikibooks(db, household_id, actor_id, url, *, transport, budg
     """Fetch an authorized Wikibooks page through a shared request budget."""
     from app.services.deepseek_discovery import fetch_recipe_page
 
-    if urlsplit(url).hostname != "en.wikibooks.org":
+    if url != REVIEWED_RECIPE_URL:
         raise ValueError("Unsupported Wikimedia destination")
     return fetch_recipe_page(
         db, household_id, actor_id, url,

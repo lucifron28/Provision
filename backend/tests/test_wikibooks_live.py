@@ -8,6 +8,7 @@ from app.services.pinned_page_transport import PinnedTLSTransport
 from app.services.wikimedia_budget import PostgresWikimediaBudget
 from app.services.wikimedia_transport import fetch_reviewed_wikibooks
 from app.services.wikibooks_recipe import parse_wikibooks_recipe
+from app.core.config import settings
 from test_deepseek_discovery import _add_source, _grant
 
 
@@ -27,3 +28,18 @@ def test_live_wikibooks_licensed_recipe_fetch(db, auth_user, auth_household):
     assert page.content and page.untrusted_content
     ingredients, preparation = parse_wikibooks_recipe(page.content)
     assert ingredients and preparation
+
+
+@pytest.mark.skipif(os.getenv("PROVISION_WIKIBOOKS_LIVE") != "1", reason="live fetch requires explicit opt-in")
+def test_live_wikibooks_preview_endpoint(client, db, auth_user, auth_household, monkeypatch):
+    _grant(db, auth_user, auth_household)
+    source = _add_source(db, "en.wikibooks.org", access_mode="structured_recipe_fetch")
+    source.policy = {**source.policy, "access_mode": "licensed_full", "extraction_methods": ["full_text"]}
+    db.commit()
+    monkeypatch.setattr(settings, "WIKIBOOKS_ENABLED", True)
+    response = client.post("/api/v1/recipe-sources/wikibooks/adobo/preview")
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["ingredients"] and data["preparation"]
+    assert data["license_name"] == "CC BY-SA 4.0"
+    assert data["untrusted_content"] is True and data["safety"] == "review_required"

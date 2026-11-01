@@ -36,7 +36,7 @@ use of site content and restrict copying recipes and photos. No written consent
 has been supplied, so this source remains a disabled candidate. This review does
 not grant fetch, extraction, retention, or reuse rights.
 
-### Open-license candidate: Wikibooks
+### Open-license source: Wikibooks adobo
 
 On 2026-10-31, a manual review located Filipino recipes on
 [Wikibooks](https://en.wikibooks.org/wiki/Cookbook:Adobo_Chicken_(Philippine)).
@@ -49,8 +49,9 @@ Its [robots.txt](https://en.wikibooks.org/robots.txt) contains agent-specific
 rules. The documented [DeepSeek Fetch API](https://api-docs.deepseek.com/api/fetch/)
 does not expose caller-controlled fetch headers, destination IPs, or redirect
 history. Therefore this is a candidate for a compliant reviewed fetch adapter,
-not approval to send Wikibooks pages through DeepSeek Fetch. Keep the existing
-fetch gate closed until those requirements and attribution are verified.
+not approval to send Wikibooks pages through DeepSeek Fetch. The direct backend
+adapter approves only `Cookbook:Adobo_Chicken_(Philippine)` and returns source
+and license attribution. Other pages require their own review before fetching.
 
 ### API candidate: TheMealDB
 
@@ -74,11 +75,11 @@ TheMealDB's API availability does not override those publishers' restrictions.
 The robot policy reviewed on 2026-10-31 applies its limits across Wikimedia
 properties, not separately per host. For website requests it sets fewer than
 10 concurrent requests and an average below 20 requests per second. It also
-requires honoring `Retry-After` on HTTP 429. Provision's direct transport does
-not yet enforce a shared limit or a shared retry delay, so do not enable it for
-live traffic. The operator's User-Agent must include a way to contact the
-operator; a syntactically valid placeholder is not sufficient. These are
-additional conditions, not approval to reproduce page content.
+requires honoring `Retry-After` on HTTP 429. Provision's Wikibooks adapter uses
+a PostgreSQL budget to serialize requests and persist retry delays. The
+operator's User-Agent must include a way to contact the operator; a
+syntactically valid placeholder is not sufficient. These are additional
+conditions, not approval to reproduce arbitrary page content.
 
 Publisher evidence checked 2026-10-29:
 - Panlasang Pinoy https://panlasangpinoy.com/categories/recipes/filipino-recipes/

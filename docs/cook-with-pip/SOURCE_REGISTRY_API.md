@@ -158,6 +158,20 @@ recipe from recommendations. Source preference is applied only after allergy,
 dietary, quantity and permission gates. Publisher reputation cannot remove a
 conflict or establish product-label safety.
 
+## Wikibooks adobo preview
+
+`POST /api/v1/recipe-sources/wikibooks/adobo/preview` retrieves the reviewed
+Wikibooks chicken adobo page when `WIKIBOOKS_ENABLED=true`, the source review
+in `backend/source_reviews/wikibooks_adobo.json` is applied, and all household
+members have granted current provider consent. Apply the latest database
+migration before enabling the route. The approval covers this single recipe
+page; the fetch policy rejects other Wikibooks pages.
+
+The response includes source and CC BY-SA 4.0 links, unmodified source
+ingredient and preparation text, and `safety: review_required`. It makes no
+inventory or shopping changes and does not send the page to DeepSeek. Clients
+must show the attribution and license when displaying or sharing the text.
+
 ## URL and future transport boundary
 
 URL checks require HTTPS, an ASCII public hostname, no user information, no IP
@@ -165,13 +179,7 @@ literal and no custom port. Category/search pages, unsafe escapes, local names
 and credential-bearing queries are rejected. Canonicalization removes fragments
 and common tracking parameters and provides a stable deduplication key.
 
-The offline redirect validator checks exact reviewed initial/redirect hosts, hop
-limits and every supplied DNS address. Private, special-use and transition
-addresses are denied. It opens no sockets and performs no DNS lookup. A future
-transport must resolve safely, pin the validated destination addresses, preserve
-TLS hostname validation and validate every redirect. These pure tests are not
-an end-to-end verification of a live fetch implementation.
-
-Publisher terms/robots review, permission acquisition, live provider adapters,
-content extraction, cache/purge enforcement and actual network verification
-remain deferred. Do not infer any of those from a passing URL-policy test.
+The redirect validator checks reviewed hosts, hop limits and supplied DNS
+addresses. The pinned transport resolves and connects to a validated public
+address, verifies the TLS hostname, and checks each redirect. A passing URL
+policy test alone does not approve a publisher or its content.

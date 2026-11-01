@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     MEALDB_ENABLED: bool = False
     MEALDB_REQUEST_BUDGET: int = Field(default=100, ge=1, le=10000)
     MEALDB_MIN_INTERVAL_SECONDS: int = Field(default=2, ge=1, le=3600)
+    WIKIBOOKS_ENABLED: bool = False
 
     @field_validator("DEEPSEEK_BASE_URL")
     @classmethod

@@ -14,6 +14,7 @@ from app.models.user import User
 from app.schemas.ingredients import StrictSchema
 from app.schemas.recipe_source import SourceRead, SourceReferenceInput, SourceReferenceRead
 from app.schemas.themealdb import MealDBAdaptationRead, MealDBAssessmentInput, MealDBAssessmentRead, MealDBDiscoveryRead, MealDBSourcePreviewRead
+from app.schemas.wikibooks import WikibooksPreview
 from app.services.recipe_sources import discovery_plan, read_reference, remove_reference, source_read, write_reference
 from app.services.deepseek_discovery import _discovery_provider_error, discover_recipes
 from app.services.deepseek_provider import DeepSeekProvider, DeepSeekProviderError
@@ -23,6 +24,9 @@ from app.services.themealdb_ai import adapt_reviewed_meal
 from app.services.themealdb_assessment import assess_reviewed_meal
 from app.services.themealdb_budget import PostgresMealDBBudget
 from app.services.themealdb_reviewed import discover_filipino_meals, lookup_reviewed_meal
+from app.services.wikibooks_recipe import parse_wikibooks_recipe
+from app.services.wikimedia_budget import PostgresWikimediaBudget
+from app.services.wikimedia_transport import REVIEWED_RECIPE_URL, fetch_reviewed_wikibooks
 
 router = APIRouter()
 
@@ -62,6 +66,36 @@ def get_mealdb_client():
 
 def get_mealdb_budget():
     return PostgresMealDBBudget(settings)
+
+
+def get_wikibooks_transport():
+    if not settings.WIKIBOOKS_ENABLED:
+        raise HTTPException(503, "WIKIBOOKS_DISABLED")
+    return PinnedTLSTransport(user_agent="ProvisionBot/1.0 (https://github.com/lucifron28/Provision)")
+
+
+def get_wikimedia_budget():
+    return PostgresWikimediaBudget()
+
+
+@router.post("/wikibooks/adobo/preview", response_model=WikibooksPreview)
+def preview_wikibooks_adobo(response: Response,
+                            household_id: int = Depends(get_current_household_id),
+                            user: User = Depends(get_current_user), db: Session = Depends(get_db),
+                            transport=Depends(get_wikibooks_transport),
+                            budget=Depends(get_wikimedia_budget)):
+    response.headers["Cache-Control"] = "no-store"
+    url = REVIEWED_RECIPE_URL
+    try:
+        page = fetch_reviewed_wikibooks(db, household_id, user.id, url, transport=transport, budget=budget)
+        if page.final_url != url:
+            raise HTTPException(502, "WIKIBOOKS_SOURCE_CHANGED")
+        ingredients, preparation = parse_wikibooks_recipe(page.content)
+    except (UnicodeDecodeError, ValueError):
+        raise HTTPException(502, "INVALID_WIKIBOOKS_RECIPE") from None
+    except SQLAlchemyError:
+        raise HTTPException(503, detail={"code": "budget_unavailable"}) from None
+    return WikibooksPreview(source_url=url, ingredients=ingredients, preparation=preparation)
 
 
 @router.get("/", response_model=list[SourceRead])

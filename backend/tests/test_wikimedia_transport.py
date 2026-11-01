@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.services.wikimedia_transport import BudgetedWikimediaTransport, WikimediaRateLimited
+from app.services.wikimedia_transport import BudgetedWikimediaTransport, WikimediaRateLimited, REVIEWED_RECIPE_URL
 
 
 class Budget:
@@ -37,8 +37,8 @@ class Transport:
 def test_budget_covers_robots_and_page_requests():
     budget, transport = Budget(), Transport()
     wrapped = BudgetedWikimediaTransport(transport, budget)
-    for path in ("/robots.txt", "/wiki/Cookbook:Adobo"):
-        wrapped.fetch_once_pinned("https://en.wikibooks.org" + path,
+    for url in ("https://en.wikibooks.org/robots.txt", REVIEWED_RECIPE_URL):
+        wrapped.fetch_once_pinned(url,
                                   connect_ip="1.1.1.1", timeout_seconds=1, max_bytes=10)
     assert budget.calls == transport.calls == 2
 
@@ -50,3 +50,12 @@ def test_rate_limit_reaches_budget_before_it_exits():
         wrapped.fetch_once_pinned("https://en.wikibooks.org/robots.txt",
                                   connect_ip="1.1.1.1", timeout_seconds=1, max_bytes=10)
     assert budget.error is error.value and error.value.retry_after == "120"
+
+
+def test_unreviewed_redirect_is_rejected_before_request():
+    budget, transport = Budget(), Transport()
+    wrapped = BudgetedWikimediaTransport(transport, budget)
+    with pytest.raises(ValueError):
+        wrapped.fetch_once_pinned("https://en.wikibooks.org/wiki/Cookbook:Other",
+                                  connect_ip="1.1.1.1", timeout_seconds=1, max_bytes=10)
+    assert budget.calls == transport.calls == 0

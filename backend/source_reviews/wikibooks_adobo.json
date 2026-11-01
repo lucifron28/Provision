@@ -1,0 +1,24 @@
+{
+  "expected_revision": null,
+  "canonical_host": "en.wikibooks.org",
+  "publisher_name": "Wikibooks",
+  "reviewed_by": "Provision source review",
+  "policy": {
+    "review_status": "approved",
+    "tier": "reviewed_general",
+    "enabled": true,
+    "allowed_hosts": ["en.wikibooks.org"],
+    "allowed_redirect_hosts": [],
+    "access_mode": "licensed_full",
+    "extraction_methods": ["full_text"],
+    "cuisine_tags": ["Filipino"],
+    "terms_reference": "https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use",
+    "terms_reviewed_at": "2026-10-31T11:34:54Z",
+    "robots_reference": "https://en.wikibooks.org/robots.txt",
+    "robots_reviewed_at": "2026-10-31T11:34:54Z",
+    "license_reference": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "last_audited_at": "2026-10-31T11:34:54Z",
+    "review_expires_at": "2026-11-30T11:34:54Z",
+    "disabled_reason": null
+  }
+}

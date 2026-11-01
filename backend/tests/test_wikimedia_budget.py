@@ -7,7 +7,7 @@ from sqlalchemy import select
 from app.models.wikimedia_budget import WikimediaBudget
 from app.services.wikimedia_budget import PostgresWikimediaBudget
 from app.services.wikimedia_transport import WikimediaRateLimited
-from app.services.wikimedia_transport import fetch_reviewed_wikibooks
+from app.services.wikimedia_transport import REVIEWED_RECIPE_URL, fetch_reviewed_wikibooks
 
 
 def test_budget_serializes_requests_and_persists_retry(engine):
@@ -56,7 +56,7 @@ def test_reviewed_fetch_budgets_robots_and_page(db, auth_user, auth_household, m
     from test_deepseek_discovery import FakePinnedTransport, _grant
 
     _grant(db, auth_user, auth_household)
-    url = "https://en.wikibooks.org/wiki/Cookbook:Adobo"
+    url = REVIEWED_RECIPE_URL
     approval = RecipeFetchAuthorization(
         canonical_url=url, source_id=1, source_revision=1, publisher_name="Example",
         access_mode="licensed_full", extraction_methods=("full_text",),
@@ -81,7 +81,7 @@ def test_robots_rate_limit_persists_even_when_fetch_rejects(db, auth_user, auth_
     from test_deepseek_discovery import FakePinnedTransport, _grant
 
     _grant(db, auth_user, auth_household)
-    url = "https://en.wikibooks.org/wiki/Cookbook:Adobo"
+    url = REVIEWED_RECIPE_URL
     approval = RecipeFetchAuthorization(
         canonical_url=url, source_id=1, source_revision=1, publisher_name="Example",
         access_mode="licensed_full", extraction_methods=("full_text",),

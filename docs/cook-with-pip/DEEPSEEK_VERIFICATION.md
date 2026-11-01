@@ -174,14 +174,13 @@ A separate direct HTTPS transport and a Wikibooks robots policy check are under
 development. They pin each connection to a validated public IP, check robots
 rules before each page request, and require an identifying operator User-Agent.
 The focused Docker test run passed 117 tests covering these components and the
-fetch authorization boundary. The transport is not wired into a public route,
-does not replace DeepSeek Fetch, and does not itself approve Wikibooks for reuse.
+fetch authorization boundary. The transport does not replace DeepSeek Fetch or
+itself approve Wikibooks for reuse.
 The internal Wikibooks fetch helper now wraps each robots and page request in a
 PostgreSQL-backed budget. Focused tests cover request serialization, retry
 cooldown, and a synthetic robots-to-page fetch. Migration `58bb690ad211`
 passed upgrade, downgrade, re-upgrade, and drift checks in a temporary database.
-This helper has no public route, and the source and attribution review remain
-outstanding.
+At that point, the helper had no public route and attribution was outstanding.
 On 2026-11-01, an explicitly opted-in Docker test fetched the English Wikibooks
 `Cookbook:Adobo_Chicken_(Philippine)` page through the pinned transport, live
 robots check, and shared PostgreSQL budget. It returned HTTP 200 and nonempty
@@ -191,6 +190,10 @@ page footer links to CC BY-SA 4.0; the public integration must preserve source
 and license attribution and indicate any adaptation.
 An additional opt-in run also extracted the page's ingredient and preparation
 lists as untrusted text. It did not interpret measurements or update inventory.
+A later opt-in test passed through the backend preview endpoint and returned
+the source link, CC BY-SA 4.0 attribution, and `review_required` safety status.
+The local database was migrated to `58bb690ad211`, and the reviewed Wikibooks
+source record was applied. This review and route cover only the adobo page.
 The full backend suite subsequently passed in Docker with PostgreSQL: 747
 passed and six live tests skipped.
 
