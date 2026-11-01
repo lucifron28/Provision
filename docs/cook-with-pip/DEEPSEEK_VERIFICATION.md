@@ -199,6 +199,9 @@ An opt-in end-to-end adaptation test then fetched the reviewed page and called
 proposal with source attribution. Usage was 552 input and 192 output tokens,
 744 total; the response did not report monetary cost. The test used an
 isolated household and did not send its pantry or allergy profile to the model.
+The subsequent full Docker PostgreSQL suite passed 864 tests with 11 skipped.
+Backend and iOS CI also passed for
+[commit `47cd1dd`](https://github.com/lucifron28/Provision/actions/runs/41273488074).
 The full backend suite subsequently passed in Docker with PostgreSQL: 747
 passed and six live tests skipped.
 

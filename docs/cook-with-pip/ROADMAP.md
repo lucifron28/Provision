@@ -145,6 +145,8 @@ requests, returns CC BY-SA attribution and untrusted source text, and requires
 review before cooking. Opt-in live preview and DeepSeek adaptation endpoint
 tests passed. These routes cover only the reviewed adobo page; additional
 sources and iOS integration remain pending.
+The backend suite passed with 864 tests and 11 skipped. Backend and iOS
+CI passed for [commit `47cd1dd`](https://github.com/lucifron28/Provision/actions/runs/41273488074).
 The guarded direct transport remains internal and is not a DeepSeek Fetch
 replacement. Docker verification passed 747 backend tests with six skips; both
 backend and iOS CI [passed for `280901b`](https://github.com/lucifron28/Provision/actions/runs/41193164812).
