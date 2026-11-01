@@ -174,16 +174,21 @@ A separate direct HTTPS transport and a Wikibooks robots policy check are under
 development. They pin each connection to a validated public IP, check robots
 rules before each page request, and require an identifying operator User-Agent.
 The focused Docker test run passed 117 tests covering these components and the
-fetch authorization boundary. This transport is not wired into a public route,
-does not replace DeepSeek Fetch, and does not approve Wikibooks for reuse. A
-publisher review, attribution handling, rate limiting, and a permitted live
-fetch still need verification before it can be enabled.
+fetch authorization boundary. The transport is not wired into a public route,
+does not replace DeepSeek Fetch, and does not itself approve Wikibooks for reuse.
 The internal Wikibooks fetch helper now wraps each robots and page request in a
 PostgreSQL-backed budget. Focused tests cover request serialization, retry
 cooldown, and a synthetic robots-to-page fetch. Migration `58bb690ad211`
 passed upgrade, downgrade, re-upgrade, and drift checks in a temporary database.
-This helper has no public route, and the source and attribution review and a
-permitted live fetch remain outstanding.
+This helper has no public route, and the source and attribution review remain
+outstanding.
+On 2026-11-01, an explicitly opted-in Docker test fetched the English Wikibooks
+`Cookbook:Adobo_Chicken_(Philippine)` page through the pinned transport, live
+robots check, and shared PostgreSQL budget. It returned HTTP 200 and nonempty
+HTML. The test used an isolated household and source registry, did not persist
+recipe text or send it to DeepSeek, and did not enable a production route. The
+page footer links to CC BY-SA 4.0; the public integration must preserve source
+and license attribution and indicate any adaptation.
 The full backend suite subsequently passed in Docker with PostgreSQL: 747
 passed and six live tests skipped.
 

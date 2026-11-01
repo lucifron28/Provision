@@ -141,8 +141,8 @@ require explicit user confirmation. A synthetic integration test covers manual
 recipe entry and source linking followed by shopping confirmation; there is no
 automatic source-to-shopping flow.
 Wikibooks' internal fetch helper now uses a PostgreSQL budget for robots and
-page requests. It is not exposed to the app, and attribution and a live source
-test are still required.
+page requests. An opt-in live test fetched a Wikibooks Filipino adobo page;
+the helper is not exposed to the app, and attribution remains to be implemented.
 The guarded direct transport remains internal and is not a DeepSeek Fetch
 replacement. Docker verification passed 747 backend tests with six skips; both
 backend and iOS CI [passed for `280901b`](https://github.com/lucifron28/Provision/actions/runs/41193164812).
