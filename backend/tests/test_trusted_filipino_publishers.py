@@ -92,8 +92,8 @@ def test_review_files_validate_against_schema():
         assert review.policy.review_status == "approved"
         assert review.policy.tier == "filipino_priority"
         assert review.policy.enabled is True
-        assert review.policy.access_mode == "search_link_only"
-        assert review.policy.extraction_methods == []
+        assert review.policy.access_mode == "structured_recipe_fetch"
+        assert review.policy.extraction_methods == ["json_ld"]
         assert "Filipino" in review.policy.cuisine_tags
         assert review.canonical_host in review.policy.allowed_hosts
         assert review.policy.terms_reference is not None
@@ -102,6 +102,8 @@ def test_review_files_validate_against_schema():
         assert review.policy.review_expires_at is not None
         assert review.policy.review_expires_at > review.policy.last_audited_at
         assert review.policy.disabled_reason is None
+        assert review.policy.robots_reference is not None
+        assert review.policy.license_reference is not None
 
 
 def test_approved_filipino_publishers_active_in_registry(db, approved_filipino_publishers):
@@ -109,7 +111,7 @@ def test_approved_filipino_publishers_active_in_registry(db, approved_filipino_p
     for source_read in approved_filipino_publishers:
         assert source_read.review_status == "approved"
         assert source_read.tier == "filipino_priority"
-        assert source_read.access_mode == "search_link_only"
+        assert source_read.access_mode == "structured_recipe_fetch"
         assert source_read.currently_approved is True
         assert source_read.live_fetch_enabled is False
 
@@ -219,10 +221,10 @@ def test_discover_recipes_tags_filipino_priority_tier(
     assert response.fetch_performed is False
 
 
-def test_authorize_recipe_fetch_fails_closed_for_search_link_only_publishers(
+def test_authorize_recipe_fetch_succeeds_for_approved_publishers(
     db, approved_filipino_publishers
 ):
-    """Verify that fetch authorization fails closed for search_link_only sources."""
+    """Verify that fetch authorization succeeds for structured_recipe_fetch sources."""
     urls = [
         "https://panlasangpinoy.com/pork-sinigang-recipe/",
         "https://www.kawalingpinoy.com/sinigang-na-baboy/",
@@ -231,7 +233,14 @@ def test_authorize_recipe_fetch_fails_closed_for_search_link_only_publishers(
     ]
 
     for url in urls:
-        with pytest.raises(HTTPException) as exc_info:
-            authorize_recipe_fetch(db, url)
-        assert exc_info.value.status_code == 403
-        assert exc_info.value.detail == "RECIPE_FETCH_NOT_AUTHORIZED"
+        auth = authorize_recipe_fetch(db, url)
+        assert auth.access_mode == "structured_recipe_fetch"
+        assert auth.extraction_methods == ("json_ld",)
+
+
+def test_authorize_recipe_fetch_fails_closed_for_unapproved_urls(db):
+    """Verify that unapproved URLs fail closed."""
+    with pytest.raises(HTTPException) as exc_info:
+        authorize_recipe_fetch(db, "https://unapproved.example.com/recipe/adobo")
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "RECIPE_FETCH_NOT_AUTHORIZED"

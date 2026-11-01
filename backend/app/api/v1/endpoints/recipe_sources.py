@@ -13,12 +13,15 @@ from app.core.config import settings
 from app.models.recipe_source import RecipeSource
 from app.models.user import User
 from app.schemas.ingredients import StrictSchema
-from app.schemas.recipe_source import SourceRead, SourceReferenceInput, SourceReferenceRead
+from app.schemas.recipe_extraction import ExtractedRecipeRead, RecipePreviewRequest
+from app.schemas.recipe_source import SourcePolicy, SourceRead, SourceReferenceInput, SourceReferenceRead
 from app.schemas.themealdb import MealDBAdaptationRead, MealDBAssessmentInput, MealDBAssessmentRead, MealDBDiscoveryRead, MealDBSourcePreviewRead
 from app.schemas.wikibooks import WikibooksAdaptation, WikibooksCandidate, WikibooksPreview
 from app.services.recipe_sources import discovery_plan, read_reference, remove_reference, source_read, write_reference
-from app.services.deepseek_discovery import _discovery_provider_error, authorize_recipe_fetch, discover_recipes
+from app.services.deepseek_discovery import _discovery_provider_error, authorize_recipe_fetch, discover_recipes, fetch_recipe_page
 from app.services.deepseek_provider import DeepSeekProvider, DeepSeekProviderError
+from app.services.publisher_robots import publisher_robots_allowed
+from app.services.recipe_extractor import extract_recipe_from_html
 from app.services.pinned_page_transport import PinnedTLSTransport
 from app.services.themealdb import MealDBClient
 from app.services.themealdb_ai import adapt_reviewed_meal
@@ -78,6 +81,28 @@ def get_wikibooks_transport():
 
 def get_wikimedia_budget():
     return PostgresWikimediaBudget()
+
+def get_publisher_transport():
+    return PinnedTLSTransport(user_agent="ProvisionBot/1.0 (https://github.com/lucifron28/Provision)")
+
+
+@router.post("/preview", response_model=ExtractedRecipeRead)
+def preview_publisher_recipe(request: RecipePreviewRequest, response: Response,
+                             household_id: int = Depends(get_current_household_id),
+                             user: User = Depends(get_current_user), db: Session = Depends(get_db),
+                             transport: PinnedTLSTransport = Depends(get_publisher_transport)):
+    response.headers["Cache-Control"] = "no-store"
+    auth = authorize_recipe_fetch(db, request.url, allow_broader_web=request.allow_broader_web)
+    page = fetch_recipe_page(db, household_id, user.id, request.url, transport=transport,
+                             allow_broader_web=request.allow_broader_web, robots_policy=publisher_robots_allowed)
+    try:
+        source = db.get(RecipeSource, auth.source_id)
+        tier = SourcePolicy.model_validate(source.policy).tier if source else "filipino_priority"
+        return extract_recipe_from_html(page.content, source_url=page.final_url,
+                                        publisher_name=auth.publisher_name, source_tier=tier)
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="INVALID_PUBLISHER_RECIPE") from exc
+
 
 
 @router.get("/wikibooks", response_model=list[WikibooksCandidate])

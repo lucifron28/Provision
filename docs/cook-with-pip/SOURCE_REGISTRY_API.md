@@ -58,6 +58,7 @@ All routes below require authorized household membership and use
 | GET | `/` | Read public registry status, not private review notes or license documents. |
 | POST | `/discovery-plan` | Produce an offline query plan; execute nothing and return no search results. |
 | POST | `/discover` | Search reviewed sources and optionally the broader web. |
+| POST | `/preview` | Preview structured recipe text, ingredients, instructions, and photo from an approved publisher. |
 | GET | `/wikibooks` | List currently reviewed Wikibooks recipe keys. |
 | POST | `/wikibooks/{key}/preview` | Preview a reviewed Wikibooks recipe with attribution. |
 | POST | `/wikibooks/{key}/adapt` | Return a review-only DeepSeek adaptation with source and license details. |

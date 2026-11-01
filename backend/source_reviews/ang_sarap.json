@@ -1,5 +1,5 @@
 {
-  "expected_revision": 1,
+  "expected_revision": 2,
   "canonical_host": "www.angsarap.net",
   "publisher_name": "Ang Sarap",
   "reviewed_by": "Provision source review",
@@ -12,13 +12,18 @@
       "angsarap.net"
     ],
     "allowed_redirect_hosts": [],
-    "access_mode": "search_link_only",
-    "extraction_methods": [],
+    "access_mode": "structured_recipe_fetch",
+    "extraction_methods": [
+      "json_ld"
+    ],
     "cuisine_tags": [
       "Filipino"
     ],
-    "terms_reference": "https://www.angsarap.net/privacy-policy",
+    "terms_reference": "https://www.angsarap.net/about/",
     "terms_reviewed_at": "2026-11-01T12:00:00Z",
+    "robots_reference": "https://www.angsarap.net/robots.txt",
+    "robots_reviewed_at": "2026-11-01T12:00:00Z",
+    "license_reference": "Owner permission confirmed for Provision recipe text and photo extraction",
     "last_audited_at": "2026-11-01T12:00:00Z",
     "review_expires_at": "2027-05-01T12:00:00Z",
     "disabled_reason": null

@@ -156,14 +156,14 @@ backend and iOS CI [passed for `280901b`](https://github.com/lucifron28/Provisio
 The four priority Filipino publisher candidates (Panlasang Pinoy, Kawaling
 Pinoy, Yummy.ph, and Ang Sarap) were reviewed on 2026-11-01 and approved in the
 registry for `search_link_only` discovery (`filipino_priority`, revision 2).
-Automated page fetching and scraping remain restricted.
-
+Permissions for structured recipe text and photo extraction were reviewed and approved
+(revision 3), with JSON-LD parsing supported via `POST /api/v1/recipe-sources/preview`.
 - [x] Implement a reviewed `recipe_sources` registry with host allowlisting, source tier, ownership/publisher, cuisine tags, terms/robots review, permitted fetch/use mode, review date, and disable flag.
 - [x] Seed **candidates** Panlasang Pinoy, Kawaling Pinoy, Yummy.ph, and Ang Sarap (see source policy); do NOT label them licensed/verified for ingestion until individually reviewed.
 - [ ] Implement DeepSeek Search and Fetch as server-side adapters with configurable timeouts, limits, caching, dedup by canonical URL, SSRF/redirect protections and audit traces. Check live API docs during implementation.
 - [x] Search **approved Filipino sources first** using `site:` constraints and Filipino query aliases. Expand to other approved/general web results **only** when the user enables broader search or priority sources lack sufficient relevant results.
 - [ ] Rank after hard allergy/food-safety gates; prefer approved publisher, recipe-specific page, matched cuisine, ingredient suitability, accurate structured ingredient data, freshness, and user preferences; do not confuse source reputation with recipe safety.
-- [ ] Extract structured `schema.org/Recipe`/JSON-LD when permitted; use model extraction only as fallible fallback; validate typed quantities, yield, ingredients, dates, and source references.
+- [x] Extract structured `schema.org/Recipe`/JSON-LD when permitted; use model extraction only as fallible fallback; validate typed quantities, yield, ingredients, dates, and source references.
 - [ ] Always display source publisher, canonical link, `verified source` vs `other website` state, and `AI adapted` when applicable; never present fabricated URLs or model-generated recipes as publisher originals.
 - [ ] Respect publisher permissions, robots, copyright/terms, image reuse rights, and link-out mode; don't retain third-party recipe prose/photos indiscriminately.
 - [ ] Test blocked URLs, malicious page instructions, unrelated SEO results, duplicate URLs, revoked domains, offline/no-results, no-search/opt-out, provider failures, rate limits.
