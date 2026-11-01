@@ -10,6 +10,7 @@ from app.schemas.deepseek import DeepSeekChatMessage, DeepSeekChatRequest
 from app.schemas.themealdb import MealDBAdaptationRead, MealDBAdaptedSteps, MealDBRecipeText
 from app.services.deepseek_discovery import _require_member_and_consent, authorize_recipe_fetch
 from app.services.household_writes import lock_household_write
+from app.services.source_allergen_guard import has_known_source_conflict
 from app.services.themealdb_reviewed import lookup_reviewed_meal
 
 
@@ -37,6 +38,8 @@ def adapt_reviewed_meal(
     if recipe is None:
         raise HTTPException(404, "MEAL_NOT_FOUND")
     _check_sources(db, recipe, allow_broader_web)
+    if has_known_source_conflict(db, household_id, [item.name for item in recipe.ingredients]):
+        raise HTTPException(403, "SOURCE_RECIPE_CONFLICTS_WITH_HOUSEHOLD")
     source_data = json.dumps({
         "title": recipe.title,
         "ingredients": [item.model_dump() for item in recipe.ingredients],

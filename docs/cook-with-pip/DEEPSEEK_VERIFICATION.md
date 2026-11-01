@@ -134,8 +134,11 @@ downgrade, re-upgrade, and Alembic drift checks. The local application database
 was upgraded to revision `f56c9a214e0b`. The disabled-by-default adaptation
 route uses this limiter and the existing DeepSeek request budget. It returns
 source measures as text and AI steps as a review-only preview, with no inventory
-or shopping mutation. Source restrictions and actual household consent still
-apply; no live end-to-end recipe adaptation has yet been verified.
+or shopping mutation. Confirmed source-ingredient conflicts with household
+allergies and diet restrictions are rejected before the model call; unresolved
+ingredients and generated steps still require review. Source restrictions and
+actual household consent still apply; no live end-to-end recipe adaptation has
+yet been verified.
 On 2026-11-01 Asia/Shanghai, a separate opt-in Docker smoke test made one
 official Filipino-listing request through the reviewed source and shared
 budget. Filtering locally for `adobo` returned Eggplant Adobo. This result is
@@ -146,6 +149,9 @@ Neither test called DeepSeek or copied recipe text.
 The full Docker PostgreSQL suite then passed 798 tests with eight skips. The
 new discovery and adaptation routes are disabled by default. No live adaptation
 has been run against an approved original publisher.
+After the source-allergen guard was added, the full Docker PostgreSQL suite
+passed 805 tests with eight skips. Focused tests also verified that a private
+allergy note is not included in the model request.
 
 A separate direct HTTPS transport and a Wikibooks robots policy check are under
 development. They pin each connection to a validated public IP, check robots

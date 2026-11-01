@@ -77,6 +77,10 @@ links the original source, and labels the output `review_required`; ingredient
 measures remain source text and cannot authorize pantry or shopping changes.
 No original publishers are approved by default. Recipe text and AI steps remain
 untrusted and require user review, including allergen review.
+The backend rejects confirmed source-ingredient conflicts with household
+allergies or diet restrictions before calling DeepSeek. An unrecognized or
+ambiguous ingredient is not a safety clearance; the preview remains
+`review_required` even when no conflict is detected.
 
 An offline plan accepts `query`, `include_reviewed_general` and
 `allow_broader_web`. Only currently approved Filipino hosts enter the priority

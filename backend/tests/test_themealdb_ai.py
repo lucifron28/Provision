@@ -7,6 +7,7 @@ from app.models.shopping import ShoppingListItem
 from app.services.themealdb_ai import adapt_reviewed_meal
 from test_ai_recipes import FakeProvider
 from test_deepseek_discovery import _grant
+from test_food_safety import catalog, declare
 from test_themealdb_reviewed import Budget, Client, add_api_source, add_origin
 
 
@@ -70,6 +71,72 @@ def test_injected_model_operations_are_rejected(db, auth_user, auth_household):
         adapt(db, auth_user, auth_household, Client(sample()), Budget(), provider)
     assert error.value.detail == "INVALID_AI_RECIPE"
     assert db.scalar(select(func.count()).select_from(ShoppingListItem)) == 0
+
+
+@pytest.mark.parametrize(("ingredient", "allergen"), [("milk", "milk"), ("whey", "milk"), ("patis", "fish")])
+def test_known_source_allergens_block_before_model(client, db, catalog, auth_user, auth_household, ingredient, allergen):
+    declare(client, allergen)
+    _grant(db, auth_user, auth_household)
+    add_api_source(db)
+    add_origin(db)
+    record = sample()
+    record["strIngredient1"] = ingredient
+    provider = FakeProvider(proposal())
+    with pytest.raises(HTTPException) as error:
+        adapt(db, auth_user, auth_household, Client(record), Budget(), provider)
+    assert error.value.detail == "SOURCE_RECIPE_CONFLICTS_WITH_HOUSEHOLD"
+    assert provider.calls == []
+
+
+def test_diet_restriction_blocks_source_before_model(client, db, catalog, auth_user, auth_household):
+    declare(client, preferences={"diet_patterns": ["no_pork"]})
+    _grant(db, auth_user, auth_household)
+    add_api_source(db)
+    add_origin(db)
+    record = sample()
+    record["strIngredient1"] = "pork"
+    provider = FakeProvider(proposal())
+    with pytest.raises(HTTPException) as error:
+        adapt(db, auth_user, auth_household, Client(record), Budget(), provider)
+    assert error.value.detail == "SOURCE_RECIPE_CONFLICTS_WITH_HOUSEHOLD"
+    assert provider.calls == []
+
+
+def test_ambiguous_source_ingredient_is_never_marked_safe(client, db, catalog, auth_user, auth_household):
+    declare(client, "fish")
+    _grant(db, auth_user, auth_household)
+    add_api_source(db)
+    add_origin(db)
+    record = sample()
+    record["strIngredient1"] = "bagoong"
+    result = adapt(db, auth_user, auth_household, Client(record), Budget(), FakeProvider(proposal()))
+    assert result.safety == "review_required"
+
+
+def test_custom_allergen_blocks_source_before_model(client, db, catalog, auth_user, auth_household):
+    declare(client, allergy_status="DECLARED", allergies=[{"custom_text": "bawang"}])
+    _grant(db, auth_user, auth_household)
+    add_api_source(db)
+    add_origin(db)
+    record = sample()
+    record["strIngredient1"] = "garlic"
+    provider = FakeProvider(proposal())
+    with pytest.raises(HTTPException) as error:
+        adapt(db, auth_user, auth_household, Client(record), Budget(), provider)
+    assert error.value.detail == "SOURCE_RECIPE_CONFLICTS_WITH_HOUSEHOLD"
+    assert provider.calls == []
+
+
+def test_allergy_profile_is_not_sent_with_allowed_source(client, db, catalog, auth_user, auth_household):
+    declare(client, "fish", allergies=[{"allergen_code": "fish", "notes": "private allergy note"}])
+    _grant(db, auth_user, auth_household)
+    add_api_source(db)
+    add_origin(db)
+    provider = FakeProvider(proposal())
+    result = adapt(db, auth_user, auth_household, Client(sample()), Budget(), provider)
+    assert result.safety == "review_required"
+    sent = str(provider.calls[0].model_dump())
+    assert "private allergy note" not in sent and "fish" not in sent
 
 
 def test_revocation_during_model_call_discards_result(db, auth_user, auth_household):
