@@ -170,6 +170,9 @@ The route requires `WIKIBOOKS_ENABLED=true`, the source reviews in
 `backend/source_reviews/wikibooks_adobo.json` and `wikibooks_sinigang.json`
 applied in that order, and current consent from all household members. Apply the
 latest database migration first. The fetch policy rejects other Wikibooks pages.
+Existing local databases that applied the earlier sinigang review at revision 2
+can apply `wikibooks_sinigang_revision3.json` to bind its permission evidence
+to the sinigang page. Fresh databases do not need that extra revision.
 
 The response includes source and CC BY-SA 4.0 links, unmodified source
 ingredient and preparation text, and `safety: review_required`. It makes no

@@ -52,7 +52,9 @@ def test_live_wikibooks_preview_endpoint(client, db, auth_user, auth_household, 
 def test_live_wikibooks_sinigang_preview(client, db, auth_user, auth_household, monkeypatch):
     _grant(db, auth_user, auth_household)
     source = _add_source(db, "en.wikibooks.org", access_mode="structured_recipe_fetch")
-    source.policy = {**source.policy, "access_mode": "licensed_full", "extraction_methods": ["full_text"]}
+    from app.services.wikimedia_transport import REVIEWED_RECIPES
+    source.policy = {**source.policy, "access_mode": "licensed_full", "extraction_methods": ["full_text"],
+                     "license_reference": REVIEWED_RECIPES["sinigang"][0]}
     source.revision = 2
     db.commit()
     monkeypatch.setattr(settings, "WIKIBOOKS_ENABLED", True)

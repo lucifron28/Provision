@@ -201,8 +201,9 @@ proposal with source attribution. Usage was 552 input and 192 output tokens,
 isolated household and did not send its pantry or allergy profile to the model.
 On 2026-11-01, an opt-in test fetched and parsed the reviewed Wikibooks sinigang
 page through the backend preview. Its page also links to CC BY-SA 4.0. The
-second source review was applied locally as revision 2. The sinigang AI route
-has deterministic tests, but has not made a live DeepSeek request.
+second source review was applied locally, then refined as revision 3 to bind
+the permission evidence to the sinigang page. The sinigang AI route has
+deterministic tests, but has not made a live DeepSeek request.
 The subsequent full Docker PostgreSQL suite passed 864 tests with 11 skipped.
 Backend and iOS CI also passed for
 [commit `47cd1dd`](https://github.com/lucifron28/Provision/actions/runs/41273488074).

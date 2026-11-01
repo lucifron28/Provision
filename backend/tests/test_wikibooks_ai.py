@@ -92,6 +92,7 @@ def test_sinigang_pork_conflict_blocks_before_model(client, db, catalog, auth_us
     declare(client, preferences={"diet_patterns": ["no_pork"]})
     source, transport = setup_source(db, auth_user, auth_household, ingredient="1 kg pork belly")
     source.revision = 2
+    source.policy = {**source.policy, "license_reference": REVIEWED_RECIPES["sinigang"][0]}
     db.commit()
     provider = FakeProvider({"steps": ["Cook."]})
     url, title = REVIEWED_RECIPES["sinigang"]

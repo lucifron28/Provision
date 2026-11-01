@@ -62,6 +62,7 @@ def test_sinigang_requires_its_newer_source_review(db):
 
 
 def test_list_only_includes_recipes_covered_by_current_review(client, db, monkeypatch):
+    from app.services.wikimedia_transport import REVIEWED_RECIPES
     source = _add_source(db, "en.wikibooks.org", access_mode="structured_recipe_fetch")
     source.policy = {**source.policy, "access_mode": "licensed_full", "extraction_methods": ["full_text"]}
     db.commit()
@@ -71,7 +72,11 @@ def test_list_only_includes_recipes_covered_by_current_review(client, db, monkey
     source.revision = 2
     db.commit()
     second = client.get("/api/v1/recipe-sources/wikibooks")
-    assert second.status_code == 200 and [item["key"] for item in second.json()] == ["adobo", "sinigang"]
+    assert second.status_code == 200 and [item["key"] for item in second.json()] == ["adobo"]
+    source.policy = {**source.policy, "license_reference": REVIEWED_RECIPES["sinigang"][0]}
+    db.commit()
+    third = client.get("/api/v1/recipe-sources/wikibooks")
+    assert third.status_code == 200 and [item["key"] for item in third.json()] == ["adobo", "sinigang"]
 
 
 def test_unreviewed_recipe_key_is_rejected_without_fetch(client, monkeypatch):
@@ -139,7 +144,9 @@ def test_adapt_endpoint_returns_licensed_review_only_proposal(client, db, catalo
 def test_sinigang_preview_uses_reviewed_page_and_title(client, db, auth_user, auth_household, monkeypatch):
     _grant(db, auth_user, auth_household)
     source = _add_source(db, "en.wikibooks.org", access_mode="structured_recipe_fetch")
-    source.policy = {**source.policy, "access_mode": "licensed_full", "extraction_methods": ["full_text"]}
+    from app.services.wikimedia_transport import REVIEWED_RECIPES
+    source.policy = {**source.policy, "access_mode": "licensed_full", "extraction_methods": ["full_text"],
+                     "license_reference": REVIEWED_RECIPES["sinigang"][0]}
     source.revision = 2
     db.commit()
     monkeypatch.setattr(settings, "WIKIBOOKS_ENABLED", True)

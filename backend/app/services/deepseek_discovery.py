@@ -448,11 +448,15 @@ def authorize_recipe_fetch(
     if source is None or not allowed or not source_approved(source):
         raise HTTPException(status_code=403, detail="RECIPE_FETCH_NOT_AUTHORIZED")
     if urlsplit(canonical).hostname == "en.wikibooks.org":
-        from app.services.wikimedia_transport import REVIEWED_RECIPE_MIN_REVISIONS
+        from app.services.wikimedia_transport import REVIEWED_RECIPES, REVIEWED_RECIPE_MIN_REVISIONS
         if source.revision < REVIEWED_RECIPE_MIN_REVISIONS[canonical]:
             raise HTTPException(status_code=403, detail="RECIPE_FETCH_NOT_AUTHORIZED")
     policy = SourcePolicy.model_validate(source.policy)
     host = urlsplit(canonical).hostname
+    if (host == "en.wikibooks.org"
+            and canonical == REVIEWED_RECIPES["sinigang"][0]
+            and policy.license_reference != canonical):
+        raise HTTPException(status_code=403, detail="RECIPE_FETCH_NOT_AUTHORIZED")
     if (
         policy.review_status != "approved"
         or host not in policy.allowed_hosts
