@@ -40,6 +40,8 @@ class _RecipeLists(HTMLParser):
             return
         if tag in {"h1", "h2", "h3", "h4", "h5", "h6"} and self.heading is not None:
             title = " ".join("".join(self.heading).split()).casefold()
+            if title == "procedure":
+                title = "preparation"
             self.section = title if title in {"ingredients", "preparation"} else None
             if self.section:
                 self.sections_seen.append(self.section)

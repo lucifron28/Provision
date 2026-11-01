@@ -1,6 +1,16 @@
 """Apply a shared request budget to every Wikimedia HTTP request."""
 
 REVIEWED_RECIPE_URL = "https://en.wikibooks.org/wiki/Cookbook:Adobo_Chicken_(Philippine)"
+REVIEWED_RECIPES = {
+    "adobo": (REVIEWED_RECIPE_URL, "Adobo Chicken (Philippine)"),
+    "sinigang": ("https://en.wikibooks.org/wiki/Cookbook:Sinigang_(Philippine_Sour_Soup)",
+                 "Sinigang (Philippine Sour Soup)"),
+}
+REVIEWED_RECIPE_URLS = frozenset(url for url, _ in REVIEWED_RECIPES.values())
+REVIEWED_RECIPE_MIN_REVISIONS = {
+    REVIEWED_RECIPES["adobo"][0]: 1,
+    REVIEWED_RECIPES["sinigang"][0]: 2,
+}
 ROBOTS_URL = "https://en.wikibooks.org/robots.txt"
 
 
@@ -31,7 +41,7 @@ class BudgetedWikimediaTransport:
         return self.transport.resolve(hostname)
 
     def fetch_once_pinned(self, url, *, connect_ip, timeout_seconds, max_bytes):
-        if url not in {REVIEWED_RECIPE_URL, ROBOTS_URL}:
+        if url not in REVIEWED_RECIPE_URLS and url != ROBOTS_URL:
             raise ValueError("Unsupported Wikimedia destination")
         with self.budget.request():
             response = self.transport.fetch_once_pinned(
@@ -49,7 +59,7 @@ def fetch_reviewed_wikibooks(db, household_id, actor_id, url, *, transport, budg
     """Fetch an authorized Wikibooks page through a shared request budget."""
     from app.services.deepseek_discovery import fetch_recipe_page
 
-    if url != REVIEWED_RECIPE_URL:
+    if url not in REVIEWED_RECIPE_URLS:
         raise ValueError("Unsupported Wikimedia destination")
     return fetch_recipe_page(
         db, household_id, actor_id, url,

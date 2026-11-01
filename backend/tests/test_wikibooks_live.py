@@ -48,6 +48,22 @@ def test_live_wikibooks_preview_endpoint(client, db, auth_user, auth_household, 
     assert data["untrusted_content"] is True and data["safety"] == "review_required"
 
 
+@pytest.mark.skipif(os.getenv("PROVISION_WIKIBOOKS_LIVE") != "1", reason="live fetch requires explicit opt-in")
+def test_live_wikibooks_sinigang_preview(client, db, auth_user, auth_household, monkeypatch):
+    _grant(db, auth_user, auth_household)
+    source = _add_source(db, "en.wikibooks.org", access_mode="structured_recipe_fetch")
+    source.policy = {**source.policy, "access_mode": "licensed_full", "extraction_methods": ["full_text"]}
+    source.revision = 2
+    db.commit()
+    monkeypatch.setattr(settings, "WIKIBOOKS_ENABLED", True)
+    response = client.post("/api/v1/recipe-sources/wikibooks/sinigang/preview")
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["title"] == "Sinigang (Philippine Sour Soup)"
+    assert data["ingredients"] and data["preparation"]
+    assert data["license_name"] == "CC BY-SA 4.0" and data["safety"] == "review_required"
+
+
 @pytest.mark.skipif(os.getenv("PROVISION_WIKIBOOKS_AI_LIVE") != "1", reason="live DeepSeek call requires explicit opt-in")
 def test_live_wikibooks_deepseek_adaptation(client, db, auth_user, auth_household, monkeypatch):
     _grant(db, auth_user, auth_household)

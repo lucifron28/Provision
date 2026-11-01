@@ -12,16 +12,19 @@ from app.services.deepseek_discovery import _require_member_and_consent, _same_f
 from app.services.household_writes import lock_household_write
 from app.services.source_allergen_guard import has_known_text_ingredient_conflict
 from app.services.wikibooks_recipe import parse_wikibooks_recipe
-from app.services.wikimedia_transport import REVIEWED_RECIPE_URL, fetch_reviewed_wikibooks
+from app.services.wikimedia_transport import REVIEWED_RECIPES, REVIEWED_RECIPE_URL, fetch_reviewed_wikibooks
 
 
-def adapt_wikibooks(db, household_id, actor_id, *, transport, budget, provider):
+def adapt_wikibooks(db, household_id, actor_id, *, transport, budget, provider,
+                    source_url=REVIEWED_RECIPE_URL, title="Adobo Chicken (Philippine)"):
+    if (source_url, title) not in REVIEWED_RECIPES.values():
+        raise HTTPException(422, "UNREVIEWED_WIKIBOOKS_RECIPE")
     lock_household_write(db, household_id, actor_id=actor_id)
     _require_member_and_consent(db, household_id, actor_id)
-    approval = authorize_recipe_fetch(db, REVIEWED_RECIPE_URL)
-    page = fetch_reviewed_wikibooks(db, household_id, actor_id, REVIEWED_RECIPE_URL,
+    approval = authorize_recipe_fetch(db, source_url)
+    page = fetch_reviewed_wikibooks(db, household_id, actor_id, source_url,
                                     transport=transport, budget=budget)
-    if page.final_url != REVIEWED_RECIPE_URL:
+    if page.final_url != source_url:
         raise HTTPException(502, "WIKIBOOKS_SOURCE_CHANGED")
     try:
         ingredients, preparation = parse_wikibooks_recipe(page.content)
@@ -51,5 +54,5 @@ def adapt_wikibooks(db, household_id, actor_id, *, transport, budget, provider):
     if not _same_fetch_authorization(db, approval, allow_broader_web=False):
         raise HTTPException(403, "RECIPE_FETCH_NOT_AUTHORIZED")
     _require_member_and_consent(db, household_id, actor_id)
-    source = WikibooksPreview(source_url=REVIEWED_RECIPE_URL, ingredients=ingredients, preparation=preparation)
+    source = WikibooksPreview(title=title, source_url=source_url, ingredients=ingredients, preparation=preparation)
     return WikibooksAdaptation(source=source, proposal=proposal, model=response.model, usage=response.usage)

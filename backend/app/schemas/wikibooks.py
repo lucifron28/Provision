@@ -7,8 +7,15 @@ from app.schemas.deepseek import DeepSeekTokenUsage
 from app.schemas.themealdb import MealDBAdaptedSteps
 
 
+class WikibooksCandidate(StrictSchema):
+    key: Literal["adobo", "sinigang"]
+    title: Literal["Adobo Chicken (Philippine)", "Sinigang (Philippine Sour Soup)"]
+    source_url: str
+    license_name: Literal["CC BY-SA 4.0"] = "CC BY-SA 4.0"
+
+
 class WikibooksPreview(StrictSchema):
-    title: Literal["Adobo Chicken (Philippine)"] = "Adobo Chicken (Philippine)"
+    title: Literal["Adobo Chicken (Philippine)", "Sinigang (Philippine Sour Soup)"] = "Adobo Chicken (Philippine)"
     source_url: str
     publisher: Literal["Wikibooks contributors"] = "Wikibooks contributors"
     license_name: Literal["CC BY-SA 4.0"] = "CC BY-SA 4.0"

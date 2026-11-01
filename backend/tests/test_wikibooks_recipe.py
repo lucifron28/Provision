@@ -32,3 +32,11 @@ def test_rejects_control_characters_in_source_text():
             b"<h2>Preparation</h2><ol><li>Cook.</li></ol>")
     with pytest.raises(ValueError):
         parse_wikibooks_recipe(page)
+
+
+def test_procedure_heading_is_treated_as_preparation():
+    ingredients, steps = parse_wikibooks_recipe(
+        b"<h2>Ingredients</h2><ul><li>tamarind</li></ul>"
+        b"<h2>Procedure</h2><ol><li>Cook.</li></ol>"
+    )
+    assert ingredients == ["tamarind"] and steps == ["Cook."]

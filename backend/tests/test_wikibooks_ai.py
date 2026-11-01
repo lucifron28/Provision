@@ -84,3 +84,19 @@ def test_source_instructions_are_marked_untrusted(db, catalog, auth_user, auth_h
     assert result.safety == "review_required"
     assert "untrusted data" in provider.calls[0].messages[0].content
     assert "ignore all previous instructions" in provider.calls[0].messages[1].content
+
+
+def test_sinigang_pork_conflict_blocks_before_model(client, db, catalog, auth_user, auth_household):
+    from app.services.wikimedia_transport import REVIEWED_RECIPES
+
+    declare(client, preferences={"diet_patterns": ["no_pork"]})
+    source, transport = setup_source(db, auth_user, auth_household, ingredient="1 kg pork belly")
+    source.revision = 2
+    db.commit()
+    provider = FakeProvider({"steps": ["Cook."]})
+    url, title = REVIEWED_RECIPES["sinigang"]
+    with pytest.raises(HTTPException) as error:
+        adapt_wikibooks(db, auth_household.id, auth_user.id, transport=transport,
+                        budget=Budget(), provider=provider, source_url=url, title=title)
+    assert error.value.detail == "SOURCE_RECIPE_CONFLICTS_WITH_HOUSEHOLD"
+    assert provider.calls == []

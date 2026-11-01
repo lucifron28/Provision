@@ -193,12 +193,16 @@ lists as untrusted text. It did not interpret measurements or update inventory.
 A later opt-in test passed through the backend preview endpoint and returned
 the source link, CC BY-SA 4.0 attribution, and `review_required` safety status.
 The local database was migrated to `58bb690ad211`, and the reviewed Wikibooks
-source record was applied. This review and route cover only the adobo page.
+source record was applied. That initial review covered only the adobo page.
 An opt-in end-to-end adaptation test then fetched the reviewed page and called
 `deepseek-flash` through the backend. It returned a review-only structured
 proposal with source attribution. Usage was 552 input and 192 output tokens,
 744 total; the response did not report monetary cost. The test used an
 isolated household and did not send its pantry or allergy profile to the model.
+On 2026-11-01, an opt-in test fetched and parsed the reviewed Wikibooks sinigang
+page through the backend preview. Its page also links to CC BY-SA 4.0. The
+second source review was applied locally as revision 2. The sinigang AI route
+has deterministic tests, but has not made a live DeepSeek request.
 The subsequent full Docker PostgreSQL suite passed 864 tests with 11 skipped.
 Backend and iOS CI also passed for
 [commit `47cd1dd`](https://github.com/lucifron28/Provision/actions/runs/41273488074).

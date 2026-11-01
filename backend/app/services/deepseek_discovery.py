@@ -439,14 +439,18 @@ def authorize_recipe_fetch(
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail="INVALID_RECIPE_URL") from exc
     if urlsplit(canonical).hostname == "en.wikibooks.org":
-        from app.services.wikimedia_transport import REVIEWED_RECIPE_URL
-        if canonical != REVIEWED_RECIPE_URL:
+        from app.services.wikimedia_transport import REVIEWED_RECIPE_URLS
+        if canonical not in REVIEWED_RECIPE_URLS:
             raise HTTPException(status_code=403, detail="RECIPE_FETCH_NOT_AUTHORIZED")
     source, allowed, _label = reference_policy(
         db, canonical, broader_permission=allow_broader_web
     )
     if source is None or not allowed or not source_approved(source):
         raise HTTPException(status_code=403, detail="RECIPE_FETCH_NOT_AUTHORIZED")
+    if urlsplit(canonical).hostname == "en.wikibooks.org":
+        from app.services.wikimedia_transport import REVIEWED_RECIPE_MIN_REVISIONS
+        if source.revision < REVIEWED_RECIPE_MIN_REVISIONS[canonical]:
+            raise HTTPException(status_code=403, detail="RECIPE_FETCH_NOT_AUTHORIZED")
     policy = SourcePolicy.model_validate(source.policy)
     host = urlsplit(canonical).hostname
     if (

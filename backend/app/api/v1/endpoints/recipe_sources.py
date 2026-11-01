@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from typing import Literal
 from pydantic import Field, StrictBool
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,9 +15,9 @@ from app.models.user import User
 from app.schemas.ingredients import StrictSchema
 from app.schemas.recipe_source import SourceRead, SourceReferenceInput, SourceReferenceRead
 from app.schemas.themealdb import MealDBAdaptationRead, MealDBAssessmentInput, MealDBAssessmentRead, MealDBDiscoveryRead, MealDBSourcePreviewRead
-from app.schemas.wikibooks import WikibooksAdaptation, WikibooksPreview
+from app.schemas.wikibooks import WikibooksAdaptation, WikibooksCandidate, WikibooksPreview
 from app.services.recipe_sources import discovery_plan, read_reference, remove_reference, source_read, write_reference
-from app.services.deepseek_discovery import _discovery_provider_error, discover_recipes
+from app.services.deepseek_discovery import _discovery_provider_error, authorize_recipe_fetch, discover_recipes
 from app.services.deepseek_provider import DeepSeekProvider, DeepSeekProviderError
 from app.services.pinned_page_transport import PinnedTLSTransport
 from app.services.themealdb import MealDBClient
@@ -27,7 +28,7 @@ from app.services.themealdb_reviewed import discover_filipino_meals, lookup_revi
 from app.services.wikibooks_recipe import parse_wikibooks_recipe
 from app.services.wikibooks_ai import adapt_wikibooks
 from app.services.wikimedia_budget import PostgresWikimediaBudget
-from app.services.wikimedia_transport import REVIEWED_RECIPE_URL, fetch_reviewed_wikibooks
+from app.services.wikimedia_transport import REVIEWED_RECIPES, fetch_reviewed_wikibooks
 
 router = APIRouter()
 
@@ -79,14 +80,32 @@ def get_wikimedia_budget():
     return PostgresWikimediaBudget()
 
 
-@router.post("/wikibooks/adobo/preview", response_model=WikibooksPreview)
-def preview_wikibooks_adobo(response: Response,
+@router.get("/wikibooks", response_model=list[WikibooksCandidate])
+def list_wikibooks_recipes(response: Response, household_id: int = Depends(get_current_household_id),
+                           db: Session = Depends(get_db)):
+    response.headers["Cache-Control"] = "no-store"
+    if not settings.WIKIBOOKS_ENABLED:
+        raise HTTPException(503, "WIKIBOOKS_DISABLED")
+    items = []
+    for key, (url, title) in REVIEWED_RECIPES.items():
+        try:
+            authorize_recipe_fetch(db, url)
+        except HTTPException as error:
+            if error.status_code == 403:
+                continue
+            raise
+        items.append(WikibooksCandidate(key=key, title=title, source_url=url))
+    return items
+
+
+@router.post("/wikibooks/{recipe_key}/preview", response_model=WikibooksPreview)
+def preview_wikibooks_recipe(recipe_key: Literal["adobo", "sinigang"], response: Response,
                             household_id: int = Depends(get_current_household_id),
                             user: User = Depends(get_current_user), db: Session = Depends(get_db),
                             transport=Depends(get_wikibooks_transport),
                             budget=Depends(get_wikimedia_budget)):
     response.headers["Cache-Control"] = "no-store"
-    url = REVIEWED_RECIPE_URL
+    url, title = REVIEWED_RECIPES[recipe_key]
     try:
         page = fetch_reviewed_wikibooks(db, household_id, user.id, url, transport=transport, budget=budget)
         if page.final_url != url:
@@ -96,11 +115,11 @@ def preview_wikibooks_adobo(response: Response,
         raise HTTPException(502, "INVALID_WIKIBOOKS_RECIPE") from None
     except SQLAlchemyError:
         raise HTTPException(503, detail={"code": "budget_unavailable"}) from None
-    return WikibooksPreview(source_url=url, ingredients=ingredients, preparation=preparation)
+    return WikibooksPreview(title=title, source_url=url, ingredients=ingredients, preparation=preparation)
 
 
-@router.post("/wikibooks/adobo/adapt", response_model=WikibooksAdaptation)
-def adapt_wikibooks_adobo(response: Response,
+@router.post("/wikibooks/{recipe_key}/adapt", response_model=WikibooksAdaptation)
+def adapt_wikibooks_recipe(recipe_key: Literal["adobo", "sinigang"], response: Response,
                           household_id: int = Depends(get_current_household_id),
                           user: User = Depends(get_current_user), db: Session = Depends(get_db),
                           transport=Depends(get_wikibooks_transport),
@@ -110,7 +129,9 @@ def adapt_wikibooks_adobo(response: Response,
     if not settings.DEEPSEEK_ENABLED:
         raise HTTPException(503, detail={"code": "disabled"})
     try:
-        return adapt_wikibooks(db, household_id, user.id, transport=transport, budget=budget, provider=provider)
+        url, title = REVIEWED_RECIPES[recipe_key]
+        return adapt_wikibooks(db, household_id, user.id, transport=transport, budget=budget,
+                                provider=provider, source_url=url, title=title)
     except DeepSeekProviderError as exc:
         raise _discovery_provider_error(exc) from None
     except SQLAlchemyError:

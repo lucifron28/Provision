@@ -36,7 +36,7 @@ use of site content and restrict copying recipes and photos. No written consent
 has been supplied, so this source remains a disabled candidate. This review does
 not grant fetch, extraction, retention, or reuse rights.
 
-### Open-license source: Wikibooks adobo
+### Open-license source: reviewed Wikibooks recipes
 
 On 2026-10-31, a manual review located Filipino recipes on
 [Wikibooks](https://en.wikibooks.org/wiki/Cookbook:Adobo_Chicken_(Philippine)).
@@ -50,8 +50,10 @@ rules. The documented [DeepSeek Fetch API](https://api-docs.deepseek.com/api/fet
 does not expose caller-controlled fetch headers, destination IPs, or redirect
 history. Therefore this is a candidate for a compliant reviewed fetch adapter,
 not approval to send Wikibooks pages through DeepSeek Fetch. The direct backend
-adapter approves only `Cookbook:Adobo_Chicken_(Philippine)` and returns source
-and license attribution. Other pages require their own review before fetching.
+adapter approves `Cookbook:Adobo_Chicken_(Philippine)` and
+`Cookbook:Sinigang_(Philippine_Sour_Soup)` and returns source and license
+attribution. The sinigang page was reviewed on 2026-11-01 and also links to
+CC BY-SA 4.0. Other pages require their own review before fetching.
 
 ### API candidate: TheMealDB
 

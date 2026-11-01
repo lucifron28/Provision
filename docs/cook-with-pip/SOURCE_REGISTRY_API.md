@@ -53,8 +53,9 @@ All routes below require authorized household membership and use
 | GET | `/` | Read public registry status, not private review notes or license documents. |
 | POST | `/discovery-plan` | Produce an offline query plan; execute nothing and return no search results. |
 | POST | `/discover` | Search reviewed sources and optionally the broader web. |
-| POST | `/wikibooks/adobo/preview` | Preview the single reviewed Wikibooks adobo page with attribution. |
-| POST | `/wikibooks/adobo/adapt` | Return a review-only DeepSeek adaptation with source and license details. |
+| GET | `/wikibooks` | List currently reviewed Wikibooks recipe keys. |
+| POST | `/wikibooks/{key}/preview` | Preview a reviewed Wikibooks recipe with attribution. |
+| POST | `/wikibooks/{key}/adapt` | Return a review-only DeepSeek adaptation with source and license details. |
 | POST | `/mealdb/discover` | Search a Filipino API listing and return review-required meal links. |
 | POST | `/mealdb/{meal_id}/preview` | Read a permitted source recipe and its content digest for review. |
 | POST | `/mealdb/{meal_id}/adapt` | Produce a review-only AI preview from a permitted TheMealDB recipe. |
@@ -161,21 +162,21 @@ recipe from recommendations. Source preference is applied only after allergy,
 dietary, quantity and permission gates. Publisher reputation cannot remove a
 conflict or establish product-label safety.
 
-## Wikibooks adobo preview
+## Wikibooks recipe preview
 
-`POST /api/v1/recipe-sources/wikibooks/adobo/preview` retrieves the reviewed
-Wikibooks chicken adobo page when `WIKIBOOKS_ENABLED=true`, the source review
-in `backend/source_reviews/wikibooks_adobo.json` is applied, and all household
-members have granted current provider consent. Apply the latest database
-migration before enabling the route. The approval covers this single recipe
-page; the fetch policy rejects other Wikibooks pages.
+`GET /api/v1/recipe-sources/wikibooks` lists currently approved keys. Use
+`adobo` or `sinigang` with `POST /api/v1/recipe-sources/wikibooks/{key}/preview`.
+The route requires `WIKIBOOKS_ENABLED=true`, the source reviews in
+`backend/source_reviews/wikibooks_adobo.json` and `wikibooks_sinigang.json`
+applied in that order, and current consent from all household members. Apply the
+latest database migration first. The fetch policy rejects other Wikibooks pages.
 
 The response includes source and CC BY-SA 4.0 links, unmodified source
 ingredient and preparation text, and `safety: review_required`. It makes no
 inventory or shopping changes and does not send the page to DeepSeek. Clients
 must show the attribution and license when displaying or sharing the text.
 
-`POST /api/v1/recipe-sources/wikibooks/adobo/adapt` additionally requires
+`POST /api/v1/recipe-sources/wikibooks/{key}/adapt` additionally requires
 `DEEPSEEK_ENABLED=true` and uses the server-side DeepSeek budget. It checks
 known source ingredient conflicts locally before sending source text to the
 model. The response labels generated steps as adapted under CC BY-SA 4.0 and
