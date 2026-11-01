@@ -113,9 +113,10 @@ fetch redirects is established. No live publisher page fetch has been performed.
 On 2026-10-31, one separately opted-in Docker smoke test fetched an official
 TheMealDB lookup endpoint with its educational test key. It returned HTTP 200
 and the requested meal ID. No recipe text was sent to DeepSeek or saved. The
-new API client is internal; it does not itself authorize use of third-party
-recipe content, enforce publisher request limits, or expose an application
-route. TheMealDB terms and record provenance are reviewed in the source policy.
+At that point the API client was internal and did not itself authorize use of
+third-party recipe content or enforce publisher request limits. TheMealDB terms
+and record provenance are reviewed in the source policy. The later routes and
+shared request budget are described below.
 The Docker PostgreSQL suite passed with 760 tests and six skips. After the
 transport's JSON accept header was added, its focused tests and the new client
 tests passed with 65 tests and one live-test skip.
@@ -158,6 +159,11 @@ explicit user confirmations, checks a source-content digest, and evaluates
 stock and food safety without changing pantry or shopping records. These tests
 used synthetic publisher approvals; no live original-publisher adaptation or
 assessment has been verified.
+An additional synthetic-source integration test now covers preview, assessment,
+separate user-entered recipe creation and source linking, and shopping preview,
+confirmation and replay. It verifies that preview does not mutate inventory or
+the shopping list. This is a manual sequence of existing API calls, not an
+automatic source import or a live publisher test.
 
 A separate direct HTTPS transport and a Wikibooks robots policy check are under
 development. They pin each connection to a validated public IP, check robots
