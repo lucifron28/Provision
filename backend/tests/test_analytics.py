@@ -1,7 +1,10 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
-def test_analytics_endpoints(client):
+def test_analytics_endpoints(client, monkeypatch):
+    # Pin the household calendar so the test also works across midnight and in UTC CI.
+    today = date(2026, 11, 2)
+    monkeypatch.setattr("app.api.v1.endpoints.analytics.household_today", lambda: today)
     # 1. Setup products and locations
     p1 = client.post(
         "/api/v1/products/",
@@ -14,8 +17,8 @@ def test_analytics_endpoints(client):
     loc = client.post("/api/v1/locations/", json={"name": "Pantry"}).json()
 
     # 2. Add batches
-    exp_soon = (date.today() + timedelta(days=3)).isoformat()
-    exp_later = (date.today() + timedelta(days=30)).isoformat()
+    exp_soon = (today + timedelta(days=3)).isoformat()
+    exp_later = (today + timedelta(days=30)).isoformat()
 
     # Batch 1: Tuna, 10 cans @ 40 each, expires in 30 days
     client.post(
