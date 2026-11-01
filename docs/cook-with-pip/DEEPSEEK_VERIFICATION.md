@@ -178,6 +178,12 @@ fetch authorization boundary. This transport is not wired into a public route,
 does not replace DeepSeek Fetch, and does not approve Wikibooks for reuse. A
 publisher review, attribution handling, rate limiting, and a permitted live
 fetch still need verification before it can be enabled.
+The internal Wikibooks fetch helper now wraps each robots and page request in a
+PostgreSQL-backed budget. Focused tests cover request serialization, retry
+cooldown, and a synthetic robots-to-page fetch. Migration `58bb690ad211`
+passed upgrade, downgrade, re-upgrade, and drift checks in a temporary database.
+This helper has no public route, and the source and attribution review and a
+permitted live fetch remain outstanding.
 The full backend suite subsequently passed in Docker with PostgreSQL: 747
 passed and six live tests skipped.
 
