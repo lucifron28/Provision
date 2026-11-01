@@ -71,7 +71,8 @@ def parse_wikibooks_recipe(content: bytes) -> tuple[list[str], list[str]]:
     parser.close()
     if parser.sections_seen != ["ingredients", "preparation"] or not parser.ingredients or not parser.preparation:
         raise ValueError("Recipe sections are missing")
-    if any(len(items) > 50 or any(len(item) > 500 for item in items)
+    if any(len(items) > 50 or any(len(item) > 500 or any(ord(char) < 32 or ord(char) == 127 for char in item)
+                                   for item in items)
            for items in (parser.ingredients, parser.preparation)):
         raise ValueError("Recipe sections exceed limits")
     return parser.ingredients, parser.preparation

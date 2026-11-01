@@ -25,3 +25,10 @@ def test_rejects_ambiguous_repeated_sections():
             b"<h2>Preparation</h2><ol><li>Cook.</li></ol>")
     with pytest.raises(ValueError):
         parse_wikibooks_recipe(page)
+
+
+def test_rejects_control_characters_in_source_text():
+    page = (b"<h2>Ingredients</h2><ul><li>salt\x00pepper</li></ul>"
+            b"<h2>Preparation</h2><ol><li>Cook.</li></ol>")
+    with pytest.raises(ValueError):
+        parse_wikibooks_recipe(page)
