@@ -28,6 +28,7 @@ def test_budget_is_durable_serial_and_counts_attempts(engine):
         with make_budget().request():
             pass
     assert limited.value.detail == "MEALDB_REQUEST_RATE_LIMITED"
+    assert int(limited.value.headers["Retry-After"]) >= 1
     with engine.begin() as connection:
         connection.execute(update(MealDBBudget).values(next_allowed=datetime.now(timezone.utc) - timedelta(seconds=1)))
     with make_budget().request():
@@ -51,6 +52,7 @@ def test_retry_after_persists_across_budget_instances(engine):
         with make_budget().request():
             pass
     assert limited.value.detail == "MEALDB_REQUEST_RATE_LIMITED"
+    assert int(limited.value.headers["Retry-After"]) > 110
 
 
 @pytest.mark.parametrize("error", [MealDBRateLimited(None), RuntimeError("network failure")])

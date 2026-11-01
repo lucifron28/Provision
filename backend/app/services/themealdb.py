@@ -27,6 +27,7 @@ class MealDBRateLimited(MealDBError):
     def __init__(self, retry_after: str | None):
         super().__init__("TheMealDB rate limited the request")
         self.retry_after = retry_after
+        self.retry_after_seconds: int | None = None
 
 
 class _PinnedTransport(httpx.BaseTransport):

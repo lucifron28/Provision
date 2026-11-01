@@ -53,7 +53,9 @@ All routes below require authorized household membership and use
 | GET | `/` | Read public registry status, not private review notes or license documents. |
 | POST | `/discovery-plan` | Produce an offline query plan; execute nothing and return no search results. |
 | POST | `/mealdb/discover` | Search a Filipino API listing and return review-required meal links. |
+| POST | `/mealdb/{meal_id}/preview` | Read a permitted source recipe and its content digest for review. |
 | POST | `/mealdb/{meal_id}/adapt` | Produce a review-only AI preview from a permitted TheMealDB recipe. |
+| POST | `/mealdb/{meal_id}/assess` | Assess exact source measures against household stock and food restrictions. |
 | GET | `/recipes/{id}/reference` | Read the household recipe's current reference or unlink marker. |
 | PUT | `/recipes/{id}/reference` | Attach an external link with recipe/reference revision checks. |
 | DELETE | `/recipes/{id}/reference?expected_revision=1` | Unlink and increment the reference revision. |
@@ -74,13 +76,43 @@ The adaptation route is disabled unless both `MEALDB_ENABLED` and
 and full-text approval for the original publisher. Its optional
 `allow_broader_web` boolean defaults to false. The response credits TheMealDB,
 links the original source, and labels the output `review_required`; ingredient
-measures remain source text and cannot authorize pantry or shopping changes.
+measures retain their source text. Explicit decimal amounts with `g`, `kg`,
+`ml`, `l`, or `count` and their supported aliases are parsed without conversion;
+other measures remain unknown. These values cannot authorize pantry or shopping
+changes.
 No original publishers are approved by default. Recipe text and AI steps remain
 untrusted and require user review, including allergen review.
 The backend rejects confirmed source-ingredient conflicts with household
 allergies or diet restrictions before calling DeepSeek. An unrecognized or
 ambiguous ingredient is not a safety clearance; the preview remains
 `review_required` even when no conflict is detected.
+
+Assessment requires the `content_digest` returned by source preview as
+`source_digest`, plus `confirmed_recipe_servings` and `requested_servings`; the
+former is a user-confirmed basis because TheMealDB does not provide a reliable
+servings field. Every source ingredient must have an exact supported measure or
+an explicit `confirmed_measures` entry containing its zero-based index, amount,
+and supported unit. A confirmation cannot replace an already exact source
+measure. Otherwise the endpoint returns `SOURCE_MEASURES_REQUIRE_REVIEW` with
+the missing indexes and does not fabricate a quantity. The response preserves
+the source text and reports user-confirmed measures separately. Assessment
+consumes an API request budget but does not change pantry or shopping records. Known
+conflicts remain blocked; all other source recipes remain `review_required`,
+even when stock is sufficient.
+If the source text, measures, notices, or an approved review revision changes
+after preview, assessment returns `SOURCE_RECIPE_CHANGED`. A revoked approval
+is rejected; either case requires a new review.
+
+For example, after reviewing an unknown first ingredient, an assessment body is:
+
+```json
+{
+  "source_digest": "<content_digest from preview>",
+  "confirmed_recipe_servings": "2",
+  "requested_servings": "1",
+  "confirmed_measures": [{"ingredient_index": 0, "amount": "10", "unit": "g"}]
+}
+```
 
 An offline plan accepts `query`, `include_reviewed_general` and
 `allow_broader_web`. Only currently approved Filipino hosts enter the priority

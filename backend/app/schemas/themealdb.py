@@ -1,11 +1,13 @@
 """Bounded, untrusted recipe text from an approved TheMealDB record."""
 
+from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import Field, StringConstraints
+from pydantic import Field, StrictBool, StringConstraints, field_validator, model_validator
 
-from app.schemas.ingredients import StrictSchema
+from app.schemas.ingredients import MAX_AMOUNT, StrictSchema
 from app.schemas.deepseek import DeepSeekTokenUsage
+from app.schemas.food_safety import FoodSafetyRead
 
 
 class MealDBDiscoveryItem(StrictSchema):
@@ -21,9 +23,15 @@ class MealDBDiscoveryRead(StrictSchema):
     items: list[MealDBDiscoveryItem] = Field(max_length=20)
 
 
+class ExactSourceMeasure(StrictSchema):
+    amount: Decimal = Field(gt=0, le=MAX_AMOUNT, max_digits=14, decimal_places=6)
+    unit: Literal["g", "kg", "ml", "l", "count"]
+
+
 class MealDBIngredientText(StrictSchema):
     name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=180)]
     source_measure: Annotated[str, StringConstraints(strip_whitespace=True, max_length=120)]
+    exact_measure: ExactSourceMeasure | None = None
 
 
 class MealDBRecipeText(StrictSchema):
@@ -40,7 +48,49 @@ class MealDBRecipeText(StrictSchema):
     api_source_revision: int = Field(strict=True, gt=0)
     original_source_revision: int = Field(strict=True, gt=0)
     source_url: Annotated[str, StringConstraints(min_length=1, max_length=2000)]
+    content_digest: Annotated[str, StringConstraints(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")]
     untrusted_content: Literal[True] = True
+
+
+class ConfirmedSourceMeasure(ExactSourceMeasure):
+    ingredient_index: int = Field(strict=True, ge=0, lt=20)
+
+
+class MealDBAssessmentInput(StrictSchema):
+    source_digest: Annotated[str, StringConstraints(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")]
+    confirmed_recipe_servings: Decimal = Field(gt=0, le=10000, max_digits=12, decimal_places=4)
+    requested_servings: Decimal = Field(gt=0, le=10000, max_digits=12, decimal_places=4)
+    allow_broader_web: StrictBool = False
+    confirmed_measures: list[ConfirmedSourceMeasure] = Field(default_factory=list, max_length=20)
+
+    @field_validator("confirmed_recipe_servings", "requested_servings")
+    @classmethod
+    def finite_servings(cls, value):
+        if not value.is_finite():
+            raise ValueError("Servings must be finite")
+        return value
+
+    @model_validator(mode="after")
+    def unique_confirmed_measures(self):
+        indexes = [item.ingredient_index for item in self.confirmed_measures]
+        if len(indexes) != len(set(indexes)):
+            raise ValueError("Confirmed measure indexes must be distinct")
+        return self
+
+
+class MealDBAssessmentRead(StrictSchema):
+    source: MealDBRecipeText
+    confirmed_recipe_servings: Decimal
+    requested_servings: Decimal
+    servings_basis: Literal["user_confirmed"] = "user_confirmed"
+    confirmed_measures: list[ConfirmedSourceMeasure] = Field(default_factory=list, max_length=20)
+    safety: FoodSafetyRead
+
+
+class MealDBSourcePreviewRead(StrictSchema):
+    source: MealDBRecipeText
+    safety: Literal["review_required"] = "review_required"
+    notice: str = "Review all ingredients, quantities, and allergens before cooking."
 
 
 class MealDBAdaptedSteps(StrictSchema):

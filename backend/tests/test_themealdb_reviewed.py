@@ -152,6 +152,7 @@ def test_rate_limit_blocks_following_lookup_across_budget_instances(db, auth_use
     with pytest.raises(HTTPException) as first:
         call(db, auth_user, auth_household, client, make_budget())
     assert first.value.detail == "MEALDB_RATE_LIMITED"
+    assert int(first.value.headers["Retry-After"]) >= 110
     with pytest.raises(HTTPException) as second:
         call(db, auth_user, auth_household, client, make_budget())
     assert second.value.detail == "MEALDB_REQUEST_RATE_LIMITED"

@@ -152,6 +152,12 @@ has been run against an approved original publisher.
 After the source-allergen guard was added, the full Docker PostgreSQL suite
 passed 805 tests with eight skips. Focused tests also verified that a private
 allergy note is not included in the model request.
+The source assessment path subsequently passed the full Docker PostgreSQL suite
+with 839 tests and eight skips. It uses exact supported source measures or
+explicit user confirmations, checks a source-content digest, and evaluates
+stock and food safety without changing pantry or shopping records. These tests
+used synthetic publisher approvals; no live original-publisher adaptation or
+assessment has been verified.
 
 A separate direct HTTPS transport and a Wikibooks robots policy check are under
 development. They pin each connection to a validated public IP, check robots

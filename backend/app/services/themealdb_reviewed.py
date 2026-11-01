@@ -31,6 +31,18 @@ class ReviewedMeal:
     untrusted_content: bool = True
 
 
+def ensure_meal_source_approvals(db: Session, recipe: MealDBRecipeText, allow_broader_web: bool) -> None:
+    api_url = f"https://www.themealdb.com/api/json/v1/1/lookup.php?i={recipe.meal_id}"
+    api = authorize_recipe_fetch(db, api_url, allow_broader_web=allow_broader_web)
+    original = authorize_recipe_fetch(db, recipe.source_url, allow_broader_web=allow_broader_web)
+    if (api.source_id != recipe.api_source_id or api.source_revision != recipe.api_source_revision
+            or "api_json" not in api.extraction_methods
+            or original.source_id != recipe.original_source_id
+            or original.source_revision != recipe.original_source_revision
+            or "full_text" not in original.extraction_methods):
+        raise HTTPException(403, "RECIPE_FETCH_NOT_AUTHORIZED")
+
+
 def discover_filipino_meals(
     db: Session, household_id: int, actor_id: int, query: str, max_results: int, *,
     client: MealDBClient, budget: MealDBBudget,
@@ -53,8 +65,9 @@ def discover_filipino_meals(
                 raise HTTPException(403, "RECIPE_FETCH_NOT_AUTHORIZED")
             _require_member_and_consent(db, household_id, actor_id)
             candidates = client.filipino_candidates(query, max_results)
-    except MealDBRateLimited:
-        raise HTTPException(429, "MEALDB_RATE_LIMITED") from None
+    except MealDBRateLimited as error:
+        headers = {"Retry-After": str(error.retry_after_seconds)} if error.retry_after_seconds is not None else None
+        raise HTTPException(429, "MEALDB_RATE_LIMITED", headers=headers) from None
     except MealDBError:
         raise HTTPException(502, "MEALDB_UNAVAILABLE") from None
     if not _same_fetch_authorization(db, api, allow_broader_web=False):
@@ -87,8 +100,9 @@ def lookup_reviewed_meal(
                 raise HTTPException(403, "RECIPE_FETCH_NOT_AUTHORIZED")
             _require_member_and_consent(db, household_id, actor_id)
             meal = client.lookup(meal_id)
-    except MealDBRateLimited:
-        raise HTTPException(429, "MEALDB_RATE_LIMITED") from None
+    except MealDBRateLimited as error:
+        headers = {"Retry-After": str(error.retry_after_seconds)} if error.retry_after_seconds is not None else None
+        raise HTTPException(429, "MEALDB_RATE_LIMITED", headers=headers) from None
     except MealDBError:
         raise HTTPException(502, "MEALDB_UNAVAILABLE") from None
     if not _same_fetch_authorization(db, api, allow_broader_web=allow_broader_web):

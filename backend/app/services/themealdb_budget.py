@@ -3,6 +3,7 @@
 from contextlib import contextmanager
 from datetime import timedelta, timezone
 from email.utils import parsedate_to_datetime
+from math import ceil
 
 from fastapi import HTTPException
 from sqlalchemy import func, select, text, update
@@ -48,7 +49,7 @@ class PostgresMealDBBudget:
             try:
                 acquired = connection.scalar(select(func.pg_try_advisory_lock(_LOCK)))
                 if not acquired:
-                    raise HTTPException(429, "MEALDB_REQUEST_BUSY")
+                    raise HTTPException(429, "MEALDB_REQUEST_BUSY", headers={"Retry-After": "2"})
                 connection.execute(text("SET LOCAL lock_timeout = '2s'"))
                 connection.execute(text("SET LOCAL statement_timeout = '2s'"))
                 now = connection.scalar(select(func.clock_timestamp()))
@@ -63,7 +64,8 @@ class PostgresMealDBBudget:
                 if row.used >= self.settings.MEALDB_REQUEST_BUDGET:
                     raise HTTPException(429, "MEALDB_REQUEST_BUDGET_EXHAUSTED")
                 if row.next_allowed > now:
-                    raise HTTPException(429, "MEALDB_REQUEST_RATE_LIMITED")
+                    delay = max(1, ceil((row.next_allowed - now).total_seconds()))
+                    raise HTTPException(429, "MEALDB_REQUEST_RATE_LIMITED", headers={"Retry-After": str(delay)})
                 connection.execute(update(MealDBBudget).where(MealDBBudget.id == 1).values(
                     used=row.used + 1,
                     next_allowed=now + timedelta(seconds=self.settings.MEALDB_MIN_INTERVAL_SECONDS),
@@ -76,10 +78,11 @@ class PostgresMealDBBudget:
                     now = connection.scalar(select(func.clock_timestamp()))
                     deadline = _retry_deadline(exc.retry_after, now)
                     if deadline is not None:
-                        connection.execute(update(MealDBBudget).where(MealDBBudget.id == 1).values(
+                        next_allowed = connection.execute(update(MealDBBudget).where(MealDBBudget.id == 1).values(
                             next_allowed=func.greatest(MealDBBudget.next_allowed, deadline), paused=False
-                        ))
+                        ).returning(MealDBBudget.next_allowed)).scalar_one()
                         connection.commit()
+                        exc.retry_after_seconds = max(1, ceil((next_allowed - now).total_seconds()))
                     raise
                 else:
                     connection.execute(update(MealDBBudget).where(MealDBBudget.id == 1).values(paused=False))

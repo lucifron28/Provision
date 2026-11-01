@@ -13,15 +13,16 @@ from app.models.recipe_source import RecipeSource
 from app.models.user import User
 from app.schemas.ingredients import StrictSchema
 from app.schemas.recipe_source import SourceRead, SourceReferenceInput, SourceReferenceRead
-from app.schemas.themealdb import MealDBAdaptationRead, MealDBDiscoveryRead
+from app.schemas.themealdb import MealDBAdaptationRead, MealDBAssessmentInput, MealDBAssessmentRead, MealDBDiscoveryRead, MealDBSourcePreviewRead
 from app.services.recipe_sources import discovery_plan, read_reference, remove_reference, source_read, write_reference
 from app.services.deepseek_discovery import _discovery_provider_error, discover_recipes
 from app.services.deepseek_provider import DeepSeekProvider, DeepSeekProviderError
 from app.services.pinned_page_transport import PinnedTLSTransport
 from app.services.themealdb import MealDBClient
 from app.services.themealdb_ai import adapt_reviewed_meal
+from app.services.themealdb_assessment import assess_reviewed_meal
 from app.services.themealdb_budget import PostgresMealDBBudget
-from app.services.themealdb_reviewed import discover_filipino_meals
+from app.services.themealdb_reviewed import discover_filipino_meals, lookup_reviewed_meal
 
 router = APIRouter()
 
@@ -101,6 +102,23 @@ def discover_meals(request: MealDBDiscoveryInput, response: Response,
         raise HTTPException(503, detail={"code": "budget_unavailable"}) from None
 
 
+@router.post("/mealdb/{meal_id}/preview", response_model=MealDBSourcePreviewRead)
+def preview_meal(meal_id: str, request: MealDBAdaptInput, response: Response,
+                 household_id: int = Depends(get_current_household_id),
+                 user: User = Depends(get_current_user), db: Session = Depends(get_db),
+                 client: MealDBClient = Depends(get_mealdb_client),
+                 budget: PostgresMealDBBudget = Depends(get_mealdb_budget)):
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        recipe = lookup_reviewed_meal(db, household_id, user.id, meal_id, client=client,
+                                      budget=budget, allow_broader_web=request.allow_broader_web)
+    except SQLAlchemyError:
+        raise HTTPException(503, detail={"code": "budget_unavailable"}) from None
+    if recipe is None:
+        raise HTTPException(404, "MEAL_NOT_FOUND")
+    return MealDBSourcePreviewRead(source=recipe)
+
+
 @router.post("/mealdb/{meal_id}/adapt", response_model=MealDBAdaptationRead)
 def adapt_meal(meal_id: str, request: MealDBAdaptInput, response: Response,
                household_id: int = Depends(get_current_household_id),
@@ -117,6 +135,19 @@ def adapt_meal(meal_id: str, request: MealDBAdaptInput, response: Response,
                                    allow_broader_web=request.allow_broader_web)
     except DeepSeekProviderError as exc:
         raise _discovery_provider_error(exc) from None
+    except SQLAlchemyError:
+        raise HTTPException(503, detail={"code": "budget_unavailable"}) from None
+
+
+@router.post("/mealdb/{meal_id}/assess", response_model=MealDBAssessmentRead)
+def assess_meal(meal_id: str, request: MealDBAssessmentInput, response: Response,
+                household_id: int = Depends(get_current_household_id),
+                user: User = Depends(get_current_user), db: Session = Depends(get_db),
+                client: MealDBClient = Depends(get_mealdb_client),
+                budget: PostgresMealDBBudget = Depends(get_mealdb_budget)):
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return assess_reviewed_meal(db, household_id, user.id, meal_id, request, client=client, budget=budget)
     except SQLAlchemyError:
         raise HTTPException(503, detail={"code": "budget_unavailable"}) from None
 
