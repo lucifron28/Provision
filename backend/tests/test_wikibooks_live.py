@@ -7,6 +7,7 @@ import pytest
 from app.services.pinned_page_transport import PinnedTLSTransport
 from app.services.wikimedia_budget import PostgresWikimediaBudget
 from app.services.wikimedia_transport import fetch_reviewed_wikibooks
+from app.services.wikibooks_recipe import parse_wikibooks_recipe
 from test_deepseek_discovery import _add_source, _grant
 
 
@@ -24,3 +25,5 @@ def test_live_wikibooks_licensed_recipe_fetch(db, auth_user, auth_household):
     )
     assert page.final_url.startswith("https://en.wikibooks.org/wiki/Cookbook:")
     assert page.content and page.untrusted_content
+    ingredients, preparation = parse_wikibooks_recipe(page.content)
+    assert ingredients and preparation

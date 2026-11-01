@@ -189,6 +189,8 @@ HTML. The test used an isolated household and source registry, did not persist
 recipe text or send it to DeepSeek, and did not enable a production route. The
 page footer links to CC BY-SA 4.0; the public integration must preserve source
 and license attribution and indicate any adaptation.
+An additional opt-in run also extracted the page's ingredient and preparation
+lists as untrusted text. It did not interpret measurements or update inventory.
 The full backend suite subsequently passed in Docker with PostgreSQL: 747
 passed and six live tests skipped.
 
