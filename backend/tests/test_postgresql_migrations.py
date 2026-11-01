@@ -10,7 +10,7 @@ from database_safety import create_owned_test_schema, drop_owned_test_schema
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
-EXPECTED_HEAD = "58bb690ad211"
+EXPECTED_HEAD = "7ac91de48236"
 
 
 @pytest.fixture
@@ -59,6 +59,24 @@ def _alembic_result(owned_schema, *arguments):
         text=True,
         check=False,
     )
+
+
+def test_publisher_budget_downgrade_refuses_to_discard_consumed_requests(migration_schema):
+    engine = create_engine(migration_schema.scoped_url, pool_pre_ping=True)
+    try:
+        _run_alembic(migration_schema, "upgrade", "head")
+        with engine.begin() as connection:
+            connection.execute(text(
+                "INSERT INTO publisher_budget (id, used, window_started) VALUES (1, 1, CURRENT_TIMESTAMP)"
+            ))
+        result = _alembic_result(migration_schema, "downgrade", "58bb690ad211")
+        assert result.returncode != 0
+        assert "Publisher request budget history would be lost" in result.stderr
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT used FROM publisher_budget WHERE id=1")) == 1
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == EXPECTED_HEAD
+    finally:
+        engine.dispose()
 
 
 def test_wikimedia_budget_downgrade_refuses_to_discard_consumed_requests(migration_schema):
@@ -155,6 +173,7 @@ def test_postgresql18_migrations_upgrade_head_and_downgrade_base(migration_schem
             "household_deepseek_budget",
             "themealdb_budget",
             "wikimedia_budget",
+            "publisher_budget",
             "food_preferences",
             "food_allergies",
             "ingredient_allergens",

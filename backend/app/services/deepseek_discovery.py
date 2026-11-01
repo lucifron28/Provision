@@ -535,6 +535,7 @@ def fetch_recipe_page(
     transport: PinnedPageTransport,
     allow_broader_web: bool = False,
     robots_policy: RecipeRobotsPolicy | None = None,
+    wordpress_api: bool = False,
 ) -> FetchedRecipePage:
     """Fetch only under explicit registry rights, validating every pinned hop.
 
@@ -546,8 +547,15 @@ def fetch_recipe_page(
     authorization = authorize_recipe_fetch(
         db, url, allow_broader_web=allow_broader_web
     )
-    if not set(authorization.extraction_methods) & {"json_ld", "full_text"}:
+    methods = {"api_json"} if wordpress_api else {"json_ld", "full_text"}
+    if not set(authorization.extraction_methods) & methods:
         raise HTTPException(status_code=403, detail="RECIPE_FETCH_METHOD_NOT_AUTHORIZED")
+    if wordpress_api:
+        policy = SourcePolicy.model_validate(db.get(RecipeSource, authorization.source_id).policy)
+        parts = urlsplit(authorization.canonical_url)
+        endpoint = f"https://{parts.netloc}{parts.path}"
+        if policy.wordpress_api_endpoint != endpoint:
+            raise HTTPException(status_code=403, detail="RECIPE_FETCH_NOT_AUTHORIZED")
     chain = [authorization.canonical_url]
     addresses_by_host: dict[str, Sequence[str]] = {}
 
@@ -620,6 +628,8 @@ def fetch_recipe_page(
             raise HTTPException(status_code=502, detail="RECIPE_FETCH_UNAVAILABLE")
 
         if response.status_code in {301, 302, 303, 307, 308}:
+            if wordpress_api:
+                raise HTTPException(status_code=403, detail="RECIPE_FETCH_DESTINATION_BLOCKED")
             location = _header(response.headers, "location")
             if not location or len(chain) >= MAX_REDIRECT_URLS:
                 raise HTTPException(status_code=502, detail="RECIPE_FETCH_REDIRECT_LIMIT")
@@ -633,12 +643,20 @@ def fetch_recipe_page(
             chain.append(next_url)
             continue
 
+        # Only an empty 404 can initiate a separately authorized API lookup.
+        # A response body may be an anti-bot challenge, not a missing page.
+        challenge_headers = {"cf-mitigated", "x-captcha", "x-datadome", "x-sucuri-block"}
+        challenge = any(isinstance(key, str) and key.casefold() in challenge_headers
+                        for key in response.headers)
+        if response.status_code == 404 and not response.body and not wordpress_api and not challenge:
+            raise HTTPException(status_code=404, detail="RECIPE_FETCH_NOT_FOUND")
         if response.status_code != 200:
             raise HTTPException(status_code=502, detail="RECIPE_FETCH_UNAVAILABLE")
         if len(response.body) > MAX_FETCH_BYTES:
             raise HTTPException(status_code=413, detail="RECIPE_FETCH_RESPONSE_TOO_LARGE")
         content_type = (_header(response.headers, "content-type") or "").split(";", 1)[0].strip().casefold()
-        if content_type not in {"text/html", "application/xhtml+xml"}:
+        supported_types = {"application/json"} if wordpress_api else {"text/html", "application/xhtml+xml"}
+        if content_type not in supported_types:
             raise HTTPException(status_code=415, detail="RECIPE_FETCH_CONTENT_TYPE_UNSUPPORTED")
         content_encoding = (_header(response.headers, "content-encoding") or "identity").strip().casefold()
         if content_encoding != "identity":

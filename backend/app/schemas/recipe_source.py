@@ -1,10 +1,11 @@
 from datetime import datetime, timezone
 from typing import Annotated, Literal
+from urllib.parse import urlsplit
 
 from pydantic import AwareDatetime, Field, StringConstraints, field_validator, model_validator
 
 from app.schemas.ingredients import StrictSchema
-from app.services.source_urls import normalize_host
+from app.services.source_urls import canonical_recipe_url, normalize_host
 
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 ReviewStatus = Literal["candidate", "approved", "suspended", "rejected"]
@@ -20,6 +21,7 @@ class SourcePolicy(StrictSchema):
     allowed_redirect_hosts: list[str] = Field(default_factory=list, max_length=20)
     access_mode: AccessMode = "search_link_only"
     extraction_methods: list[Literal["json_ld", "api_json", "full_text"]] = Field(default_factory=list, max_length=3)
+    wordpress_api_endpoint: str | None = None
     cuisine_tags: list[Text] = Field(default_factory=lambda: ["Filipino"], max_length=30)
     terms_reference: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)] | None = None
     terms_reviewed_at: AwareDatetime | None = None
@@ -40,6 +42,14 @@ class SourcePolicy(StrictSchema):
 
     @model_validator(mode="after")
     def approval_evidence(self):
+        if self.wordpress_api_endpoint is not None:
+            endpoint = canonical_recipe_url(self.wordpress_api_endpoint)
+            parts = urlsplit(endpoint)
+            if (endpoint != self.wordpress_api_endpoint or parts.query or parts.fragment
+                    or parts.path != "/wp-json/wp/v2/posts"
+                    or parts.hostname not in self.allowed_hosts
+                    or "api_json" not in self.extraction_methods):
+                raise ValueError("WordPress endpoint must be explicitly approved on an allowed host")
         if self.review_status != "approved" and self.enabled:
             raise ValueError("Only an approved source may be enabled")
         if self.access_mode in {"search_link_only", "metadata_only"} and self.extraction_methods:

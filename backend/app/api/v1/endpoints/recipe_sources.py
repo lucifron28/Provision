@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 import json
+import re
 from typing import Literal
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 from pydantic import Field, StrictBool
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -22,11 +24,9 @@ from app.services.recipe_sources import discovery_plan, read_reference, remove_r
 from app.services.deepseek_discovery import _discovery_provider_error, authorize_recipe_fetch, discover_recipes, fetch_recipe_page
 from app.services.deepseek_provider import DeepSeekProvider, DeepSeekProviderError
 from app.services.publisher_robots import publisher_robots_allowed
-from app.services.recipe_extractor import (
-    extract_recipe_from_html,
-    extract_recipe_from_wordpress_post,
-    extract_recipe_slug,
-)
+from app.services.recipe_extractor import extract_recipe_from_html, extract_recipe_from_wordpress_post, extract_recipe_slug
+from app.services.publisher_budget import BudgetedPublisherTransport, PublisherRequestBudget
+from app.services.source_urls import canonical_recipe_url
 from app.services.pinned_page_transport import PinnedTLSTransport
 from app.services.themealdb import MealDBClient
 from app.services.themealdb_ai import adapt_reviewed_meal
@@ -91,15 +91,35 @@ def get_publisher_transport():
     return PinnedTLSTransport(user_agent="ProvisionBot/1.0 (https://github.com/lucifron28/Provision)")
 
 
+def get_publisher_budget():
+    return PublisherRequestBudget()
+
+
+def _unique_json_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(value):
+    raise ValueError(f"Invalid JSON constant: {value}")
+
+
 @router.post("/preview", response_model=ExtractedRecipeRead)
 def preview_publisher_recipe(request: RecipePreviewRequest, response: Response,
                              household_id: int = Depends(get_current_household_id),
                              user: User = Depends(get_current_user), db: Session = Depends(get_db),
-                             transport: PinnedTLSTransport = Depends(get_publisher_transport)):
+                             transport: PinnedTLSTransport = Depends(get_publisher_transport),
+                             budget=Depends(get_publisher_budget)):
     response.headers["Cache-Control"] = "no-store"
     auth = authorize_recipe_fetch(db, request.url, allow_broader_web=request.allow_broader_web)
     source = db.get(RecipeSource, auth.source_id)
     tier = SourcePolicy.model_validate(source.policy).tier if source else "filipino_priority"
+    policy = SourcePolicy.model_validate(source.policy)
+    transport = BudgetedPublisherTransport(transport, budget)
 
     try:
         page = fetch_recipe_page(db, household_id, user.id, request.url, transport=transport,
@@ -107,31 +127,34 @@ def preview_publisher_recipe(request: RecipePreviewRequest, response: Response,
         return extract_recipe_from_html(page.content, source_url=page.final_url,
                                         publisher_name=auth.publisher_name, source_tier=tier)
     except HTTPException as exc:
-        # Fallback to publisher WordPress REST API if HTML fetch encounters WAF or transient gateway errors
-        slug = extract_recipe_slug(request.url)
-        host = urlsplit(request.url).hostname
-        if slug and host and exc.status_code in {403, 502, 504}:
-            try:
-                wp_url = f"https://{host}/wp-json/wp/v2/posts?slug={slug}&_embed=1"
-                addresses = tuple(transport.resolve(host))
-                wp_resp = transport.fetch_once_pinned(
-                    wp_url,
-                    connect_ip=addresses[0],
-                    timeout_seconds=8.0,
-                    max_bytes=1_000_000,
-                )
-                if wp_resp.status_code == 200:
-                    post_list = json.loads(wp_resp.body.decode("utf-8", errors="replace"))
-                    if post_list and isinstance(post_list, list):
-                        return extract_recipe_from_wordpress_post(
-                            post_list[0],
-                            source_url=request.url,
-                            publisher_name=auth.publisher_name,
-                            source_tier=tier,
-                        )
-            except Exception:
-                pass
-        raise exc
+        if exc.status_code != 404 or exc.detail != "RECIPE_FETCH_NOT_FOUND":
+            raise
+        endpoint = policy.wordpress_api_endpoint
+        slug = extract_recipe_slug(auth.canonical_url)
+        if (not endpoint or "api_json" not in auth.extraction_methods
+                or urlsplit(endpoint).hostname != urlsplit(auth.canonical_url).hostname
+                or not slug or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", slug)):
+            raise
+        api_url = endpoint + "?" + urlencode({"slug": slug, "_embed": "1"})
+        api_auth = authorize_recipe_fetch(db, api_url, allow_broader_web=request.allow_broader_web)
+        if api_auth.source_id != auth.source_id or api_auth.source_revision != auth.source_revision:
+            raise HTTPException(403, detail="RECIPE_FETCH_NOT_AUTHORIZED")
+        api_page = fetch_recipe_page(db, household_id, user.id, api_url, transport=transport,
+            allow_broader_web=request.allow_broader_web, robots_policy=publisher_robots_allowed,
+            wordpress_api=True)
+        try:
+            posts = json.loads(api_page.content.decode("utf-8", errors="strict"),
+                object_pairs_hook=_unique_json_object,
+                parse_constant=_reject_json_constant)
+            if (not isinstance(posts, list) or len(posts) != 1 or not isinstance(posts[0], dict)
+                    or posts[0].get("slug") != slug or posts[0].get("status") != "publish"
+                    or not isinstance(posts[0].get("link"), str)
+                    or canonical_recipe_url(posts[0]["link"]) != auth.canonical_url):
+                raise ValueError("WordPress post identity mismatch")
+            return extract_recipe_from_wordpress_post(posts[0], source_url=auth.canonical_url,
+                publisher_name=auth.publisher_name, source_tier=tier)
+        except (ValueError, TypeError, UnicodeError, RecursionError):
+            raise HTTPException(502, detail="INVALID_PUBLISHER_RECIPE") from None
     except ValueError as exc:
         raise HTTPException(status_code=502, detail="INVALID_PUBLISHER_RECIPE") from exc
 

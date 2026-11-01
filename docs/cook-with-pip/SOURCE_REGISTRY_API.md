@@ -203,3 +203,29 @@ The redirect validator checks reviewed hosts, hop limits and supplied DNS
 addresses. The pinned transport resolves and connects to a validated public
 address, verifies the TLS hostname, and checks each redirect. A passing URL
 policy test alone does not approve a publisher or its content.
+
+## Publisher preview request controls
+
+Publisher previews count every robots and content request against a shared
+PostgreSQL budget of 1,000 requests per 24-hour window. The budget
+fails closed if the database is unavailable. Migration `7ac91de48236` creates
+the budget table; downgrade refuses to discard recorded usage.
+
+An empty 404 response from a recipe page may trigger a WordPress lookup only
+when the current source policy explicitly specifies both `api_json` and the
+exact `wordpress_api_endpoint`. The endpoint must use an allowed host, the
+standard `/wp-json/wp/v2/posts` path, and the same host as the recipe. Existing
+source records are unchanged. A 403, robots denial, nonempty 404, timeout, or
+other fetch failure never triggers the lookup. The API request is separately
+subject to consent, authorization, robots, DNS validation, pinned TLS, budget,
+timeout and size checks; API redirects are rejected. The JSON response must
+contain exactly one published post whose slug and canonical link match the
+requested recipe. The endpoint returns a preview and does not write recipes,
+inventory, or shopping lists.
+
+Verification on 2026-11-02: the backend suite ran in a Python 3.13 Docker
+container against PostgreSQL 18 and recorded 912 passed, 12 skipped, and two
+dependency warnings. A separate PostgreSQL database passed Alembic upgrade,
+schema drift check, downgrade to base, re-upgrade, and a second drift check.
+The Windows run also recorded 912 passed and 12 skipped. The iOS XCTest job
+requires a Mac and is verified by the branch's GitHub Actions workflow.

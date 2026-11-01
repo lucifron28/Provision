@@ -1,3 +1,4 @@
+from app.models.publisher_budget import PublisherBudget
 from app.models.base import Base, TimestampMixin
 from app.models.product import Product, ProductSource
 from app.models.location import StorageLocation
@@ -49,6 +50,7 @@ __all__ = [
     "HouseholdDeepSeekBudget",
     "MealDBBudget",
     "WikimediaBudget",
+    "PublisherBudget",
     "FoodPreference",
     "FoodAllergy",
     "IngredientAllergen",
