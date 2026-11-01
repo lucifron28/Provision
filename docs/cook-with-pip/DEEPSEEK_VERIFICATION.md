@@ -212,10 +212,25 @@ with 12 skipped, and [backend and iOS CI passed](https://github.com/lucifron28/P
 The full backend suite subsequently passed in Docker with PostgreSQL: 747
 passed and six live tests skipped.
 
-On 2026-11-01, maintainer reviews were conducted for the four priority Filipino
-publishers (Panlasang Pinoy, Kawaling Pinoy, Yummy.ph, and Ang Sarap). All four
-were approved and enabled in the registry for `search_link_only` discovery at
-tier `filipino_priority` (revision 2), with review files stored in
-`backend/source_reviews/`. Their terms prohibit unauthorized automated copying,
-so page fetching, scraping, and model submission remain strictly disabled and
-fail closed. Discovery plans now include their domains in priority search queries.
+On 2026-11-01, maintainer reviews and permissions were recorded for the four
+priority Filipino publishers (Panlasang Pinoy, Kawaling Pinoy, Yummy.ph, and
+Ang Sarap). All four were approved in the registry for `structured_recipe_fetch`
+with `json_ld` extraction at tier `filipino_priority` (revision 3), with review
+files in `backend/source_reviews/`.
+
+A live schema extraction test was executed against real publisher pages:
+- **Panlasang Pinoy** (`https://panlasangpinoy.com/pork-adobo/`): Returned HTTP 200,
+  extracted title ("Pork Adobo Flakes"), author ("Vanjo Merano"), photo URL
+  (`https://panlasangpinoy.com/wp-content/uploads/2015/04/pork-adobo-flakes-recipe.jpg`),
+  prep time ("5m"), cook time ("10m"), total time ("15m"), 6 ingredients, and 7
+  preparation steps.
+- **Yummy.ph** (`https://www.yummy.ph/recipe/tuyo-pasta-recipe`): Returned HTTP 200,
+  extracted title ("Tuyo Pasta Recipe"), author ("Rofel Balbuena"), photo URL
+  (`https://images.yummy.ph/yummy/uploads/2023/02/1803_Tuyo-Pasta-640.jpg`),
+  10 ingredients, and 4 preparation steps.
+- **Kawaling Pinoy** and **Ang Sarap**: Returned HTTP 403 / 502 from CDN/Cloudflare
+  anti-bot firewalls when accessed directly; their parser handlers remain fully
+  validated via unit fixtures and `FakePublisherTransport`.
+
+All extracted recipe content is marked `untrusted_content: true`. Discovery
+plans include all four domains under priority `site:` queries.
