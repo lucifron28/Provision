@@ -153,12 +153,15 @@ for [commit `1ba6826`](https://github.com/lucifron28/Provision/actions/runs/4129
 The guarded direct transport remains internal and is not a DeepSeek Fetch
 replacement. Docker verification passed 747 backend tests with six skips; both
 backend and iOS CI [passed for `280901b`](https://github.com/lucifron28/Provision/actions/runs/41193164812).
-Live fetch, shared publisher rate limits, and an approved source remain open.
+The four priority Filipino publisher candidates (Panlasang Pinoy, Kawaling
+Pinoy, Yummy.ph, and Ang Sarap) were reviewed on 2026-11-01 and approved in the
+registry for `search_link_only` discovery (`filipino_priority`, revision 2).
+Automated page fetching and scraping remain restricted.
 
 - [x] Implement a reviewed `recipe_sources` registry with host allowlisting, source tier, ownership/publisher, cuisine tags, terms/robots review, permitted fetch/use mode, review date, and disable flag.
 - [x] Seed **candidates** Panlasang Pinoy, Kawaling Pinoy, Yummy.ph, and Ang Sarap (see source policy); do NOT label them licensed/verified for ingestion until individually reviewed.
 - [ ] Implement DeepSeek Search and Fetch as server-side adapters with configurable timeouts, limits, caching, dedup by canonical URL, SSRF/redirect protections and audit traces. Check live API docs during implementation.
-- [ ] Search **approved Filipino sources first** using `site:` constraints and Filipino query aliases. Expand to other approved/general web results **only** when the user enables broader search or priority sources lack sufficient relevant results.
+- [x] Search **approved Filipino sources first** using `site:` constraints and Filipino query aliases. Expand to other approved/general web results **only** when the user enables broader search or priority sources lack sufficient relevant results.
 - [ ] Rank after hard allergy/food-safety gates; prefer approved publisher, recipe-specific page, matched cuisine, ingredient suitability, accurate structured ingredient data, freshness, and user preferences; do not confuse source reputation with recipe safety.
 - [ ] Extract structured `schema.org/Recipe`/JSON-LD when permitted; use model extraction only as fallible fallback; validate typed quantities, yield, ingredients, dates, and source references.
 - [ ] Always display source publisher, canonical link, `verified source` vs `other website` state, and `AI adapted` when applicable; never present fabricated URLs or model-generated recipes as publisher originals.

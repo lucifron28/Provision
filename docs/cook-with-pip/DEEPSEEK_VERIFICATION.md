@@ -212,7 +212,10 @@ with 12 skipped, and [backend and iOS CI passed](https://github.com/lucifron28/P
 The full backend suite subsequently passed in Docker with PostgreSQL: 747
 passed and six live tests skipped.
 
-The initial Filipino publisher records remain candidates. Original publisher
-approval and permitted content reuse require review; the authentication check
-does not grant either. Integration, opt-in end-to-end fetching, and CI acceptance
-remain in progress.
+On 2026-11-01, maintainer reviews were conducted for the four priority Filipino
+publishers (Panlasang Pinoy, Kawaling Pinoy, Yummy.ph, and Ang Sarap). All four
+were approved and enabled in the registry for `search_link_only` discovery at
+tier `filipino_priority` (revision 2), with review files stored in
+`backend/source_reviews/`. Their terms prohibit unauthorized automated copying,
+so page fetching, scraping, and model submission remain strictly disabled and
+fail closed. Discovery plans now include their domains in priority search queries.

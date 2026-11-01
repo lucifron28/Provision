@@ -73,8 +73,9 @@ def _consent(db, user: User, household: Household, *, granted: bool = True) -> P
 
 
 def test_consent_defaults_false_grants_explicitly_and_revokes(
-    unauthed_client, db, auth_user, auth_household
+    unauthed_client, db, auth_user, auth_household, monkeypatch
 ):
+    monkeypatch.setattr("app.core.config.settings.DEEPSEEK_ENABLED", False)
     household = auth_household
     headers = _headers(auth_user)
 

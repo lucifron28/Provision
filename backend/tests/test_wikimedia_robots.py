@@ -123,6 +123,15 @@ def test_unavailable_robots_and_redirects_fail_closed(status):
         (b"User-agent: *\n", {"content-type": "text/plain", "content-encoding": "gzip"}),
         (b"User-agent: *\n", {"Content-Type": "text/plain", "content-type": "text/html"}),
     ],
+    ids=[
+        "empty",
+        "malformed-percent",
+        "invalid-utf8",
+        "oversized",
+        "wrong-content-type",
+        "gzip-encoding",
+        "duplicate-content-type",
+    ],
 )
 def test_invalid_or_oversized_policy_fails_closed(body, headers):
     with pytest.raises(RobotsPolicyError):

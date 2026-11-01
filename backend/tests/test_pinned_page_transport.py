@@ -361,6 +361,17 @@ def test_redirect_with_gzip_header_is_not_decoded_or_normalized(tls_server):
         (b"HTTP/1.1 200 OK\r\nX-Huge: " + b"a" * 32768 + b"\r\n\r\n", 10, PinnedResponseTooLarge),
         (b"HTTP/1.1 200 OK\r\n" + b"X: a\r\n" * 101 + b"\r\n", 10, PinnedResponseTooLarge),
     ],
+    ids=[
+        "content-length-too-large",
+        "chunked-too-large",
+        "short-body",
+        "duplicate-content-length",
+        "duplicate-retry-after",
+        "both-transfer-and-content-length",
+        "duplicate-location",
+        "huge-header",
+        "too-many-headers",
+    ],
 )
 def test_malformed_or_oversized_responses_fail_closed(tls_server, response, limit, error):
     tls_server(response)

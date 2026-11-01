@@ -5,9 +5,10 @@ recipe references. It does not search the web, fetch publisher pages, extract
 recipes, cache publisher prose or reuse images. Provider credentials do not
 automatically enable those operations.
 
-The initial migration adds Panlasang Pinoy, Kawaling Pinoy, Yummy.ph and Ang Sarap
-as disabled candidates. Their presence is not an approval, license or current
-website-access verification. No real publisher was approved by these tests.
+The initial migration added Panlasang Pinoy, Kawaling Pinoy, Yummy.ph and Ang Sarap
+as disabled candidates (revision 1). On 2026-11-01, maintainer reviews were
+completed and applied to the registry, approving all four for `search_link_only`
+discovery at tier `filipino_priority` (revision 2).
 
 ## Maintainer review
 
@@ -20,10 +21,14 @@ uv run python scripts/review_recipe_source.py source-review.json
 ```
 
 The reviewed educational TheMealDB API policy is in
-`backend/source_reviews/themealdb_educational.json`. Apply it with the same
-command from `backend/` using `source_reviews/themealdb_educational.json` as
-the argument. It has an expiry and must be reviewed again when it expires. It
-does not approve the publishers named by individual meal records.
+`backend/source_reviews/themealdb_educational.json`.
+The reviewed Filipino publisher policies are in:
+- `backend/source_reviews/panlasang_pinoy.json`
+- `backend/source_reviews/kawaling_pinoy.json`
+- `backend/source_reviews/yummy_ph.json`
+- `backend/source_reviews/ang_sarap.json`
+Apply any of them with `python scripts/review_recipe_source.py <path-to-json>`.
+They have audit expiries and must be reviewed again when they expire.
 
 The JSON document contains `canonical_host`, `publisher_name`, `reviewed_by`,
 `policy` and, for updates, `expected_revision`. The initial candidates have

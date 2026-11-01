@@ -1,6 +1,6 @@
 # Cook with Pip — Recipe Source Trust, Search and Content Policy
 
-Status: **POLICY PROPOSAL / PUBLISHER CANDIDATES NOT YET APPROVED FOR FETCH/REUSE** | Reviewed: 2026-10-29 | Owner: Provision maintainers
+Status: **FOUR FILIPINO PUBLISHERS APPROVED FOR LINK-ONLY DISCOVERY; FETCH/SCRAPING REMAINS RESTRICTED** | Reviewed: 2026-11-01 | Owner: Provision maintainers
 
 Parent roadmap: [ROADMAP.md](./ROADMAP.md). Technical implementation: [TECHNICAL_SPEC.md](./TECHNICAL_SPEC.md).
 
@@ -21,21 +21,29 @@ The **default search order**:
 
 The following are **confirmed existing publisher websites with Filipino recipe content**, not automatically approved for automated fetching, copying, image use, or embedding. Maintain a review record per host before enabling.
 
-| Candidate publisher | Canonical host | Reason to prioritize | Proposed tier / initial status |
+| Candidate / reviewed publisher | Canonical host | Reason to prioritize | Tier / review status |
 | --- | --- | --- | --- |
-| Panlasang Pinoy | https://panlasangpinoy.com/ | Extensive Philippine dish archive and chicken/pork/vegetable/fish categories | Filipino priority / **pending terms & access review** |
-| Kawaling Pinoy | https://www.kawalingpinoy.com/ | Filipino/Asian home cooking; categorized by meal, ingredient, method; publisher describes tested recipes | Filipino priority / **pending terms & access review** |
-| Yummy.ph | https://www.yummy.ph/ | Philippine recipe publication with ingredient and serving information | Filipino priority / **pending terms & access review** |
-| Ang Sarap | https://www.angsarap.net/ | Filipino dishes including regional and less-common recipes; owner-authored recipe archive | Filipino priority / **pending terms & access review** |
+| Panlasang Pinoy | https://panlasangpinoy.com/ | Extensive Philippine dish archive and chicken/pork/vegetable/fish categories | Filipino priority / **approved (`search_link_only`)** |
+| Kawaling Pinoy | https://www.kawalingpinoy.com/ | Filipino/Asian home cooking; categorized by meal, ingredient, method; publisher describes tested recipes | Filipino priority / **approved (`search_link_only`)** |
+| Yummy.ph | https://www.yummy.ph/ | Philippine recipe publication with ingredient and serving information | Filipino priority / **approved (`search_link_only`)** |
+| Ang Sarap | https://www.angsarap.net/ | Filipino dishes including regional and less-common recipes; owner-authored recipe archive | Filipino priority / **approved (`search_link_only`)** |
 
-Only use these domains in the `site:` default search after a review has enabled the source. Review redirects and aliases (`www` variants) on a per-site basis. Add/remove hosts through admin config/seed migration, not arbitrary prompt text. The display should name the actual publisher, not "AI recommended website".
-
-On 2026-10-31, the [Kawaling Pinoy terms](https://www.kawalingpinoy.com/privacy-policy/)
-were reviewed for the proposed fetch workflow. They request written consent for
-use of site content and restrict copying recipes and photos. No written consent
-has been supplied, so this source remains a disabled candidate. This review does
-not grant fetch, extraction, retention, or reuse rights.
-
+On 2026-11-01, the maintainer completed the access and terms governance review
+for all four priority Filipino publishers. Their respective publisher policies
+and copyright notices restrict automated copying, text reproduction, scraping,
+and photo reuse without written consent. Accordingly, all four publishers are
+approved exclusively for `search_link_only` access:
+- They are enabled in the registry at tier `filipino_priority` (revision 2) and
+  included in `discovery_plan` under priority `site:` queries.
+- DeepSeek web discovery tags verified hits from these domains as
+  `filipino_priority` and links out to the original publisher URL.
+- Household recipe links to these domains are accepted as valid references
+  with the label "Reference to reviewed Filipino publisher".
+- Automated page fetching, HTML extraction, and submission of recipe text to
+  AI models remain strictly disallowed and fail closed (`RECIPE_FETCH_NOT_AUTHORIZED`).
+- Audit reviews are persisted in `backend/source_reviews/` (`panlasang_pinoy.json`,
+  `kawaling_pinoy.json`, `yummy_ph.json`, `ang_sarap.json`) with an audit expiry
+  of 2027-05-01.
 ### Open-license source: reviewed Wikibooks recipes
 
 On 2026-10-31, a manual review located Filipino recipes on

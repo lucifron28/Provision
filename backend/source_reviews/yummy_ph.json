@@ -1,0 +1,26 @@
+{
+  "expected_revision": 1,
+  "canonical_host": "www.yummy.ph",
+  "publisher_name": "Yummy.ph",
+  "reviewed_by": "Provision source review",
+  "policy": {
+    "review_status": "approved",
+    "tier": "filipino_priority",
+    "enabled": true,
+    "allowed_hosts": [
+      "www.yummy.ph",
+      "yummy.ph"
+    ],
+    "allowed_redirect_hosts": [],
+    "access_mode": "search_link_only",
+    "extraction_methods": [],
+    "cuisine_tags": [
+      "Filipino"
+    ],
+    "terms_reference": "https://www.yummy.ph/terms-of-use",
+    "terms_reviewed_at": "2026-11-01T12:00:00Z",
+    "last_audited_at": "2026-11-01T12:00:00Z",
+    "review_expires_at": "2027-05-01T12:00:00Z",
+    "disabled_reason": null
+  }
+}
