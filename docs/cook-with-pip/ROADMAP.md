@@ -147,6 +147,9 @@ tests passed. These routes cover the reviewed adobo and sinigang pages;
 additional sources and iOS integration remain pending.
 The backend suite passed with 864 tests and 11 skipped. Backend and iOS
 CI passed for [commit `47cd1dd`](https://github.com/lucifron28/Provision/actions/runs/41273488074).
+After adding sinigang and binding its review to the source page, the Docker
+backend suite passed 870 tests with 12 skipped, and backend and iOS CI passed
+for [commit `1ba6826`](https://github.com/lucifron28/Provision/actions/runs/41297382926).
 The guarded direct transport remains internal and is not a DeepSeek Fetch
 replacement. Docker verification passed 747 backend tests with six skips; both
 backend and iOS CI [passed for `280901b`](https://github.com/lucifron28/Provision/actions/runs/41193164812).

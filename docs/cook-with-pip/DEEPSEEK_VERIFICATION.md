@@ -207,6 +207,8 @@ deterministic tests, but has not made a live DeepSeek request.
 The subsequent full Docker PostgreSQL suite passed 864 tests with 11 skipped.
 Backend and iOS CI also passed for
 [commit `47cd1dd`](https://github.com/lucifron28/Provision/actions/runs/41273488074).
+After the sinigang source review update, the full Docker suite passed 870 tests
+with 12 skipped, and [backend and iOS CI passed](https://github.com/lucifron28/Provision/actions/runs/41297382926).
 The full backend suite subsequently passed in Docker with PostgreSQL: 747
 passed and six live tests skipped.
 
