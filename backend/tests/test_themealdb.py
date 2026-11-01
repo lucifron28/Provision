@@ -67,6 +67,29 @@ def test_lookup_allows_no_results():
     client.close()
 
 
+def test_filipino_discovery_filters_locally_and_returns_only_safe_metadata():
+    transport = FakeTransport(body=json.dumps({"meals": [
+        {"idMeal": "1", "strMeal": "Chicken Adobo", "strInstructions": "untrusted secret"},
+        {"idMeal": "1", "strMeal": "Chicken Adobo"},
+        {"idMeal": "2", "strMeal": "Beef Mechado"},
+    ]}).encode())
+    client = MealDBClient(transport)
+    try:
+        result = client.filipino_candidates("adobo", 10)
+        assert result == [{"meal_id": "1", "title": "Chicken Adobo", "provider_url": "https://www.themealdb.com/meal/1"}]
+        assert transport.requests[0][0] == "https://www.themealdb.com/api/json/v1/1/filter.php?a=Filipino"
+        assert "adobo" not in transport.requests[0][0]
+    finally:
+        client.close()
+
+
+def test_filipino_discovery_rejects_invalid_listing():
+    client = MealDBClient(FakeTransport(body=b'{"meals":[{"idMeal":"../1","strMeal":"Soup"}]}'))
+    with pytest.raises(MealDBError):
+        client.filipino_candidates("soup", 10)
+    client.close()
+
+
 def test_lookup_exposes_retry_after_for_shared_budget():
     class RateLimitedTransport(FakeTransport):
         def fetch_once_pinned(self, url, **kwargs):

@@ -132,6 +132,9 @@ metadata-only broader-web search probe succeeded; see [DeepSeek verification](DE
 The backend now has a consent-gated search route, but live page fetching remains
 blocked because the provider does not expose redirect and destination evidence.
 No registry flag authorizes unreviewed extraction or image reuse.
+TheMealDB's educational API is separately reviewed for structured JSON. The
+disabled-by-default adaptation route also requires approval for each record's
+original publisher; no original Filipino publisher is approved by default.
 The guarded direct transport remains internal and is not a DeepSeek Fetch
 replacement. Docker verification passed 747 backend tests with six skips; both
 backend and iOS CI [passed for `280901b`](https://github.com/lucifron28/Provision/actions/runs/41193164812).

@@ -63,8 +63,10 @@ For example, the API's Filipino eggplant adobo record identifies an external
 source and does not provide a Creative Commons confirmation. The source URL
 alone is not evidence that the underlying recipe may be copied or sent to a
 model. Preserve attribution and notices, and review rights per record before
-reusing third-party text or images. This review does not approve the source for
-recipe-text extraction or model submission.
+reusing third-party text or images. The educational API review is recorded in
+`backend/source_reviews/themealdb_educational.json` and was applied to the local
+registry. It approves only the official API as a source of structured JSON; it
+does not approve any third-party publisher or its text for model submission.
 Three more Filipino lookup records checked during this review pointed to
 Panlasang Pinoy or Kawaling Pinoy and had no Creative Commons confirmation.
 TheMealDB's API availability does not override those publishers' restrictions.

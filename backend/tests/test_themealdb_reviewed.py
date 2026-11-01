@@ -3,7 +3,7 @@ from contextlib import contextmanager
 import pytest
 from fastapi import HTTPException
 
-from app.services.themealdb_reviewed import lookup_reviewed_meal
+from app.services.themealdb_reviewed import discover_filipino_meals, lookup_reviewed_meal
 from app.services.themealdb import MealDBRateLimited
 from test_deepseek_discovery import _add_source, _grant
 from test_themealdb_budget import make_budget
@@ -31,6 +31,12 @@ class Client:
             self.callback()
         if isinstance(self.meal, Exception):
             raise self.meal
+        return self.meal
+
+    def filipino_candidates(self, query, max_results):
+        self.calls += 1
+        if self.callback:
+            self.callback()
         return self.meal
 
 
@@ -74,10 +80,24 @@ def test_requires_original_source_permission(db, auth_user, auth_household):
 def test_returns_untrusted_record_only_when_both_sources_approved(db, auth_user, auth_household):
     _grant(db, auth_user, auth_household)
     api, origin = add_api_source(db), add_origin(db)
-    client = Client({"idMeal": "123", "strSource": "https://recipes.publisher.example.com/adobo"})
+    client = Client({"idMeal": "123", "strMeal": "Adobo", "strIngredient1": "Rice",
+                     "strMeasure1": "to taste", "strInstructions": "Cook the rice.",
+                     "strSource": "https://recipes.publisher.example.com/adobo"})
     result = call(db, auth_user, auth_household, client, Budget())
     assert result.untrusted_content is True
     assert (result.api_source_id, result.original_source_id) == (api.id, origin.id)
+    assert (result.api_source_revision, result.original_source_revision) == (api.revision, origin.revision)
+    assert result.ingredients[0].source_measure == "to taste"
+
+
+def test_approved_sources_do_not_allow_malformed_recipe(db, auth_user, auth_household):
+    _grant(db, auth_user, auth_household)
+    add_api_source(db)
+    add_origin(db)
+    client = Client({"idMeal": "123", "strSource": "https://recipes.publisher.example.com/adobo"})
+    with pytest.raises(HTTPException) as error:
+        call(db, auth_user, auth_household, client, Budget())
+    assert error.value.detail == "INVALID_MEALDB_RECIPE"
 
 
 def test_api_revocation_during_fetch_discards_result(db, auth_user, auth_household):
@@ -90,6 +110,22 @@ def test_api_revocation_during_fetch_discards_result(db, auth_user, auth_househo
     client = Client({"idMeal": "123", "strSource": "https://recipes.publisher.example.com/adobo"}, revoke)
     with pytest.raises(HTTPException) as error:
         call(db, auth_user, auth_household, client, Budget())
+    assert error.value.detail == "RECIPE_FETCH_NOT_AUTHORIZED"
+
+
+def test_discovery_returns_unverified_links_and_rechecks_api_approval(db, auth_user, auth_household):
+    _grant(db, auth_user, auth_household)
+    source = add_api_source(db)
+    client = Client([{"meal_id": "123", "title": "Adobo", "provider_url": "https://www.themealdb.com/meal/123"}])
+    result = discover_filipino_meals(db, auth_household.id, auth_user.id, "adobo", 10, client=client, budget=Budget())
+    assert result.items[0].original_source == "not_yet_reviewed"
+    assert result.items[0].safety == "review_required"
+    def revoke():
+        source.policy = {**source.policy, "enabled": False}
+        db.flush()
+    client.callback = revoke
+    with pytest.raises(HTTPException) as error:
+        discover_filipino_meals(db, auth_household.id, auth_user.id, "adobo", 10, client=client, budget=Budget())
     assert error.value.detail == "RECIPE_FETCH_NOT_AUTHORIZED"
 
 

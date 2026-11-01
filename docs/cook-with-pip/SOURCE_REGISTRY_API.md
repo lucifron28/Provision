@@ -19,6 +19,12 @@ cd backend
 uv run python scripts/review_recipe_source.py source-review.json
 ```
 
+The reviewed educational TheMealDB API policy is in
+`backend/source_reviews/themealdb_educational.json`. Apply it with the same
+command from `backend/` using `source_reviews/themealdb_educational.json` as
+the argument. It has an expiry and must be reviewed again when it expires. It
+does not approve the publishers named by individual meal records.
+
 The JSON document contains `canonical_host`, `publisher_name`, `reviewed_by`,
 `policy` and, for updates, `expected_revision`. The initial candidates have
 revision 1. The policy supports candidate, approved, suspended and rejected
@@ -46,13 +52,31 @@ All routes below require authorized household membership and use
 | --- | --- | --- |
 | GET | `/` | Read public registry status, not private review notes or license documents. |
 | POST | `/discovery-plan` | Produce an offline query plan; execute nothing and return no search results. |
+| POST | `/mealdb/discover` | Search a Filipino API listing and return review-required meal links. |
+| POST | `/mealdb/{meal_id}/adapt` | Produce a review-only AI preview from a permitted TheMealDB recipe. |
 | GET | `/recipes/{id}/reference` | Read the household recipe's current reference or unlink marker. |
 | PUT | `/recipes/{id}/reference` | Attach an external link with recipe/reference revision checks. |
 | DELETE | `/recipes/{id}/reference?expected_revision=1` | Unlink and increment the reference revision. |
 
 Use `currently_approved`, not just the stored review-state string, when displaying
 an approval badge. A previously approved record may have expired or been disabled.
-Every response reports live fetching as disabled.
+The registry's `live_fetch_enabled` field refers to publisher webpage
+ingestion, which remains disabled. It does not describe the API adaptation
+route below.
+
+The discovery route requires `MEALDB_ENABLED`, current household consent, and
+an approved API source. It retrieves the Filipino listing and filters the entered
+query locally; it sends no query text to TheMealDB. Results have not had their
+original publishers or allergens reviewed.
+
+The adaptation route is disabled unless both `MEALDB_ENABLED` and
+`DEEPSEEK_ENABLED` are set. It requires current household consent, API approval,
+and full-text approval for the original publisher. Its optional
+`allow_broader_web` boolean defaults to false. The response credits TheMealDB,
+links the original source, and labels the output `review_required`; ingredient
+measures remain source text and cannot authorize pantry or shopping changes.
+No original publishers are approved by default. Recipe text and AI steps remain
+untrusted and require user review, including allergen review.
 
 An offline plan accepts `query`, `include_reviewed_general` and
 `allow_broader_web`. Only currently approved Filipino hosts enter the priority

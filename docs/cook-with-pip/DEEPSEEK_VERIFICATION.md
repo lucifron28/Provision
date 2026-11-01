@@ -88,11 +88,12 @@ PostgreSQL database.
 After the consent change, the full Docker PostgreSQL suite passed with 630
 tests and five skips. Focused privacy and generation tests also passed.
 
-The consent API now exposes a notice for submitted dish and search text and
-requires policy version `2026-10-31`. Grants made under the earlier notice do
-not authorize provider requests. All active household members must grant the
-new version; the iOS consent screen still needs to present that notice and
-submit the current version.
+The consent API exposes a notice for submitted dish and search text and for
+selected approved recipe content sent to DeepSeek. It requires policy version
+`2026-10-31-source`; earlier grants, including `2026-10-31`, do not authorize
+provider requests. All active household members must grant the new version;
+the iOS consent screen still needs to present that notice and submit the current
+version.
 
 A separate seeded-household Docker test passed through Cook Now, Almost There,
 mocked search of a synthetic approved publisher, and shopping preview and
@@ -120,8 +121,7 @@ transport's JSON accept header was added, its focused tests and the new client
 tests passed with 65 tests and one live-test skip.
 The source policy now distinguishes `api_json` from webpage extraction. An
 internal reviewed lookup checks current household consent, API approval, and
-permission for the original publisher before returning untrusted content. It
-requires a caller-supplied budget; no public route is implemented yet. The
+permission for the original publisher before returning untrusted content. The
 PostgreSQL budget serializes requests across workers, retains a lifetime count,
 and honors valid `Retry-After` values. A failed or interrupted request, or an
 unusable retry value, leaves the budget paused for operator review; it does not
@@ -131,8 +131,21 @@ skips, including the opt-in live checks.
 After the durable TheMealDB limiter was added, the full Docker PostgreSQL suite
 passed 776 tests with seven skips. An isolated database passed upgrade,
 downgrade, re-upgrade, and Alembic drift checks. The local application database
-was upgraded to revision `f56c9a214e0b`; the limiter is still not connected to a
-public recipe endpoint.
+was upgraded to revision `f56c9a214e0b`. The disabled-by-default adaptation
+route uses this limiter and the existing DeepSeek request budget. It returns
+source measures as text and AI steps as a review-only preview, with no inventory
+or shopping mutation. Source restrictions and actual household consent still
+apply; no live end-to-end recipe adaptation has yet been verified.
+On 2026-11-01 Asia/Shanghai, a separate opt-in Docker smoke test made one
+official Filipino-listing request through the reviewed source and shared
+budget. Filtering locally for `adobo` returned Eggplant Adobo. This result is
+only a link candidate; its original publisher and allergen safety were not
+approved by that test. A second separately opted-in request through the actual
+discovery endpoint returned the same candidate for an isolated test household.
+Neither test called DeepSeek or copied recipe text.
+The full Docker PostgreSQL suite then passed 798 tests with eight skips. The
+new discovery and adaptation routes are disabled by default. No live adaptation
+has been run against an approved original publisher.
 
 A separate direct HTTPS transport and a Wikibooks robots policy check are under
 development. They pin each connection to a validated public IP, check robots
@@ -145,7 +158,7 @@ fetch still need verification before it can be enabled.
 The full backend suite subsequently passed in Docker with PostgreSQL: 747
 passed and six live tests skipped.
 
-The initial publisher records remain candidates. Publisher approval and
-permitted fetching require maintainer review; the authentication check does not
-grant either. Integration, opt-in generation/search/fetch smoke tests, and CI
-acceptance remain in progress.
+The initial Filipino publisher records remain candidates. Original publisher
+approval and permitted content reuse require review; the authentication check
+does not grant either. Integration, opt-in end-to-end fetching, and CI acceptance
+remain in progress.
