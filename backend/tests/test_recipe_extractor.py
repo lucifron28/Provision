@@ -1,6 +1,10 @@
 import pytest
 
-from app.services.recipe_extractor import extract_recipe_from_html
+from app.services.recipe_extractor import (
+    extract_recipe_from_html,
+    extract_recipe_from_wordpress_post,
+    extract_recipe_slug,
+)
 
 
 SAMPLE_PANLASANG_HTML = """
@@ -252,3 +256,96 @@ def test_extract_raises_value_error_on_missing_recipe():
             source_url="https://panlasangpinoy.com/about/",
             publisher_name="Panlasang Pinoy",
         )
+
+
+def test_extract_recipe_slug():
+    assert extract_recipe_slug("https://www.kawalingpinoy.com/dinakdakan/") == "dinakdakan"
+    assert extract_recipe_slug("https://www.angsarap.net/2021/04/23/pork-adobo/") == "pork-adobo"
+    assert extract_recipe_slug("https://panlasangpinoy.com/pork-adobo") == "pork-adobo"
+    assert extract_recipe_slug("https://panlasangpinoy.com/") is None
+
+
+def test_extract_recipe_from_wordpress_post_with_wprm():
+    post_data = {
+        "title": {"rendered": "Authentic Dinakdakan"},
+        "excerpt": {"rendered": "<p>Ilocano pork delicacy</p>"},
+        "_embedded": {
+            "wp:featuredmedia": [
+                {"source_url": "https://www.kawalingpinoy.com/uploads/dinakdakan.jpg"}
+            ]
+        },
+        "content": {
+            "rendered": """
+            <div class="wprm-recipe-container">
+              <ul class="wprm-recipe-ingredients">
+                <li class="wprm-recipe-ingredient">2 pounds pork face</li>
+                <li class="wprm-recipe-ingredient">2 bay leaves</li>
+                <li class="wprm-recipe-ingredient">1 tbsp salt</li>
+              </ul>
+              <ul class="wprm-recipe-instructions">
+                <li class="wprm-recipe-instruction">Boil pork in pot until tender.</li>
+                <li class="wprm-recipe-instruction">Grill pork over hot coals until charred.</li>
+              </ul>
+            </div>
+            """
+        },
+    }
+
+    recipe = extract_recipe_from_wordpress_post(
+        post_data,
+        source_url="https://www.kawalingpinoy.com/dinakdakan/",
+        publisher_name="Kawaling Pinoy",
+        source_tier="filipino_priority",
+    )
+
+    assert recipe.title == "Authentic Dinakdakan"
+    assert recipe.image_url == "https://www.kawalingpinoy.com/uploads/dinakdakan.jpg"
+    assert len(recipe.ingredients) == 3
+    assert recipe.ingredients[0] == "2 pounds pork face"
+    assert len(recipe.instructions) == 2
+    assert recipe.instructions[0] == "Boil pork in pot until tender."
+    assert recipe.untrusted_content is True
+
+
+def test_extract_recipe_from_wordpress_post_with_tasty():
+    post_data = {
+        "title": {"rendered": "Chicken Tinola Recipe"},
+        "_embedded": {
+            "wp:featuredmedia": [
+                {"source_url": "https://www.angsarap.net/uploads/tinola.jpg"}
+            ]
+        },
+        "content": {
+            "rendered": """
+            <div class="tasty-recipes">
+              <div class="tasty-recipes-ingredients-body">
+                <ul>
+                  <li>1 kg chicken thighs</li>
+                  <li>1 liter chicken stock</li>
+                  <li>1 green papaya</li>
+                </ul>
+              </div>
+              <div class="tasty-recipes-instructions-body">
+                <ol>
+                  <li>Saute garlic, onions and ginger.</li>
+                  <li>Add chicken and brown all sides.</li>
+                  <li>Pour in stock and simmer until cooked.</li>
+                </ol>
+              </div>
+            </div>
+            """
+        },
+    }
+
+    recipe = extract_recipe_from_wordpress_post(
+        post_data,
+        source_url="https://www.angsarap.net/chicken-tinola/",
+        publisher_name="Ang Sarap",
+        source_tier="filipino_priority",
+    )
+
+    assert recipe.title == "Chicken Tinola Recipe"
+    assert recipe.image_url == "https://www.angsarap.net/uploads/tinola.jpg"
+    assert len(recipe.ingredients) == 3
+    assert len(recipe.instructions) == 3
+    assert recipe.ingredients[0] == "1 kg chicken thighs"

@@ -155,3 +155,87 @@ def test_preview_publisher_recipe_fails_when_robots_denies(
         assert res.json()["detail"] == "RECIPE_FETCH_ROBOTS_DENIED"
     finally:
         fastapi_app.dependency_overrides.pop(get_publisher_transport, None)
+
+
+@pytest.fixture
+def structured_kawaling_source(db):
+    filepath = REVIEWS_DIR / "kawaling_pinoy.json"
+    review = SourceReviewInput.model_validate_json(filepath.read_text(encoding="utf-8"))
+    source = db.query(RecipeSource).filter(RecipeSource.canonical_host == review.canonical_host).first()
+    review_dict = review.model_dump(mode="json")
+    review_dict["expected_revision"] = source.revision if source else None
+    review = SourceReviewInput.model_validate(review_dict)
+    return write_source_review(db, review)
+
+
+def test_preview_publisher_recipe_falls_back_to_wordpress_rest_api_on_waf_block(
+    client, db, auth_user, auth_household, structured_kawaling_source
+):
+    _grant(db, auth_user, auth_household)
+
+    # 1. robots.txt
+    robots_res = PageFetchResponse(
+        status_code=200,
+        headers={"content-type": "text/plain", "content-encoding": "identity"},
+        body=b"User-agent: *\nAllow: /\n",
+    )
+    # 2. HTML fetch blocked by WAF (403 Forbidden)
+    waf_blocked = PageFetchResponse(
+        status_code=403,
+        headers={"content-type": "text/html", "content-encoding": "identity"},
+        body=b"<html><head><title>Just a moment...</title></head><body>Cloudflare challenge</body></html>",
+    )
+    # 3. WordPress REST API response
+    import json
+    wp_post_json = json.dumps([
+        {
+            "title": {"rendered": "Authentic Dinakdakan"},
+            "_embedded": {
+                "wp:featuredmedia": [
+                    {"source_url": "https://www.kawalingpinoy.com/uploads/dinakdakan.jpg"}
+                ]
+            },
+            "content": {
+                "rendered": """
+                <div class="wprm-recipe-container">
+                  <ul class="wprm-recipe-ingredients">
+                    <li class="wprm-recipe-ingredient">2 pounds pork face</li>
+                    <li class="wprm-recipe-ingredient">2 bay leaves</li>
+                    <li class="wprm-recipe-ingredient">1 tbsp salt</li>
+                  </ul>
+                  <ul class="wprm-recipe-instructions">
+                    <li class="wprm-recipe-instruction">Boil pork in pot until tender.</li>
+                    <li class="wprm-recipe-instruction">Grill pork over hot coals until charred.</li>
+                  </ul>
+                </div>
+                """
+            },
+        }
+    ]).encode("utf-8")
+
+    wp_res = PageFetchResponse(
+        status_code=200,
+        headers={"content-type": "application/json", "content-encoding": "identity"},
+        body=wp_post_json,
+    )
+
+    transport = FakePublisherTransport([robots_res, waf_blocked, wp_res])
+    fastapi_app.dependency_overrides[get_publisher_transport] = lambda: transport
+
+    try:
+        res = client.post(
+            "/api/v1/recipe-sources/preview",
+            json={"url": "https://www.kawalingpinoy.com/dinakdakan/"},
+        )
+        assert res.status_code == 200
+        data = res.json()
+
+        assert data["title"] == "Authentic Dinakdakan"
+        assert data["publisher_name"] == "Kawaling Pinoy"
+        assert data["image_url"] == "https://www.kawalingpinoy.com/uploads/dinakdakan.jpg"
+        assert len(data["ingredients"]) == 3
+        assert data["ingredients"][0] == "2 pounds pork face"
+        assert len(data["instructions"]) == 2
+        assert data["untrusted_content"] is True
+    finally:
+        fastapi_app.dependency_overrides.pop(get_publisher_transport, None)

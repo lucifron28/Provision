@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+import json
 from typing import Literal
+from urllib.parse import urlsplit
 from pydantic import Field, StrictBool
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -21,7 +22,11 @@ from app.services.recipe_sources import discovery_plan, read_reference, remove_r
 from app.services.deepseek_discovery import _discovery_provider_error, authorize_recipe_fetch, discover_recipes, fetch_recipe_page
 from app.services.deepseek_provider import DeepSeekProvider, DeepSeekProviderError
 from app.services.publisher_robots import publisher_robots_allowed
-from app.services.recipe_extractor import extract_recipe_from_html
+from app.services.recipe_extractor import (
+    extract_recipe_from_html,
+    extract_recipe_from_wordpress_post,
+    extract_recipe_slug,
+)
 from app.services.pinned_page_transport import PinnedTLSTransport
 from app.services.themealdb import MealDBClient
 from app.services.themealdb_ai import adapt_reviewed_meal
@@ -93,16 +98,42 @@ def preview_publisher_recipe(request: RecipePreviewRequest, response: Response,
                              transport: PinnedTLSTransport = Depends(get_publisher_transport)):
     response.headers["Cache-Control"] = "no-store"
     auth = authorize_recipe_fetch(db, request.url, allow_broader_web=request.allow_broader_web)
-    page = fetch_recipe_page(db, household_id, user.id, request.url, transport=transport,
-                             allow_broader_web=request.allow_broader_web, robots_policy=publisher_robots_allowed)
+    source = db.get(RecipeSource, auth.source_id)
+    tier = SourcePolicy.model_validate(source.policy).tier if source else "filipino_priority"
+
     try:
-        source = db.get(RecipeSource, auth.source_id)
-        tier = SourcePolicy.model_validate(source.policy).tier if source else "filipino_priority"
+        page = fetch_recipe_page(db, household_id, user.id, request.url, transport=transport,
+                                 allow_broader_web=request.allow_broader_web, robots_policy=publisher_robots_allowed)
         return extract_recipe_from_html(page.content, source_url=page.final_url,
                                         publisher_name=auth.publisher_name, source_tier=tier)
+    except HTTPException as exc:
+        # Fallback to publisher WordPress REST API if HTML fetch encounters WAF or transient gateway errors
+        slug = extract_recipe_slug(request.url)
+        host = urlsplit(request.url).hostname
+        if slug and host and exc.status_code in {403, 502, 504}:
+            try:
+                wp_url = f"https://{host}/wp-json/wp/v2/posts?slug={slug}&_embed=1"
+                addresses = tuple(transport.resolve(host))
+                wp_resp = transport.fetch_once_pinned(
+                    wp_url,
+                    connect_ip=addresses[0],
+                    timeout_seconds=8.0,
+                    max_bytes=1_000_000,
+                )
+                if wp_resp.status_code == 200:
+                    post_list = json.loads(wp_resp.body.decode("utf-8", errors="replace"))
+                    if post_list and isinstance(post_list, list):
+                        return extract_recipe_from_wordpress_post(
+                            post_list[0],
+                            source_url=request.url,
+                            publisher_name=auth.publisher_name,
+                            source_tier=tier,
+                        )
+            except Exception:
+                pass
+        raise exc
     except ValueError as exc:
         raise HTTPException(status_code=502, detail="INVALID_PUBLISHER_RECIPE") from exc
-
 
 
 @router.get("/wikibooks", response_model=list[WikibooksCandidate])

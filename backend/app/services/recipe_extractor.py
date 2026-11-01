@@ -161,6 +161,157 @@ def _extract_opengraph(html_text: str) -> dict[str, str]:
         if prop not in og:
             og[prop] = content
     return og
+def extract_recipe_slug(url: str) -> str | None:
+    """Extract post slug from public recipe URL."""
+    path = urlsplit(url).path.strip("/")
+    if not path:
+        return None
+    segments = [s for s in path.split("/") if s]
+    return segments[-1] if segments else None
+
+
+def _extract_recipe_card_html(html_text: str) -> tuple[list[str], list[str]]:
+    """Extract ingredients and instructions from standard WordPress recipe card plugins.
+
+    Supports WP Recipe Maker, Tasty Recipes, and Mediavine Create.
+    """
+    ingredients: list[str] = []
+    instructions: list[str] = []
+
+    # 1. WP Recipe Maker
+    wprm_ings = re.findall(
+        r'<li[^>]*class=[\'"][^\'"]*wprm-recipe-ingredient[^\'"]*[\'"][^>]*>(.*?)</li>',
+        html_text,
+        re.DOTALL | re.IGNORECASE,
+    )
+    wprm_steps = re.findall(
+        r'<li[^>]*class=[\'"][^\'"]*wprm-recipe-instruction[^\'"]*[\'"][^>]*>(.*?)</li>',
+        html_text,
+        re.DOTALL | re.IGNORECASE,
+    )
+    if wprm_ings and wprm_steps:
+        for ing in wprm_ings:
+            cleaned = _clean_text(ing, max_length=200)
+            if cleaned:
+                ingredients.append(cleaned)
+        for step in wprm_steps:
+            cleaned = _clean_text(step, max_length=500)
+            if cleaned:
+                instructions.append(cleaned)
+        if ingredients and instructions:
+            return ingredients, instructions
+
+    # 2. Tasty Recipes
+    tr_ing_block = re.search(
+        r'class=[\'"][^\'"]*tasty-recipes?-ingredients[^\'"]*[\'"][^>]*>(.*?)</div>',
+        html_text,
+        re.DOTALL | re.IGNORECASE,
+    )
+    tr_inst_block = re.search(
+        r'class=[\'"][^\'"]*tasty-recipes?-instructions[^\'"]*[\'"][^>]*>(.*?)</div>',
+        html_text,
+        re.DOTALL | re.IGNORECASE,
+    )
+    if tr_ing_block and tr_inst_block:
+        for ing in re.findall(r'<li[^>]*>(.*?)</li>', tr_ing_block.group(1), re.DOTALL):
+            cleaned = _clean_text(ing, max_length=200)
+            if cleaned:
+                ingredients.append(cleaned)
+        for step in re.findall(r'<li[^>]*>(.*?)</li>', tr_inst_block.group(1), re.DOTALL):
+            cleaned = _clean_text(step, max_length=500)
+            if cleaned:
+                instructions.append(cleaned)
+        if ingredients and instructions:
+            return ingredients, instructions
+
+    # 3. Mediavine Create
+    mv_ing_block = re.search(
+        r'class=[\'"][^\'"]*mv-create-ingredients[^\'"]*[\'"][^>]*>(.*?)</div>',
+        html_text,
+        re.DOTALL | re.IGNORECASE,
+    )
+    mv_inst_block = re.search(
+        r'class=[\'"][^\'"]*mv-create-instructions[^\'"]*[\'"][^>]*>(.*?)</div>',
+        html_text,
+        re.DOTALL | re.IGNORECASE,
+    )
+    if mv_ing_block and mv_inst_block:
+        for ing in re.findall(r'<li[^>]*>(.*?)</li>', mv_ing_block.group(1), re.DOTALL):
+            cleaned = _clean_text(ing, max_length=200)
+            if cleaned:
+                ingredients.append(cleaned)
+        for step in re.findall(r'<li[^>]*>(.*?)</li>', mv_inst_block.group(1), re.DOTALL):
+            cleaned = _clean_text(step, max_length=500)
+            if cleaned:
+                instructions.append(cleaned)
+        if ingredients and instructions:
+            return ingredients, instructions
+
+    return [], []
+
+
+def extract_recipe_from_wordpress_post(
+    post_data: dict[str, Any],
+    *,
+    source_url: str,
+    publisher_name: str,
+    source_tier: str = "filipino_priority",
+) -> ExtractedRecipeRead:
+    """Extract recipe text and photo from a WordPress REST API post object."""
+    raw_title = post_data.get("title", {})
+    title = _clean_text(raw_title.get("rendered") if isinstance(raw_title, dict) else str(raw_title))
+    if not title:
+        title = f"{publisher_name} Recipe"
+
+    raw_excerpt = post_data.get("excerpt", {})
+    description = _clean_text(
+        raw_excerpt.get("rendered") if isinstance(raw_excerpt, dict) else str(raw_excerpt),
+        max_length=1000,
+    )
+
+    image_url: str | None = None
+    embedded = post_data.get("_embedded", {})
+    media_list = embedded.get("wp:featuredmedia", []) if isinstance(embedded, dict) else []
+    if media_list and isinstance(media_list, list) and isinstance(media_list[0], dict):
+        image_url = _validate_image_url(media_list[0].get("source_url"))
+    if not image_url and "featured_media_url" in post_data:
+        image_url = _validate_image_url(post_data.get("featured_media_url"))
+
+    raw_content = post_data.get("content", {})
+    content_html = (
+        raw_content.get("rendered", "") if isinstance(raw_content, dict) else str(raw_content or "")
+    )
+
+    # Try extracting via extract_recipe_from_html (in case content contains JSON-LD or card)
+    try:
+        return extract_recipe_from_html(
+            content_html,
+            source_url=source_url,
+            publisher_name=publisher_name,
+            source_tier=source_tier,
+            default_title=title,
+            default_image=image_url,
+        )
+    except ValueError:
+        pass
+
+    # Extract from card markup in content
+    ingredients, instructions = _extract_recipe_card_html(content_html)
+    if ingredients and instructions:
+        return ExtractedRecipeRead(
+            title=title,
+            description=description,
+            image_url=image_url,
+            ingredients=ingredients,
+            instructions=instructions,
+            source_url=source_url,
+            publisher_name=publisher_name,
+            source_tier=source_tier,
+            untrusted_content=True,
+        )
+
+    raise ValueError("No parseable recipe card found in WordPress post content")
+
 
 
 def extract_recipe_from_html(
@@ -169,6 +320,8 @@ def extract_recipe_from_html(
     source_url: str,
     publisher_name: str,
     source_tier: str = "filipino_priority",
+    default_title: str | None = None,
+    default_image: str | None = None,
 ) -> ExtractedRecipeRead:
     """Parse recipe metadata, text, and photo from HTML string or bytes.
 
@@ -250,8 +403,9 @@ def extract_recipe_from_html(
             author = _clean_text(str(raw_author), 100)
 
         if not title:
-            title = _clean_text(og_meta.get("og:title")) or f"{publisher_name} Recipe"
-
+            title = _clean_text(og_meta.get("og:title")) or default_title or f"{publisher_name} Recipe"
+        if not image_url and default_image:
+            image_url = default_image
         if ingredients and instructions:
             return ExtractedRecipeRead(
                 title=title,
@@ -271,5 +425,22 @@ def extract_recipe_from_html(
                 source_tier=source_tier,
                 untrusted_content=True,
             )
+    # Fallback to HTML recipe card markup (WP Recipe Maker, Tasty Recipes, Mediavine Create)
+    card_ings, card_steps = _extract_recipe_card_html(text)
+    if card_ings and card_steps:
+        fallback_title = _clean_text(og_meta.get("og:title")) or default_title or f"{publisher_name} Recipe"
+        fallback_img = _validate_image_url(og_meta.get("og:image")) or default_image
+        fallback_desc = _clean_text(og_meta.get("og:description"), max_length=1000)
+        return ExtractedRecipeRead(
+            title=fallback_title,
+            description=fallback_desc,
+            image_url=fallback_img,
+            ingredients=card_ings,
+            instructions=card_steps,
+            source_url=source_url,
+            publisher_name=publisher_name,
+            source_tier=source_tier,
+            untrusted_content=True,
+        )
 
     raise ValueError("No parseable recipe with ingredients and instructions found in page content")
