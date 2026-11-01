@@ -1,16 +1,17 @@
 """Reject known source-ingredient conflicts without inventing quantities."""
 
 from collections import defaultdict
+import re
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.allergens import IngredientAllergen, IngredientDerivative
 from app.models.household import HouseholdMembership
-from app.models.ingredient import Ingredient
+from app.models.ingredient import Ingredient, IngredientAlias
 from app.models.user import User
 from app.services.allergen_policy import _ancestry
-from app.services.ingredient_matching import resolve_ingredient
+from app.services.ingredient_matching import normalize_ingredient_name, resolve_ingredient
 from app.services.preferences import read_profile
 
 
@@ -69,3 +70,18 @@ def has_known_source_conflict(db: Session, household_id: int, names: list[str]) 
                                            or families & {"dairy", "egg"}))):
             return True
     return False
+
+
+def has_known_text_ingredient_conflict(db: Session, household_id: int, lines: list[str]) -> bool:
+    """Find known ingredient names in source lines, without inferring amounts."""
+    names = set(db.scalars(select(Ingredient.normalized_name).where(Ingredient.is_active.is_(True))).all())
+    names.update(db.scalars(select(IngredientAlias.normalized_alias).join(
+        Ingredient, Ingredient.id == IngredientAlias.ingredient_id
+    ).where(Ingredient.is_active.is_(True))).all())
+    matched = set()
+    for line in lines:
+        normalized = normalize_ingredient_name(line)
+        for name in names:
+            if name and re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", normalized):
+                matched.add(name)
+    return has_known_source_conflict(db, household_id, sorted(matched))

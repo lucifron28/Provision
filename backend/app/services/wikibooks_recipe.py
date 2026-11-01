@@ -47,6 +47,8 @@ class _RecipeLists(HTMLParser):
         elif tag == "li" and self.item is not None:
             value = " ".join("".join(self.item).split())
             if value:
+                if self.section not in {"ingredients", "preparation"}:
+                    raise ValueError("Invalid recipe section")
                 getattr(self, self.section).append(value)
             self.item = None
         elif tag in {"ul", "ol"}:

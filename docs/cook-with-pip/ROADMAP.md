@@ -142,8 +142,9 @@ recipe entry and source linking followed by shopping confirmation; there is no
 automatic source-to-shopping flow.
 The Wikibooks adobo preview uses a PostgreSQL budget for robots and page
 requests, returns CC BY-SA attribution and untrusted source text, and requires
-review before cooking. An opt-in live endpoint test passed. This route covers
-only the reviewed adobo page; AI adaptation and further sources remain pending.
+review before cooking. Opt-in live preview and DeepSeek adaptation endpoint
+tests passed. These routes cover only the reviewed adobo page; additional
+sources and iOS integration remain pending.
 The guarded direct transport remains internal and is not a DeepSeek Fetch
 replacement. Docker verification passed 747 backend tests with six skips; both
 backend and iOS CI [passed for `280901b`](https://github.com/lucifron28/Provision/actions/runs/41193164812).

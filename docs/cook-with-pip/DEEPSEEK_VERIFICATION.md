@@ -194,6 +194,11 @@ A later opt-in test passed through the backend preview endpoint and returned
 the source link, CC BY-SA 4.0 attribution, and `review_required` safety status.
 The local database was migrated to `58bb690ad211`, and the reviewed Wikibooks
 source record was applied. This review and route cover only the adobo page.
+An opt-in end-to-end adaptation test then fetched the reviewed page and called
+`deepseek-flash` through the backend. It returned a review-only structured
+proposal with source attribution. Usage was 552 input and 192 output tokens,
+744 total; the response did not report monetary cost. The test used an
+isolated household and did not send its pantry or allergy profile to the model.
 The full backend suite subsequently passed in Docker with PostgreSQL: 747
 passed and six live tests skipped.
 

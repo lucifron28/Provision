@@ -172,6 +172,13 @@ ingredient and preparation text, and `safety: review_required`. It makes no
 inventory or shopping changes and does not send the page to DeepSeek. Clients
 must show the attribution and license when displaying or sharing the text.
 
+`POST /api/v1/recipe-sources/wikibooks/adobo/adapt` additionally requires
+`DEEPSEEK_ENABLED=true` and uses the server-side DeepSeek budget. It checks
+known source ingredient conflicts locally before sending source text to the
+model. The response labels generated steps as adapted under CC BY-SA 4.0 and
+requires review. Unknown ingredients and generated text are not guaranteed
+safe, and neither endpoint saves a recipe or modifies inventory or shopping.
+
 ## URL and future transport boundary
 
 URL checks require HTTPS, an ASCII public hostname, no user information, no IP
