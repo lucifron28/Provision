@@ -146,3 +146,28 @@ def test_filipino_recipes_persist_match_scale_and_apply_safety(client, db, catal
     )
     assert wrapper["ingredient_id"] is None
     assert wrapper["status"] == "unknown"
+
+
+def test_sinigang_patis_conflict_and_unknown_tamarind(client, db, catalog):
+    """A souring ingredient needs review; optional fish sauce conflicts with fish allergy."""
+    # DOST-FNRI menu guide includes patis and powdered sampalok in sinigang:
+    # https://fnri.dost.gov.ph/images/images/standardtools/MenuGuideCalendar/2016MGC.pdf
+    dataset = _dataset()
+    item = next(recipe for recipe in dataset["recipes"] if recipe["title"] == "Sinigang na baboy")
+    payload = _recipe_payload(dataset, item)
+    payload["ingredients"] = [*item["ingredients"], {"display_name": "sampalok", "amount": "50", "unit": "g"}]
+    created = client.post("/api/v1/recipes/", json=payload)
+    assert created.status_code == 201, created.text
+    declare(client, "fish")
+    url = f"/api/v1/recipes/{created.json()['id']}/evaluate"
+    base = {"expected_recipe_revision": 1, "servings": "4"}
+    without = client.post(url, json={**base, "include_optional": False})
+    assert without.status_code == 200, without.text
+    requirements = without.json()["result"]["availability"]["requirements"]
+    sampalok = next(line for line in requirements if "sampalok" in line["display_names"])
+    assert sampalok["status"] == "unknown"
+    assert without.json()["result"]["decision"] == "review_required"
+    with_fish = client.post(url, json={**base, "include_optional": True})
+    assert with_fish.status_code == 200, with_fish.text
+    assert with_fish.json()["result"]["decision"] == "blocked"
+    assert "allergen_conflict" in with_fish.json()["result"]["reasons"]
