@@ -459,3 +459,55 @@ extension APIStatusTests {
         XCTAssertEqual(keychain.readAccessToken(), token)
     }
 }
+
+private final class DelayedAuthenticationProtocol: URLProtocol {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var pending: DelayedAuthenticationProtocol?
+    nonisolated(unsafe) private static var started: XCTestExpectation?
+    static func prepare(_ expectation: XCTestExpectation) {
+        lock.lock(); pending = nil; started = expectation; lock.unlock()
+    }
+    static func complete() {
+        lock.lock(); let request = pending; pending = nil; lock.unlock()
+        guard let request else { return }
+        let response = HTTPURLResponse(url: request.request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        let body = #"{"id":1,"email":"person@example.org","is_active":true,"created_at":"2026-01-01T00:00:00Z","default_household_id":9,"default_household_name":"Family"}"#
+        request.client?.urlProtocol(request, didReceive: response, cacheStoragePolicy: .notAllowed)
+        request.client?.urlProtocol(request, didLoad: Data(body.utf8))
+        request.client?.urlProtocolDidFinishLoading(request)
+    }
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        Self.lock.lock()
+        Self.pending = self
+        let expectation = Self.started
+        Self.lock.unlock()
+        expectation?.fulfill()
+    }
+    override func stopLoading() {}
+}
+
+extension APIStatusTests {
+    @MainActor
+    func testDelayedSessionCheckCannotRestoreAfterLogout() async throws {
+        let started = expectation(description: "session request started")
+        DelayedAuthenticationProtocol.prepare(started)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [DelayedAuthenticationProtocol.self]
+        let client = APIClient(baseURL: URL(string: "https://example.org/api/v1")!,
+                               session: URLSession(configuration: configuration))
+        let keychain = MemoryCredentialStore()
+        XCTAssertTrue(keychain.saveAccessToken("saved-token"))
+        let viewModel = AuthViewModel(client: client, keychain: keychain)
+        let check = Task { await viewModel.checkExistingSession() }
+        await fulfillment(of: [started], timeout: 5)
+        await viewModel.logout()
+        DelayedAuthenticationProtocol.complete()
+        await check.value
+        XCTAssertEqual(viewModel.authState, .signedOut)
+        XCTAssertNil(viewModel.currentUser)
+        XCTAssertNil(viewModel.selectedScope)
+        XCTAssertNil(keychain.readAccessToken())
+    }
+}

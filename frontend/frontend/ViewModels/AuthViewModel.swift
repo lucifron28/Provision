@@ -21,6 +21,7 @@ public class AuthViewModel: ObservableObject {
     private let client: APIClient
     private let keychain: any CredentialStore
     private var isCheckingSession = false
+    private var sessionEpoch: UInt64 = 0
     public var isPreview: Bool
     
     public init(client: APIClient = .shared, keychain: any CredentialStore = KeychainStore.shared, isPreview: Bool = false) {
@@ -29,13 +30,25 @@ public class AuthViewModel: ObservableObject {
         self.isPreview = isPreview
     }
 
-    private func establishSession(_ user: User) async throws {
+    private func establishSession(_ user: User, epoch: UInt64) async throws {
         let memberships = try await client.fetchHouseholds()
-        guard let membership = memberships.first(where: { $0.id == user.default_household_id })
+        guard epoch == sessionEpoch else { throw APIError.sessionChanged }
+        let serverID = await client.currentServerID()
+        guard epoch == sessionEpoch else { throw APIError.sessionChanged }
+        let previous = keychain.readVerifiedSession()
+        let preferredID: Int? = {
+            guard let previous, previous.user.id == user.id,
+                  previous.scope.serverID == serverID,
+                  previous.token == keychain.readAccessToken() else { return nil }
+            return previous.scope.householdID
+        }()
+        guard let membership = memberships.first(where: { $0.id == preferredID })
+                ?? memberships.first(where: { $0.id == user.default_household_id })
                 ?? memberships.first(where: { $0.is_default }) else {
             throw APIError.invalidResponse(403, "No authorized household membership")
         }
         let scope = try await client.selectHousehold(membership.id, userID: user.id)
+        guard epoch == sessionEpoch else { throw APIError.sessionChanged }
         households = memberships
         selectedScope = scope
         currentUser = user
@@ -51,15 +64,21 @@ public class AuthViewModel: ObservableObject {
 
     public func selectHousehold(_ household: HouseholdMembership) async {
         guard let user = currentUser, selectedScope?.householdID != household.id else { return }
+        sessionEpoch &+= 1
+        let epoch = sessionEpoch
         let previousScope = selectedScope
         errorMessage = nil
         authState = .checkingSession
         NotificationService.shared.clearHouseholdAlerts()
         await client.setHouseholdScope(nil)
+        guard epoch == sessionEpoch else { return }
         do {
-            selectedScope = try await client.selectHousehold(household.id, userID: user.id)
+            let scope = try await client.selectHousehold(household.id, userID: user.id)
+            guard epoch == sessionEpoch else { return }
+            selectedScope = scope
             persistVerifiedSession()
         } catch {
+            guard epoch == sessionEpoch else { return }
             errorMessage = error.localizedDescription
             if case APIError.unauthorized = error {
                 keychain.deleteAccessToken()
@@ -72,6 +91,7 @@ public class AuthViewModel: ObservableObject {
                 return
             }
             await client.setHouseholdScope(previousScope)
+            guard epoch == sessionEpoch else { return }
         }
         authState = .signedIn(user)
     }
@@ -82,6 +102,8 @@ public class AuthViewModel: ObservableObject {
         guard !isCheckingSession else { return }
         isCheckingSession = true
         defer { isCheckingSession = false }
+        sessionEpoch &+= 1
+        let epoch = sessionEpoch
         authState = .checkingSession
         NotificationService.shared.clearHouseholdAlerts()
         guard let token = keychain.readAccessToken(), !token.isEmpty else {
@@ -91,11 +113,14 @@ public class AuthViewModel: ObservableObject {
         }
         
         await client.setAccessToken(token)
+        guard epoch == sessionEpoch else { return }
         
         do {
             let user = try await client.fetchCurrentUser()
-            try await establishSession(user)
+            guard epoch == sessionEpoch else { return }
+            try await establishSession(user, epoch: epoch)
         } catch {
+            guard epoch == sessionEpoch else { return }
             self.currentUser = nil
             self.selectedScope = nil
             self.households = []
@@ -103,12 +128,15 @@ public class AuthViewModel: ObservableObject {
                 keychain.deleteAccessToken()
                 keychain.deleteVerifiedSession()
                 await client.setAccessToken(nil)
+                guard epoch == sessionEpoch else { return }
                 await client.clearCache()
+                guard epoch == sessionEpoch else { return }
                 self.authState = .signedOut
             } else if case APIError.networkError = error,
                       let verified = keychain.readVerifiedSession(), verified.isUsableOffline(token: token),
                       verified.scope.serverID == (await client.currentServerID()) {
                 await client.setHouseholdScope(verified.scope)
+                guard epoch == sessionEpoch else { return }
                 self.currentUser = verified.user
                 self.households = verified.households
                 self.selectedScope = verified.scope
@@ -123,6 +151,8 @@ public class AuthViewModel: ObservableObject {
     
     /// Authenticates user credentials via POST /auth/login and stores JWT in Keychain.
     public func login(email: String, password: String) async -> Bool {
+        sessionEpoch &+= 1
+        let epoch = sessionEpoch
         isLoading = true
         errorMessage = nil
         
@@ -130,16 +160,20 @@ public class AuthViewModel: ObservableObject {
         
         do {
             let tokenResponse = try await client.login(request: LoginRequest(email: trimmedEmail, password: password))
+            guard epoch == sessionEpoch else { return false }
             guard keychain.saveAccessToken(tokenResponse.access_token) else {
                 throw APIError.serverMessage("Could not securely save your session.")
             }
             await client.setAccessToken(tokenResponse.access_token)
+            guard epoch == sessionEpoch else { return false }
             
             let user = try await client.fetchCurrentUser()
-            try await establishSession(user)
+            guard epoch == sessionEpoch else { return false }
+            try await establishSession(user, epoch: epoch)
             self.isLoading = false
             return true
         } catch {
+            guard epoch == sessionEpoch else { return false }
             self.errorMessage = error.localizedDescription
             self.isLoading = false
             return false
@@ -173,16 +207,23 @@ public class AuthViewModel: ObservableObject {
     
     /// Clears the Keychain token, clears in-memory APIClient token, and returns app to signedOut.
     public func logout() async {
+        sessionEpoch &+= 1
+        let epoch = sessionEpoch
+        currentUser = nil
+        selectedScope = nil
+        households = []
+        authState = .checkingSession
         if isPreview {
-            self.currentUser = nil
-            self.authState = .signedOut
+            authState = .signedOut
             return
         }
         NotificationService.shared.clearHouseholdAlerts()
         keychain.deleteAccessToken()
         keychain.deleteVerifiedSession()
         await client.setAccessToken(nil)
+        guard epoch == sessionEpoch else { return }
         await client.clearCache()
+        guard epoch == sessionEpoch else { return }
         self.currentUser = nil
         self.selectedScope = nil
         self.households = []
