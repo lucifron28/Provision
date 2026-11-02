@@ -37,7 +37,7 @@ def list_shopping_items(
     if is_bought is not None:
         stmt = stmt.where(ShoppingListItem.is_bought == is_bought)
     stmt = (
-        stmt.order_by(ShoppingListItem.is_bought.asc(), ShoppingListItem.created_at.desc())
+        stmt.order_by(ShoppingListItem.is_bought.asc(), ShoppingListItem.created_at.desc(), ShoppingListItem.id.asc())
         .offset(skip)
         .limit(limit)
     )
