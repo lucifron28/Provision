@@ -5,16 +5,23 @@ import Security
 // Manages secure, hardware-encrypted storage for JWT access tokens
 // using Apple's Security framework (SecItemAdd, SecItemCopyMatching, SecItemDelete).
 
-public final class KeychainStore {
+public protocol CredentialStore {
+    @discardableResult func saveAccessToken(_ token: String) -> Bool
+    func readAccessToken() -> String?
+    @discardableResult func deleteAccessToken() -> Bool
+    @discardableResult func saveVerifiedSession(_ session: VerifiedHouseholdSession) -> Bool
+    func readVerifiedSession() -> VerifiedHouseholdSession?
+    func deleteVerifiedSession()
+}
+
+public final class KeychainStore: CredentialStore {
     public static let shared = KeychainStore()
     
-    private let service: String
+    private let service = "mseuf.edu.ph.provision.auth"
     private let tokenAccount = "accessToken"
     private let verifiedSessionAccount = "verifiedHouseholdSession"
     
-    public init(service: String = "mseuf.edu.ph.provision.auth") {
-        self.service = service
-    }
+    private init() {}
     
     /// Saves the JWT access token securely into the iOS Keychain.
     /// Overwrites existing token if present.

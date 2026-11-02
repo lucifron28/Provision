@@ -166,7 +166,8 @@ public actor APIClient {
     }
 
     private func fetchAllPages<T: Decodable & Identifiable>(
-        _ original: URLComponents, start: Int = 0, pageSize: Int = 100, generation: UInt64, expectedScope: HouseholdScope? = nil
+        _ original: URLComponents, start: Int = 0, pageSize: Int = 100, generation: UInt64,
+        expectedScope: HouseholdScope? = nil, offsetName: String = "skip"
     ) async throws -> [T] where T.ID == Int {
         var offset = start
         var items: [T] = []
@@ -174,8 +175,8 @@ public actor APIClient {
         while true {
             guard generation == sessionGeneration else { throw APIError.sessionChanged }
             var components = original
-            var query = (components.queryItems ?? []).filter { $0.name != "skip" && $0.name != "limit" }
-            query.append(URLQueryItem(name: "skip", value: String(offset)))
+            var query = (components.queryItems ?? []).filter { $0.name != "skip" && $0.name != "offset" && $0.name != "limit" }
+            query.append(URLQueryItem(name: offsetName, value: String(offset)))
             query.append(URLQueryItem(name: "limit", value: String(pageSize)))
             components.queryItems = query
             guard let url = components.url else { throw APIError.invalidURL }
@@ -410,11 +411,9 @@ public actor APIClient {
         if let expectedScope, expectedScope != householdScope { throw APIError.sessionChanged }
         let scope = householdScope
         let generation = sessionGeneration
-        let url = baseURL.appendingPathComponent("locations/")
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
+        guard let components = URLComponents(url: baseURL.appendingPathComponent("locations/"), resolvingAgainstBaseURL: true) else { throw APIError.invalidURL }
         do {
-            let locations: [StorageLocation] = try await execute(request, expectedScope: expectedScope)
+            let locations: [StorageLocation] = try await fetchAllPages(components, generation: generation, expectedScope: expectedScope)
             isOfflineMode = false
             if let scope { await LocalCacheStore.shared.saveLocations(locations, scope: scope) }
             guard generation == sessionGeneration else { throw APIError.sessionChanged }
@@ -475,6 +474,37 @@ public actor APIClient {
         return try await execute(request, expectedScope: expectedScope)
     }
 
+    public func fetchRecipes(query: String? = nil, scope: HouseholdScope) async throws -> [HouseholdRecipe] {
+        guard scope == householdScope else { throw APIError.sessionChanged }
+        var components = URLComponents(url: baseURL.appendingPathComponent("recipes/"), resolvingAgainstBaseURL: true)
+        if let query, !query.isEmpty { components?.queryItems = [URLQueryItem(name: "query", value: query)] }
+        guard let components else { throw APIError.invalidURL }
+        return try await fetchAllPages(components, generation: sessionGeneration, expectedScope: scope, offsetName: "offset")
+    }
+
+    public func fetchRecipe(id: Int, scope: HouseholdScope) async throws -> HouseholdRecipe {
+        let url = baseURL.appendingPathComponent("recipes/\(id)")
+        return try await execute(URLRequest(url: url), expectedScope: scope)
+    }
+
+    public func evaluateRecipe(id: Int, payload: RecipeEvaluationRequest, scope: HouseholdScope) async throws -> RecipeEvaluation {
+        let url = baseURL.appendingPathComponent("recipes/\(id)/evaluate")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(payload)
+        return try await execute(request, expectedScope: scope)
+    }
+
+    public func recommendRecipes(_ payload: RecipeRecommendationRequest, scope: HouseholdScope) async throws -> RecipeRecommendations {
+        let url = baseURL.appendingPathComponent("recipes/recommendations")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(payload)
+        return try await execute(request, expectedScope: scope)
+    }
+
     public func previewRecipeShopping(_ payload: RecipeShoppingPreviewRequest, scope: HouseholdScope) async throws -> RecipeShoppingPreview {
         let url = baseURL.appendingPathComponent("recipe-shopping/preview")
         var request = URLRequest(url: url)
@@ -511,16 +541,14 @@ public actor APIClient {
             guard let components else { throw APIError.invalidURL }
             let batches: [InventoryBatch] = try await fetchAllPages(components, generation: generation, expectedScope: expectedScope)
             isOfflineMode = false
-            if productId == nil {
-                if let scope { await LocalCacheStore.shared.saveBatches(batches, activeOnly: activeOnly, scope: scope) }
-            }
+            if let scope { await LocalCacheStore.shared.saveBatches(batches, productID: productId, activeOnly: activeOnly, scope: scope) }
             guard generation == sessionGeneration else { throw APIError.sessionChanged }
             return batches
         } catch {
             guard isNetworkFailure(error) else {
                 throw error
             }
-            if let scope, scope == householdScope, let cached = await LocalCacheStore.shared.loadBatches(activeOnly: activeOnly, scope: scope) {
+            if let scope, scope == householdScope, let cached = await LocalCacheStore.shared.loadBatches(productID: productId, activeOnly: activeOnly, scope: scope) {
                 guard generation == sessionGeneration else { throw APIError.sessionChanged }
                 isOfflineMode = true
                 var filtered = cached

@@ -212,7 +212,7 @@ public class ScanViewModel: ObservableObject {
         self.scannerManager = BarcodeScannerManager()
         if !isPreview {
             self.activeSuspensions.insert(.navigatedAway)
-            if scope == nil || pendingCommitDefaults.data(forKey: pendingIntakeCommitStorageKey) != nil {
+            if scope == nil {
                 self.pendingCommitRecoveryError = "Saved intake ownership cannot be verified. Preserve the saved data and contact support before submitting."
                 self.activeSuspensions.insert(.pendingCommitRecovery)
                 self.scannerManager.lockAcceptance()
@@ -236,6 +236,12 @@ public class ScanViewModel: ObservableObject {
                     self.scannerManager.stopScanning()
                     self.errorMessage = self.pendingCommitRecoveryError
                 }
+            } else if pendingCommitDefaults.data(forKey: pendingIntakeCommitStorageKey) != nil {
+                self.pendingCommitRecoveryError = "Saved intake ownership cannot be verified. Preserve the saved data and contact support before submitting."
+                self.activeSuspensions.insert(.pendingCommitRecovery)
+                self.scannerManager.lockAcceptance()
+                self.scannerManager.stopScanning()
+                self.errorMessage = self.pendingCommitRecoveryError
             }
         }
         if isPreview {
@@ -1324,8 +1330,16 @@ public class ScanViewModel: ObservableObject {
         }
         pendingIntakeCommit = nil
         pendingDraftSessionId = nil
-        pendingCommitRecoveryError = nil
-        activeSuspensions.remove(.pendingCommitRecovery)
+        if pendingCommitDefaults.data(forKey: pendingIntakeCommitStorageKey) != nil {
+            pendingCommitRecoveryError = "Saved intake ownership cannot be verified. Preserve the saved data and contact support before submitting."
+            activeSuspensions.insert(.pendingCommitRecovery)
+            scannerManager.lockAcceptance()
+            scannerManager.stopScanning()
+            errorMessage = pendingCommitRecoveryError
+        } else {
+            pendingCommitRecoveryError = nil
+            activeSuspensions.remove(.pendingCommitRecovery)
+        }
     }
 
     private func clearCancelledPendingCommit() {
@@ -1334,7 +1348,7 @@ public class ScanViewModel: ObservableObject {
             scannedItems.insert(contentsOf: postCommitDeferredItems, at: 0)
             postCommitDeferredItems.removeAll()
         }
-        errorMessage = nil
+        errorMessage = pendingCommitRecoveryError
         showToast("Previous draft cancelled; no inventory was committed. Review and retry when ready.")
     }
 

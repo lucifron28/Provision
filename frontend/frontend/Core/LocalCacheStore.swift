@@ -50,12 +50,20 @@ public actor LocalCacheStore {
     public func loadProducts(scope: HouseholdScope) -> [Product]? { read([Product].self, filename: "products.json", scope: scope) }
     public func saveLocations(_ values: [StorageLocation], scope: HouseholdScope) { write(values, filename: "locations.json", scope: scope) }
     public func loadLocations(scope: HouseholdScope) -> [StorageLocation]? { read([StorageLocation].self, filename: "locations.json", scope: scope) }
-    public func saveBatches(_ values: [InventoryBatch], activeOnly: Bool, scope: HouseholdScope) {
-        write(values, filename: activeOnly ? "active-batches.json" : "batches.json", scope: scope)
+    private func batchFilename(productID: Int?, activeOnly: Bool) -> String {
+        let prefix = productID.map { "product-\($0)-" } ?? ""
+        return prefix + (activeOnly ? "active-batches.json" : "batches.json")
     }
-    public func loadBatches(activeOnly: Bool, scope: HouseholdScope) -> [InventoryBatch]? {
-        if activeOnly, let active = read([InventoryBatch].self, filename: "active-batches.json", scope: scope) { return active }
-        if let all = read([InventoryBatch].self, filename: "batches.json", scope: scope) { return all }
+    public func saveBatches(_ values: [InventoryBatch], productID: Int?, activeOnly: Bool, scope: HouseholdScope) {
+        write(values, filename: batchFilename(productID: productID, activeOnly: activeOnly), scope: scope)
+    }
+    public func loadBatches(productID: Int?, activeOnly: Bool, scope: HouseholdScope) -> [InventoryBatch]? {
+        if let exact = read([InventoryBatch].self, filename: batchFilename(productID: productID, activeOnly: activeOnly), scope: scope) { return exact }
+        if activeOnly, let all = read([InventoryBatch].self, filename: batchFilename(productID: productID, activeOnly: false), scope: scope) { return all }
+        if productID != nil {
+            if activeOnly, let active = read([InventoryBatch].self, filename: batchFilename(productID: nil, activeOnly: true), scope: scope) { return active }
+            return read([InventoryBatch].self, filename: batchFilename(productID: nil, activeOnly: false), scope: scope)
+        }
         return nil
     }
     public func saveShoppingItems(_ values: [ShoppingItem], scope: HouseholdScope) { write(values, filename: "shopping.json", scope: scope) }

@@ -20,6 +20,17 @@ private final class HTTPStatusProtocol: URLProtocol {
     override func stopLoading() {}
 }
 
+private final class MemoryCredentialStore: CredentialStore {
+    private var token: String?
+    private var session: VerifiedHouseholdSession?
+    func saveAccessToken(_ value: String) -> Bool { token = value; return true }
+    func readAccessToken() -> String? { token }
+    func deleteAccessToken() -> Bool { token = nil; return true }
+    func saveVerifiedSession(_ value: VerifiedHouseholdSession) -> Bool { session = value; return true }
+    func readVerifiedSession() -> VerifiedHouseholdSession? { session }
+    func deleteVerifiedSession() { session = nil }
+}
+
 final class APIStatusTests: XCTestCase {
     func testUserDecodesDefaultHousehold() throws {
         let data = Data(#"{"id":7,"email":"a@example.org","display_name":null,"is_active":true,"created_at":"2026-11-02T00:00:00Z","default_household_id":42,"default_household_name":"Family"}"#.utf8)
@@ -49,7 +60,7 @@ final class APIStatusTests: XCTestCase {
             XCTFail("Expected 403")
         } catch APIError.http(let status, let detail, _) {
             XCTAssertEqual(status, 403)
-            XCTAssertEqual(detail, .object(["code": .string("HOUSEHOLD_ACCESS_DENIED")]))
+            XCTAssertEqual(detail, APIErrorDetail.object(["code": .string("HOUSEHOLD_ACCESS_DENIED")]))
         } catch {
             XCTFail("Unexpected error: \(error)")
         }
@@ -67,7 +78,7 @@ final class APIStatusTests: XCTestCase {
                 XCTFail("Expected HTTP error \(expected)")
             } catch APIError.http(let status, let detail, let retryAfter) {
                 XCTAssertEqual(status, expected)
-                XCTAssertEqual(detail, .object(["code": .string("HOUSEHOLD_ACCESS_DENIED")]))
+                XCTAssertEqual(detail, APIErrorDetail.object(["code": .string("HOUSEHOLD_ACCESS_DENIED")]))
                 XCTAssertEqual(retryAfter, "30")
             } catch {
                 XCTFail("Unexpected error: \(error)")
@@ -111,11 +122,14 @@ extension APIStatusTests {
         configuration.protocolClasses = [HTTPStatusProtocol.self]
         let client = APIClient(baseURL: URL(string: "https://example.org/api/v1")!,
                                session: URLSession(configuration: configuration))
-        let keychain = KeychainStore(service: "provision.tests.\(UUID().uuidString)")
-        defer { keychain.deleteAccessToken(); keychain.deleteVerifiedSession() }
+        let keychain = MemoryCredentialStore()
         XCTAssertTrue(keychain.saveAccessToken("saved-token"))
         let viewModel = AuthViewModel(client: client, keychain: keychain)
         HTTPStatusProtocol.statusCode = 0
+        await viewModel.checkExistingSession()
+        XCTAssertEqual(keychain.readAccessToken(), "saved-token")
+        XCTAssertEqual(viewModel.authState, .sessionUnavailable)
+        HTTPStatusProtocol.statusCode = 403
         await viewModel.checkExistingSession()
         XCTAssertEqual(keychain.readAccessToken(), "saved-token")
         XCTAssertEqual(viewModel.authState, .sessionUnavailable)
@@ -132,9 +146,11 @@ extension APIStatusTests {
             session: URLSession(configuration: configuration),
             initialScope: HouseholdScope(userID: 3, householdID: 7))
         let products = try await client.fetchProducts()
+        let locations = try await client.fetchLocations()
         let batches = try await client.fetchBatches()
         let shopping = try await client.fetchShoppingList()
         XCTAssertEqual(products.count, 135)
+        XCTAssertEqual(locations.count, 135)
         XCTAssertEqual(batches.count, 135)
         XCTAssertEqual(shopping.count, 135)
     }
@@ -146,13 +162,16 @@ extension APIStatusTests {
         let first = HouseholdScope(userID: 1, householdID: 9)
         let otherHousehold = HouseholdScope(userID: 1, householdID: 10)
         let otherUser = HouseholdScope(userID: 2, householdID: 9)
+        let otherServer = HouseholdScope(userID: 1, householdID: 9, serverID: "https://other.example.org/api/v1")
         await cache.saveProducts([Product(id: 1, name: "Private")], scope: first)
         let restored = await cache.loadProducts(scope: first)
         let foreignHousehold = await cache.loadProducts(scope: otherHousehold)
         let foreignUser = await cache.loadProducts(scope: otherUser)
+        let foreignServer = await cache.loadProducts(scope: otherServer)
         XCTAssertEqual(restored?.first?.name, "Private")
         XCTAssertNil(foreignHousehold)
         XCTAssertNil(foreignUser)
+        XCTAssertNil(foreignServer)
     }
 
     @MainActor
@@ -290,9 +309,26 @@ private final class RetryProtocol: URLProtocol {
     static func captured() -> [Data] { lock.lock(); defer { lock.unlock() }; return requests }
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    private func bodyData() -> Data {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return Data() }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while true {
+            let count = buffer.withUnsafeMutableBufferPointer { pointer in
+                stream.read(pointer.baseAddress!, maxLength: pointer.count)
+            }
+            guard count > 0 else { break }
+            data.append(contentsOf: buffer[..<count])
+        }
+        return data
+    }
     override func startLoading() {
+        let body = bodyData()
         Self.lock.lock()
-        Self.requests.append(request.httpBody ?? Data())
+        Self.requests.append(body)
         let count = Self.requests.count
         Self.lock.unlock()
         if count == 1 {
@@ -300,9 +336,9 @@ private final class RetryProtocol: URLProtocol {
             return
         }
         let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-        let body = #"{"preview_id":"preview-token","shopping_revision":5,"created":[],"updated":[],"unchanged":[],"consolidated":[]}"#
+        let responseBody = #"{"preview_id":"preview-token","shopping_revision":5,"created":[],"updated":[],"unchanged":[],"consolidated":[]}"#
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data(body.utf8))
+        client?.urlProtocol(self, didLoad: Data(responseBody.utf8))
         client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}
@@ -328,5 +364,98 @@ extension APIStatusTests {
         XCTAssertEqual(requests.count, 2)
         XCTAssertEqual(requests[0], requests[1])
         XCTAssertTrue(String(decoding: requests[0], as: UTF8.self).contains("same-retry-key"))
+    }
+}
+
+extension APIStatusTests {
+    func testRecipeShoppingPreviewDecodesSafetyAmountsAndTimestamp() throws {
+        let json = #"""
+        {"preview_id":"preview","expires_at":"2026-11-02T12:34:56.123456Z",
+         "recipe_id":1,"recipe_revision":3,"servings":"2.0000","include_optional":false,
+         "shopping_revision":7,"inventory_revision":9,"included_requirement_indexes":[0],
+         "safety":{"decision":"eligible","reasons":[],"ingredients":[],"notice":"Check labels",
+                   "availability":{"recipe_servings":"4","servings":"2","overall_status":"partial","requirements":[]}},
+         "lines":[{"ingredient_id":4,"canonical_name":"rice","display_name":"bigas","unit":"g",
+                   "required_quantity":"2.000001","pantry_quantity":"1.000000","shortage":"1.000001",
+                   "pending_quantity":"0","target_quantity":"1.000001","additional_quantity":"1.000001",
+                   "pending_item_ids":[],"covered_batch_ids":[2],"status":"ready","review_reasons":[]}],
+         "unlinked_manual_items":[]}
+        """#
+        let preview = try JSONDecoder().decode(RecipeShoppingPreview.self, from: Data(json.utf8))
+        XCTAssertEqual(preview.expires_at, "2026-11-02T12:34:56.123456Z")
+        XCTAssertEqual(preview.recipe_revision, 3)
+        XCTAssertEqual(preview.shopping_revision, 7)
+        XCTAssertEqual(preview.safety.decision, "eligible")
+        XCTAssertEqual(preview.lines[0].shortage, ExactQuantity(Decimal(string: "1.000001")!))
+    }
+}
+
+extension APIStatusTests {
+    func testRecipeDecodeAndEvaluationRequestPreserveDecimalsAndRevision() throws {
+        let json = #"""
+        {"id":12,"revision":4,"is_active":true,"provenance":"USER_ENTERED",
+         "title":"Sinigang","summary":null,"cuisine":"Filipino",
+         "content_permission":"OWNED_OR_PERMISSION_GRANTED","adapted_from_recipe_id":null,
+         "adapted_from_recipe_revision":null,"ph_regions":["region_unknown"],
+         "course_categories":["dinner"],"dish_types":["soup"],"difficulty":"beginner",
+         "prep_minutes":10,"cook_minutes":30,"servings":"4.0000","equipment":[],
+         "spice_level":"mild","instructions":["Cook"],"ingredients":[
+           {"ingredient_id":2,"display_name":"baboy","amount":"0.123456","unit":"kg",
+            "required":true,"preparation":null,"substitution_options":[]}]}
+        """#
+        let recipe = try JSONDecoder().decode(HouseholdRecipe.self, from: Data(json.utf8))
+        XCTAssertEqual(recipe.revision, 4)
+        XCTAssertEqual(recipe.ingredients[0].amount, ExactQuantity(Decimal(string: "0.123456")!))
+        let evaluation = RecipeEvaluationRequest(revision: recipe.revision, servings: ExactQuantity(Decimal(string: "2.5")!))
+        let encoded = String(decoding: try JSONEncoder().encode(evaluation), as: UTF8.self)
+        XCTAssertTrue(encoded.contains("2.5"))
+        XCTAssertTrue(encoded.contains("expected_recipe_revision"))
+    }
+}
+
+extension APIStatusTests {
+    @MainActor
+    func testOwnedPendingIntakeCanBeRecoveredWhileLegacyDataRemainsQuarantined() throws {
+        let suite = "provision.pending-legacy.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let scope = HouseholdScope(userID: 1, householdID: 9)
+        let legacy = Data("unowned".utf8)
+        defaults.set(legacy, forKey: pendingIntakeCommitStorageKey)
+        let owned = PendingIntakeCommit(sessionID: 12, fingerprint: "owned", storeName: "Market",
+            intakeItems: [], requestItems: [])
+        defaults.set(try JSONEncoder().encode(owned), forKey: scopedPendingIntakeCommitStorageKey(for: scope))
+        let vm = ScanViewModel(isPreview: false, pendingCommitDefaults: defaults, scope: scope)
+        XCTAssertEqual(vm.pendingDraftSessionId, 12)
+        XCTAssertNil(vm.pendingCommitRecoveryError)
+        XCTAssertEqual(defaults.data(forKey: pendingIntakeCommitStorageKey), legacy)
+    }
+}
+
+extension APIStatusTests {
+    @MainActor
+    func testOfflineRestoresOnlyPreviouslyVerifiedHousehold() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [HTTPStatusProtocol.self]
+        let baseURL = URL(string: "https://example.org/api/v1")!
+        let client = APIClient(baseURL: baseURL, session: URLSession(configuration: configuration))
+        let keychain = MemoryCredentialStore()
+        let expiration = Int(Date().timeIntervalSince1970) + 3600
+        let payload = Data("{\"exp\":\(expiration)}".utf8).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        let token = "header.\(payload).signature"
+        let user = User(id: 1, email: "person@example.org")
+        let household = HouseholdMembership(id: 9, name: "Family", role: "OWNER", is_default: true)
+        let scope = HouseholdScope(userID: 1, householdID: 9, serverID: baseURL.absoluteString)
+        XCTAssertTrue(keychain.saveAccessToken(token))
+        XCTAssertTrue(keychain.saveVerifiedSession(VerifiedHouseholdSession(token: token, user: user,
+            scope: scope, households: [household])))
+        HTTPStatusProtocol.statusCode = 0
+        let viewModel = AuthViewModel(client: client, keychain: keychain)
+        await viewModel.checkExistingSession()
+        XCTAssertEqual(viewModel.authState, .signedIn(user))
+        XCTAssertEqual(viewModel.selectedScope, scope)
+        XCTAssertEqual(keychain.readAccessToken(), token)
     }
 }

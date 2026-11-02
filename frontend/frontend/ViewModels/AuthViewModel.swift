@@ -19,10 +19,11 @@ public class AuthViewModel: ObservableObject {
     @Published public private(set) var selectedScope: HouseholdScope? = nil
     
     private let client: APIClient
-    private let keychain: KeychainStore
+    private let keychain: any CredentialStore
+    private var isCheckingSession = false
     public var isPreview: Bool
     
-    public init(client: APIClient = .shared, keychain: KeychainStore = .shared, isPreview: Bool = false) {
+    public init(client: APIClient = .shared, keychain: any CredentialStore = KeychainStore.shared, isPreview: Bool = false) {
         self.client = client
         self.keychain = keychain
         self.isPreview = isPreview
@@ -78,6 +79,10 @@ public class AuthViewModel: ObservableObject {
     /// Restores session on app launch by verifying Keychain token against /auth/me.
     public func checkExistingSession() async {
         if isPreview { return }
+        guard !isCheckingSession else { return }
+        isCheckingSession = true
+        defer { isCheckingSession = false }
+        authState = .checkingSession
         NotificationService.shared.clearHouseholdAlerts()
         guard let token = keychain.readAccessToken(), !token.isEmpty else {
             self.currentUser = nil
