@@ -229,3 +229,43 @@ dependency warnings. A separate PostgreSQL database passed Alembic upgrade,
 schema drift check, downgrade to base, re-upgrade, and a second drift check.
 The Windows run also recorded 912 passed and 12 skipped. The iOS XCTest job
 requires a Mac and is verified by the branch's GitHub Actions workflow.
+
+### Publisher pacing and recovery
+
+Publisher preview uses a PostgreSQL reservation per source in addition to the
+existing 1,000-request global daily budget. It counts each outbound robots,
+page, redirect, and WordPress request. Requests for one source are serialized
+across workers. The defaults are a 0.1-second minimum interval and 60 requests
+per 60-second fixed window. `PUBLISHER_PACING_DEFAULT` accepts a JSON object
+with `min_interval_seconds`, `window_seconds`, and `window_requests`.
+`PUBLISHER_PACING_OVERRIDES` accepts a JSON object mapping a source's canonical
+host to the same fields. For example:
+
+```env
+PUBLISHER_PACING_OVERRIDES={"publisher.org":{"min_interval_seconds":2,"window_seconds":60,"window_requests":10}}
+```
+
+These settings do not authorize a source or endpoint. A request delayed by at
+most one second waits for its slot; a longer delay, an occupied publisher lock,
+or an exhausted short window returns 429 with `Retry-After`. Upstream
+`Retry-After` values, including on redirects, create a shared cooldown, capped by
+`PUBLISHER_MAX_COOLDOWN_SECONDS` (default 3600). Missing values on 429 or 503,
+and invalid supplied values, use a 60-second cooldown, subject to the same cap.
+Global budget exhaustion returns 429, budget storage failure returns 503, and
+outbound timeouts return 504.
+Responses contain fixed error codes rather than internal exception details.
+An outbound transport failure also starts a bounded 60-second cooldown because
+the publisher's response may be unavailable.
+
+Migration `9c31f410ab82` adds the pacing table without replacing the existing
+global counter. It refuses downgrade if pacing rows exist. A crash or failed
+post-request database update can leave a publisher's pacing row paused; this
+fails closed with 503. An operator must inspect that row and the upstream state
+before clearing `paused`, retaining the recorded window and cooldown fields.
+
+Verification: on 2026-11-02, the Python 3.13 Docker backend suite against
+PostgreSQL 18 recorded 926 passed and 12 skipped, with two dependency warnings.
+Additional redirect and timeout recovery tests passed separately. A disposable
+PostgreSQL database passed Alembic upgrade, drift check, downgrade to base,
+re-upgrade, and a second drift check; migration tests also verify that the
+existing global count survives and pacing history cannot be silently removed.
