@@ -119,7 +119,7 @@ def preview_publisher_recipe(request: RecipePreviewRequest, response: Response,
     source = db.get(RecipeSource, auth.source_id)
     tier = SourcePolicy.model_validate(source.policy).tier if source else "filipino_priority"
     policy = SourcePolicy.model_validate(source.policy)
-    transport = BudgetedPublisherTransport(transport, budget)
+    transport = BudgetedPublisherTransport(transport, budget, auth.source_id, source.canonical_host)
 
     try:
         page = fetch_recipe_page(db, household_id, user.id, request.url, transport=transport,

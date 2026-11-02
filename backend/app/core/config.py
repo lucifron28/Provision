@@ -1,8 +1,15 @@
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class PublisherPacingSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    min_interval_seconds: float = Field(default=0.1, ge=0.001, le=3600, allow_inf_nan=False)
+    window_seconds: int = Field(default=60, ge=1, le=86400)
+    window_requests: int = Field(default=60, ge=1, le=10000)
 
 
 class Settings(BaseSettings):
@@ -33,6 +40,17 @@ class Settings(BaseSettings):
     MEALDB_REQUEST_BUDGET: int = Field(default=100, ge=1, le=10000)
     MEALDB_MIN_INTERVAL_SECONDS: int = Field(default=2, ge=1, le=3600)
     WIKIBOOKS_ENABLED: bool = False
+    PUBLISHER_PACING_DEFAULT: PublisherPacingSettings = Field(default_factory=PublisherPacingSettings)
+    PUBLISHER_PACING_OVERRIDES: dict[str, PublisherPacingSettings] = Field(default_factory=dict)
+    PUBLISHER_MAX_COOLDOWN_SECONDS: int = Field(default=3600, ge=1, le=86400)
+
+    @field_validator("PUBLISHER_PACING_OVERRIDES")
+    @classmethod
+    def validate_publisher_hosts(cls, value):
+        from app.services.source_urls import normalize_host
+        if any(normalize_host(host) != host for host in value):
+            raise ValueError("Publisher pacing override hosts must be canonical")
+        return value
 
     @field_validator("DEEPSEEK_BASE_URL")
     @classmethod

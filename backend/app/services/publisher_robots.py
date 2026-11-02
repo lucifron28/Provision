@@ -10,6 +10,7 @@ from typing import Protocol, Sequence
 from urllib.parse import urlsplit
 
 from app.services.source_urls import canonical_recipe_url, validate_redirect_hops
+from app.services.publisher_budget import PublisherRequestError
 from app.services.wikimedia_robots import (
     MAX_ROBOTS_BYTES,
     TIMEOUT_SECONDS,
@@ -88,7 +89,7 @@ def publisher_robots_allowed(target_url: str, *, transport: RobotsTransport) -> 
             if matched
         ]
         return max(matches)[1] if matches else True
-    except RobotsPolicyError:
+    except (RobotsPolicyError, PublisherRequestError, TimeoutError):
         raise
     except Exception:
         raise RobotsPolicyError("Robots policy unavailable") from None

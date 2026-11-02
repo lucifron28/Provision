@@ -25,6 +25,7 @@ from app.schemas.deepseek import (
 )
 from app.schemas.recipe_source import AccessMode, SourcePolicy, SourceTier
 from app.services.privacy import all_active_household_members_consented
+from app.services.publisher_budget import BudgetedPublisherTransport, PublisherRequestError
 from app.services.household_writes import lock_household_write
 from app.services.deepseek_provider import DeepSeekProviderError
 from app.services.recipe_sources import (
@@ -580,6 +581,10 @@ def fetch_recipe_page(
         if host not in addresses_by_host:
             try:
                 addresses_by_host[host] = tuple(transport.resolve(host))
+            except TimeoutError:
+                if isinstance(transport, BudgetedPublisherTransport):
+                    raise HTTPException(status_code=504, detail="PUBLISHER_REQUEST_TIMEOUT") from None
+                raise HTTPException(status_code=502, detail="RECIPE_FETCH_UNAVAILABLE") from None
             except Exception:
                 raise HTTPException(status_code=502, detail="RECIPE_FETCH_UNAVAILABLE") from None
         try:
@@ -596,6 +601,12 @@ def fetch_recipe_page(
             original_agent = transport.user_agent
             policy = wikimedia_robots_allowed if robots_policy is None else robots_policy
             decision = policy(current_url, transport=transport)
+        except PublisherRequestError:
+            raise
+        except TimeoutError:
+            if isinstance(transport, BudgetedPublisherTransport):
+                raise HTTPException(status_code=504, detail="PUBLISHER_REQUEST_TIMEOUT") from None
+            raise HTTPException(status_code=503, detail="RECIPE_FETCH_ROBOTS_UNAVAILABLE") from None
         except Exception:
             raise HTTPException(status_code=503, detail="RECIPE_FETCH_ROBOTS_UNAVAILABLE") from None
         if decision is not True:
@@ -617,6 +628,12 @@ def fetch_recipe_page(
                 timeout_seconds=PROVIDER_TIMEOUT_SECONDS,
                 max_bytes=MAX_FETCH_BYTES,
             )
+        except PublisherRequestError:
+            raise
+        except TimeoutError:
+            if isinstance(transport, BudgetedPublisherTransport):
+                raise HTTPException(status_code=504, detail="PUBLISHER_REQUEST_TIMEOUT") from None
+            raise HTTPException(status_code=502, detail="RECIPE_FETCH_UNAVAILABLE") from None
         except Exception:
             raise HTTPException(status_code=502, detail="RECIPE_FETCH_UNAVAILABLE") from None
         if (

@@ -225,6 +225,7 @@ def _preview_with(client, transport):
 
 
 def test_authorized_wordpress_fallback(client, db, auth_user, auth_household, authorized_wordpress):
+    from app.models.publisher_budget import PublisherBudget, PublisherPacing
     _grant(db, auth_user, auth_household)
     transport = FakePublisherTransport(_wp_responses())
     response = _preview_with(client, transport)
@@ -233,6 +234,9 @@ def test_authorized_wordpress_fallback(client, db, auth_user, auth_household, au
     assert response.json()["ingredients"] == ["Pork"]
     assert len(transport.requests) == 4
     assert transport.requests[-1].startswith("https://www.kawalingpinoy.com/wp-json/wp/v2/posts?")
+    db.expire_all()
+    assert db.get(PublisherBudget, 1).used == 4
+    assert db.get(PublisherPacing, authorized_wordpress.id).window_used == 4
 
 
 def test_wordpress_robots_denial_stops_before_api(client, db, auth_user, auth_household, authorized_wordpress):
@@ -298,22 +302,26 @@ def test_wordpress_timeout_fails_closed(client, db, auth_user, auth_household, a
             if "/wp-json/" in url:
                 raise TimeoutError("timeout")
             return super().fetch_once_pinned(url, **kwargs)
-    assert _preview_with(client, TimeoutTransport(_wp_responses())).status_code == 502
+    assert _preview_with(client, TimeoutTransport(_wp_responses())).status_code == 504
 
 
 def test_wordpress_budget_exhaustion_prevents_api_request(client, db, auth_user, auth_household, authorized_wordpress):
     from app.api.v1.endpoints.recipe_sources import get_publisher_budget
+    from app.services.publisher_budget import PublisherRequestError
+    from contextlib import contextmanager
     _grant(db, auth_user, auth_household)
     class Budget:
         calls = 0
-        def consume(self):
+        @contextmanager
+        def request(self, source_id, canonical_host):
             self.calls += 1
             if self.calls > 3:
-                raise HTTPException(429, "PUBLISHER_REQUEST_BUDGET_EXHAUSTED")
+                raise PublisherRequestError(429, "PUBLISHER_REQUEST_BUDGET_EXHAUSTED")
+            yield lambda response: None
     transport = FakePublisherTransport(_wp_responses())
     fastapi_app.dependency_overrides[get_publisher_budget] = Budget
     try:
-        assert _preview_with(client, transport).status_code == 502
+        assert _preview_with(client, transport).status_code == 429
         assert len(transport.requests) == 3
     finally:
         fastapi_app.dependency_overrides.pop(get_publisher_budget, None)
@@ -354,7 +362,7 @@ def test_publisher_budget_rejects_when_exhausted(client, db, auth_user, auth_hou
     db.add(PublisherBudget(id=1, used=1000, window_started=datetime.now(timezone.utc)))
     db.commit()
     transport = FakePublisherTransport(_wp_responses())
-    assert _preview_with(client, transport).status_code == 503
+    assert _preview_with(client, transport).status_code == 429
     assert transport.requests == []
 
 
@@ -403,3 +411,241 @@ def test_publisher_budget_serializes_concurrent_reservations(db):
             return exc.status_code
     with ThreadPoolExecutor(max_workers=2) as executor:
         assert sorted(executor.map(reserve, range(2))) == [200, 429]
+
+
+def test_per_publisher_pacing_serializes_concurrent_workers(db, structured_kawaling_source):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    from app.services.publisher_budget import PublisherRequestBudget, PublisherRequestError
+
+    entered, release = Event(), Event()
+    source_id = structured_kawaling_source.id
+    host = "www.kawalingpinoy.com"
+    def first():
+        with PublisherRequestBudget().request(source_id, host) as record:
+            entered.set()
+            assert release.wait(5)
+            record(PageFetchResponse(200, {}, b""))
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending = pool.submit(first)
+        assert entered.wait(5)
+        try:
+            with pytest.raises(PublisherRequestError) as error:
+                with PublisherRequestBudget().request(source_id, host):
+                    pytest.fail("Concurrent request must not start")
+            assert error.value.status_code == 429
+        finally:
+            release.set()
+        pending.result()
+
+
+def test_publisher_short_window_limit_counts_every_request(db, structured_kawaling_source, monkeypatch):
+    from app.core.config import settings, PublisherPacingSettings
+    from app.models.publisher_budget import PublisherBudget, PublisherPacing
+    from app.services.publisher_budget import PublisherRequestBudget, PublisherRequestError
+    monkeypatch.setattr(settings, "PUBLISHER_PACING_DEFAULT", PublisherPacingSettings(
+        min_interval_seconds=0.001, window_seconds=60, window_requests=2))
+    source_id = structured_kawaling_source.id
+    budget = PublisherRequestBudget()
+    for _ in range(2):
+        with budget.request(source_id, "www.kawalingpinoy.com") as record:
+            record(PageFetchResponse(200, {}, b""))
+    with pytest.raises(PublisherRequestError) as error:
+        with budget.request(source_id, "www.kawalingpinoy.com"):
+            pytest.fail("Rate-limited request must not start")
+    assert error.value.status_code == 429
+    db.expire_all()
+    assert db.get(PublisherBudget, 1).used == 2
+    assert db.get(PublisherPacing, source_id).window_used == 2
+
+
+@pytest.mark.parametrize("retry_after,minimum", [("3", 2), ("invalid", 59), ("999999", 3599)])
+def test_publisher_retry_after_cooldown_is_durable_and_bounded(db, structured_kawaling_source, retry_after, minimum):
+    from datetime import datetime, timezone
+    from app.models.publisher_budget import PublisherPacing
+    from app.services.publisher_budget import PublisherRequestBudget, PublisherRequestError
+    source_id = structured_kawaling_source.id
+    with pytest.raises(PublisherRequestError) as error:
+        with PublisherRequestBudget().request(source_id, "www.kawalingpinoy.com") as record:
+            record(PageFetchResponse(429, {"retry-after": retry_after}, b""))
+    assert error.value.status_code == 429
+    db.expire_all()
+    row = db.get(PublisherPacing, source_id)
+    remaining = (row.next_allowed - datetime.now(timezone.utc)).total_seconds()
+    assert minimum <= remaining <= 3600
+    assert row.paused is False
+    with pytest.raises(PublisherRequestError) as blocked:
+        with PublisherRequestBudget().request(source_id, "www.kawalingpinoy.com"):
+            pytest.fail("Cooldown must prevent an outbound request")
+    assert blocked.value.status_code == 429
+
+
+def test_publisher_budget_database_unavailable_fails_closed(monkeypatch):
+    from app.core import database
+    from app.services.publisher_budget import PublisherRequestBudget, PublisherRequestError
+    class BrokenEngine:
+        def connect(self):
+            raise RuntimeError("private database information")
+    with monkeypatch.context() as patch:
+        patch.setattr(database, "engine", BrokenEngine())
+        with pytest.raises(PublisherRequestError) as error:
+            with PublisherRequestBudget().request(1, "example.com"):
+                pytest.fail("Unavailable budget must prevent an outbound request")
+    assert error.value.status_code == 503
+    assert error.value.detail == "PUBLISHER_REQUEST_BUDGET_UNAVAILABLE"
+
+
+def test_robots_timeout_is_504_without_leaking_error(client, db, auth_user, auth_household, structured_kawaling_source):
+    _grant(db, auth_user, auth_household)
+    class TimeoutTransport(FakePublisherTransport):
+        def fetch_once_pinned(self, url, **kwargs):
+            raise TimeoutError("private socket details")
+    response = _preview_with(client, TimeoutTransport([]))
+    assert response.status_code == 504
+    assert response.json()["detail"] == "PUBLISHER_REQUEST_TIMEOUT"
+
+
+def test_upstream_robots_rate_limit_blocks_subsequent_requests(client, db, auth_user, auth_household, structured_kawaling_source):
+    _grant(db, auth_user, auth_household)
+    transport = FakePublisherTransport([
+        PageFetchResponse(429, {"retry-after": "30"}, b"limited"),
+    ])
+    first = _preview_with(client, transport)
+    assert first.status_code == 429
+    assert first.json()["detail"] == "PUBLISHER_UPSTREAM_RATE_LIMITED"
+    assert first.headers["retry-after"] == "30"
+    second = _preview_with(client, transport)
+    assert second.status_code == 429
+    assert len(transport.requests) == 1
+
+
+def test_publisher_override_applies_to_its_source_only(db, structured_kawaling_source, structured_panlasang_source, monkeypatch):
+    from app.core.config import settings, PublisherPacingSettings
+    from app.services.publisher_budget import PublisherRequestBudget, PublisherRequestError
+    monkeypatch.setattr(settings, "PUBLISHER_PACING_DEFAULT", PublisherPacingSettings(
+        min_interval_seconds=0.001, window_seconds=60, window_requests=2))
+    monkeypatch.setattr(settings, "PUBLISHER_PACING_OVERRIDES", {
+        "www.kawalingpinoy.com": PublisherPacingSettings(min_interval_seconds=0.001, window_seconds=60, window_requests=1),
+    })
+    budget = PublisherRequestBudget()
+    kawaling = (structured_kawaling_source.id, "www.kawalingpinoy.com")
+    panlasang = (structured_panlasang_source.id, "panlasangpinoy.com")
+    for source in (kawaling, panlasang, panlasang):
+        with budget.request(*source) as record:
+            record(PageFetchResponse(200, {}, b""))
+    with pytest.raises(PublisherRequestError) as error:
+        with budget.request(*kawaling):
+            pytest.fail("Publisher override must limit this publisher")
+    assert error.value.status_code == 429
+
+
+def test_minimum_interval_rejects_early_request_then_allows_retry(db, structured_kawaling_source, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from app.core.config import settings, PublisherPacingSettings
+    from app.models.publisher_budget import PublisherPacing
+    from app.services.publisher_budget import PublisherRequestBudget, PublisherRequestError
+    monkeypatch.setattr(settings, "PUBLISHER_PACING_DEFAULT", PublisherPacingSettings(
+        min_interval_seconds=30, window_seconds=60, window_requests=10))
+    source_id = structured_kawaling_source.id
+    budget = PublisherRequestBudget()
+    with budget.request(source_id, "www.kawalingpinoy.com") as record:
+        record(PageFetchResponse(200, {}, b""))
+    with pytest.raises(PublisherRequestError) as error:
+        with budget.request(source_id, "www.kawalingpinoy.com"):
+            pytest.fail("Early request must not start")
+    assert error.value.status_code == 429
+    assert int(error.value.headers["Retry-After"]) >= 28
+    db.expire_all()
+    row = db.get(PublisherPacing, source_id)
+    row.next_allowed = datetime.now(timezone.utc) - timedelta(seconds=1)
+    db.commit()
+    with PublisherRequestBudget().request(source_id, "www.kawalingpinoy.com") as record:
+        record(PageFetchResponse(200, {}, b""))
+
+
+def test_retry_after_http_date_sets_cooldown(db, structured_kawaling_source):
+    from datetime import datetime, timedelta, timezone
+    from email.utils import format_datetime
+    from app.models.publisher_budget import PublisherPacing
+    from app.services.publisher_budget import PublisherRequestBudget, PublisherRequestError
+    source_id = structured_kawaling_source.id
+    header = format_datetime(datetime.now(timezone.utc) + timedelta(seconds=40), usegmt=True)
+    with pytest.raises(PublisherRequestError) as error:
+        with PublisherRequestBudget().request(source_id, "www.kawalingpinoy.com") as record:
+            record(PageFetchResponse(503, {"Retry-After": header}, b""))
+    assert error.value.status_code == 503
+    assert int(error.value.headers["Retry-After"]) >= 38
+    db.expire_all()
+    assert (db.get(PublisherPacing, source_id).next_allowed - datetime.now(timezone.utc)).total_seconds() >= 38
+
+
+def test_paused_publisher_fails_closed_after_restart(db, structured_kawaling_source):
+    from datetime import datetime, timezone
+    from app.models.publisher_budget import PublisherBudget, PublisherPacing
+    from app.services.publisher_budget import PublisherRequestBudget, PublisherRequestError
+    now = datetime.now(timezone.utc)
+    db.add(PublisherPacing(source_id=structured_kawaling_source.id, window_started=now,
+        window_used=1, next_allowed=now, paused=True))
+    db.commit()
+    with pytest.raises(PublisherRequestError) as error:
+        with PublisherRequestBudget().request(structured_kawaling_source.id, "www.kawalingpinoy.com"):
+            pytest.fail("Paused publisher must not send requests")
+    assert error.value.status_code == 503
+    assert db.get(PublisherBudget, 1) is None
+
+
+def test_budget_failure_response_is_sanitized_and_sends_nothing(client, db, auth_user, auth_household, structured_kawaling_source):
+    from contextlib import contextmanager
+    from app.api.v1.endpoints.recipe_sources import get_publisher_budget
+    from app.services.publisher_budget import PublisherRequestError
+    _grant(db, auth_user, auth_household)
+    class Unavailable:
+        @contextmanager
+        def request(self, source_id, canonical_host):
+            raise PublisherRequestError(503, "PUBLISHER_REQUEST_BUDGET_UNAVAILABLE")
+            yield
+    transport = FakePublisherTransport(_wp_responses())
+    fastapi_app.dependency_overrides[get_publisher_budget] = Unavailable
+    try:
+        response = _preview_with(client, transport)
+        assert response.status_code == 503
+        assert response.json()["detail"] == "PUBLISHER_REQUEST_BUDGET_UNAVAILABLE"
+        assert transport.requests == []
+    finally:
+        fastapi_app.dependency_overrides.pop(get_publisher_budget, None)
+
+
+def test_redirect_retry_after_delays_following_robots_request(client, db, auth_user, auth_household, structured_kawaling_source):
+    from app.models.publisher_budget import PublisherBudget
+    _grant(db, auth_user, auth_household)
+    robots = PageFetchResponse(200, {"content-type": "text/plain"}, b"User-agent: *\nAllow: /\n")
+    redirect = PageFetchResponse(302, {"location": "/another-recipe/", "retry-after": "30"}, b"")
+    transport = FakePublisherTransport([robots, redirect, robots])
+    response = _preview_with(client, transport)
+    assert response.status_code == 429
+    assert int(response.headers["retry-after"]) >= 28
+    assert len(transport.requests) == 2
+    db.expire_all()
+    assert db.get(PublisherBudget, 1).used == 2
+
+
+def test_timeout_sets_cooldown_and_allows_retry_after_expiry(client, db, auth_user, auth_household, structured_kawaling_source):
+    from datetime import datetime, timedelta, timezone
+    from app.models.publisher_budget import PublisherPacing
+    _grant(db, auth_user, auth_household)
+    class TimeoutTransport(FakePublisherTransport):
+        def fetch_once_pinned(self, url, **kwargs):
+            self.requests.append(url)
+            raise TimeoutError("timeout")
+    transport = TimeoutTransport([])
+    assert _preview_with(client, transport).status_code == 504
+    db.expire_all()
+    state = db.get(PublisherPacing, structured_kawaling_source.id)
+    assert (state.next_allowed - datetime.now(timezone.utc)).total_seconds() > 50
+    assert _preview_with(client, transport).status_code == 429
+    assert len(transport.requests) == 1
+    state.next_allowed = datetime.now(timezone.utc) - timedelta(seconds=1)
+    db.commit()
+    robots = PageFetchResponse(200, {"content-type": "text/plain"}, b"User-agent: *\nAllow: /\n")
+    page = PageFetchResponse(200, {"content-type": "text/html"}, SAMPLE_PANLASANG_HTML.encode())
+    assert _preview_with(client, FakePublisherTransport([robots, page])).status_code == 200
