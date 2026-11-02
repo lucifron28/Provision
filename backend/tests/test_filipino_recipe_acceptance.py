@@ -1,4 +1,5 @@
 import json
+import pytest
 from decimal import Decimal
 from pathlib import Path
 
@@ -171,3 +172,34 @@ def test_sinigang_patis_conflict_and_unknown_tamarind(client, db, catalog):
     assert with_fish.status_code == 200, with_fish.text
     assert with_fish.json()["result"]["decision"] == "blocked"
     assert "allergen_conflict" in with_fish.json()["result"]["reasons"]
+
+
+@pytest.mark.parametrize("title,allergen,ingredient,amount,unit,optional", [
+    ("Adobong tokwa", "soy", "tofu", "700", "g", False),
+    ("Sinigang na hipon", "crustacean_shellfish", "shrimp", "700", "g", False),
+    ("Tinolang manok", "fish", "fish sauce", "20", "ml", False),
+    ("Tortang talong", "egg", "egg", "6", "count", False),
+    ("Pinakbet na gulay", "crustacean_shellfish", "shrimp paste", "10", "g", True),
+])
+def test_five_filipino_recipes_respect_allergies_and_servings(
+    client, db, catalog, title, allergen, ingredient, amount, unit, optional
+):
+    dataset = _dataset()
+    item = next(recipe for recipe in dataset["recipes"] if recipe["title"] == title)
+    created = client.post("/api/v1/recipes/", json=_recipe_payload(dataset, item))
+    assert created.status_code == 201, created.text
+    declare(client, allergen)
+    url = f"/api/v1/recipes/{created.json()['id']}/evaluate"
+    request = {"expected_recipe_revision": 1, "servings": "8", "include_optional": True}
+    response = client.post(url, json=request)
+    assert response.status_code == 200, response.text
+    result = response.json()["result"]
+    assert result["decision"] == "blocked"
+    assert "allergen_conflict" in result["reasons"]
+    line = next(row for row in result["availability"]["requirements"] if row["canonical_name"] == ingredient)
+    assert Decimal(line["required_amount"]) == Decimal(amount)
+    assert line["unit"] == unit
+    if optional:
+        omitted = client.post(url, json={**request, "include_optional": False})
+        assert omitted.status_code == 200, omitted.text
+        assert omitted.json()["result"]["decision"] != "blocked"
