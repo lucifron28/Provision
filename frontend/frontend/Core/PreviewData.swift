@@ -660,7 +660,27 @@ public enum PreviewData {
         batches: [InventoryBatch]? = nil
     ) -> InventoryViewModel {
         let vm = InventoryViewModel(isPreview: true)
-        vm.products = products
+        var expirations: [Int: Int] = [:]
+        for item in PreviewData.expiringSoonItems {
+            expirations[item.product_id] = item.days_until_expiration
+        }
+        for batch in PreviewData.batches {
+            if let days = batch.daysUntilExpiration {
+                if let cur = expirations[batch.product_id] {
+                    expirations[batch.product_id] = min(cur, days)
+                } else {
+                    expirations[batch.product_id] = days
+                }
+            }
+        }
+        vm.productExpirations = expirations
+        vm.products = products.map { prod in
+            var p = prod
+            if let days = expirations[prod.id] {
+                p.daysUntilExpiration = days
+            }
+            return p
+        }
         vm.locations = locations
         
         let targetProduct = selectedProduct ?? centuryTuna
@@ -699,8 +719,10 @@ public enum PreviewData {
         return vm
     }
 
+    #if canImport(UIKit)
     @MainActor
     public static func makeScanViewModel() -> ScanViewModel {
         ScanViewModel(isPreview: true)
     }
+    #endif
 }

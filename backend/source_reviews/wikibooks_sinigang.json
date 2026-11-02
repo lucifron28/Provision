@@ -1,0 +1,24 @@
+{
+  "expected_revision": 1,
+  "canonical_host": "en.wikibooks.org",
+  "publisher_name": "Wikibooks",
+  "reviewed_by": "Provision source review",
+  "policy": {
+    "review_status": "approved",
+    "tier": "reviewed_general",
+    "enabled": true,
+    "allowed_hosts": ["en.wikibooks.org"],
+    "allowed_redirect_hosts": [],
+    "access_mode": "licensed_full",
+    "extraction_methods": ["full_text"],
+    "cuisine_tags": ["Filipino"],
+    "terms_reference": "https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use",
+    "terms_reviewed_at": "2026-11-01T04:43:00Z",
+    "robots_reference": "https://en.wikibooks.org/robots.txt",
+    "robots_reviewed_at": "2026-11-01T04:43:00Z",
+    "license_reference": "https://en.wikibooks.org/wiki/Cookbook:Sinigang_(Philippine_Sour_Soup)",
+    "last_audited_at": "2026-11-01T04:43:00Z",
+    "review_expires_at": "2026-12-01T04:43:00Z",
+    "disabled_reason": null
+  }
+}

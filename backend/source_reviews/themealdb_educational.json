@@ -1,0 +1,24 @@
+{
+  "expected_revision": null,
+  "canonical_host": "www.themealdb.com",
+  "publisher_name": "TheMealDB",
+  "reviewed_by": "Provision source review",
+  "policy": {
+    "review_status": "approved",
+    "tier": "reviewed_general",
+    "enabled": true,
+    "allowed_hosts": ["www.themealdb.com"],
+    "allowed_redirect_hosts": [],
+    "access_mode": "structured_recipe_fetch",
+    "extraction_methods": ["api_json"],
+    "cuisine_tags": ["Filipino", "International"],
+    "terms_reference": "https://www.themealdb.com/terms_of_use.php",
+    "terms_reviewed_at": "2026-10-31T11:34:54Z",
+    "robots_reference": "https://www.themealdb.com/robots.txt",
+    "robots_reviewed_at": "2026-10-31T11:34:54Z",
+    "license_reference": "https://www.themealdb.com/api.php",
+    "last_audited_at": "2026-10-31T11:34:54Z",
+    "review_expires_at": "2026-11-30T11:34:54Z",
+    "disabled_reason": null
+  }
+}

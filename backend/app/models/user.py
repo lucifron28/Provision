@@ -1,6 +1,6 @@
 from typing import Optional
 from sqlalchemy import String, Boolean
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
 
 
@@ -16,3 +16,7 @@ class User(Base, TimestampMixin):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    memberships: Mapped[list["HouseholdMembership"]] = relationship(
+        "HouseholdMembership", back_populates="user", cascade="all, delete-orphan"
+    )

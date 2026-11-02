@@ -17,6 +17,7 @@ from app.models.batch import InventoryBatch
 from app.models.event import InventoryEvent, EventType
 from app.models.shopping import ShoppingListItem
 from app.models.user import User
+from app.models.household import Household, HouseholdMembership, HouseholdRole
 from seed import seed_database
 
 
@@ -28,8 +29,24 @@ def seeded_db(db):
 
 
 @pytest.fixture
-def seeded_client(client, seeded_db):
+def seeded_client(client, seeded_db, auth_user):
     """Client backed by the fully seeded database."""
+    demo_household = seeded_db.query(Household).filter(Household.slug == "demo").one()
+    existing_default = seeded_db.query(HouseholdMembership).filter(
+        HouseholdMembership.user_id == auth_user.id,
+        HouseholdMembership.is_default.is_(True),
+    ).one()
+    existing_default.is_default = False
+    seeded_db.flush()
+    seeded_db.add(
+        HouseholdMembership(
+            household_id=demo_household.id,
+            user_id=auth_user.id,
+            role=HouseholdRole.MEMBER.value,
+            is_default=True,
+        )
+    )
+    seeded_db.commit()
     return client
 
 
@@ -456,3 +473,86 @@ def test_seed_non_reset_mode(db):
     assert db.query(Product).count() == prod_count == 49
     assert db.query(InventoryBatch).count() == batch_count == 37
     assert db.query(ShoppingListItem).count() == shop_count == 9
+
+
+def test_seed_reset_preserves_other_households_and_moves_demo_default(db):
+    user = User(
+        email="user@provision.local",
+        hashed_password="test-hash",
+        display_name="Existing Demo User",
+        is_active=True,
+    )
+    db.add(user)
+    db.flush()
+    private_household = Household(name="Home", slug=f"user-{user.id}")
+    other_household = Household(name="Other Home", slug="other-seed-test")
+    db.add_all([private_household, other_household])
+    db.flush()
+    db.add(
+        HouseholdMembership(
+            household_id=private_household.id,
+            user_id=user.id,
+            role=HouseholdRole.OWNER.value,
+            is_default=True,
+        )
+    )
+
+    private_product = Product(
+        household_id=other_household.id,
+        name="Unrelated private oats",
+    )
+    private_location = StorageLocation(
+        household_id=other_household.id,
+        name="Other Pantry",
+    )
+    private_session = GrocerySession(
+        household_id=other_household.id,
+        store_name="Other Store",
+        status=GrocerySessionStatus.COMPLETED,
+    )
+    db.add_all([private_product, private_location, private_session])
+    db.flush()
+    private_batch = InventoryBatch(
+        household_id=other_household.id,
+        product_id=private_product.id,
+        storage_location_id=private_location.id,
+        grocery_session_id=private_session.id,
+        original_quantity=2,
+        remaining_quantity=2,
+    )
+    db.add(private_batch)
+    db.flush()
+    private_event = InventoryEvent(
+        batch_id=private_batch.id,
+        event_type=EventType.PURCHASED,
+        quantity=2,
+    )
+    private_item = ShoppingListItem(
+        household_id=other_household.id,
+        product_id=private_product.id,
+        name=private_product.name,
+        quantity=1,
+        is_bought=False,
+    )
+    db.add_all([private_event, private_item])
+    db.commit()
+
+    seed_database(reset=True, db=db)
+
+    demo_household = db.query(Household).filter(Household.slug == "demo").one()
+    demo_membership = db.query(HouseholdMembership).filter(
+        HouseholdMembership.household_id == demo_household.id,
+        HouseholdMembership.user_id == user.id,
+    ).one()
+    private_membership = db.query(HouseholdMembership).filter(
+        HouseholdMembership.household_id == private_household.id,
+        HouseholdMembership.user_id == user.id,
+    ).one()
+    assert demo_membership.is_default is True
+    assert private_membership.is_default is False
+    assert db.get(Product, private_product.id) is not None
+    assert db.get(StorageLocation, private_location.id) is not None
+    assert db.get(GrocerySession, private_session.id) is not None
+    assert db.get(InventoryBatch, private_batch.id) is not None
+    assert db.get(InventoryEvent, private_event.id) is not None
+    assert db.get(ShoppingListItem, private_item.id) is not None

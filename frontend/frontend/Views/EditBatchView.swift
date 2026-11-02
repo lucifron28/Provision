@@ -49,17 +49,30 @@ public struct EditBatchView: View {
                 
                 Section("Metadata") {
                     Toggle("Track Expiration", isOn: $trackExpiration)
+                        .tint(ProvisionTheme.provisionGreen)
+                    
                     if trackExpiration {
                         HStack {
                             DatePicker("Expiration Date", selection: $expirationDate, displayedComponents: .date)
+                                .tint(ProvisionTheme.provisionGreen)
+                            
                             Button {
                                 showingExpirationOCRSheet = true
                             } label: {
-                                Image(systemName: "camera.viewfinder")
-                                    .font(.system(size: 15))
-                                    .foregroundStyle(ProvisionTheme.heroCard)
+                                HStack(spacing: 4) {
+                                    Image(systemName: "camera.viewfinder")
+                                        .font(.system(size: 14, weight: .semibold))
+                                    Text("Scan")
+                                        .font(.system(size: 12, weight: .bold))
+                                }
+                                .foregroundStyle(ProvisionTheme.provisionGreen)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 6)
+                                .background(ProvisionTheme.provisionGreenLight)
+                                .clipShape(Capsule())
                             }
                             .buttonStyle(.borderless)
+                            .accessibleTouchTarget()
                         }
                     }
                     
@@ -72,14 +85,18 @@ public struct EditBatchView: View {
                                 Text(loc.name).tag(Int?.some(loc.id))
                             }
                         }
+                        .tint(ProvisionTheme.provisionGreen)
                     }
                     
                     HStack {
                         Text("Unit Price (₱)")
+                            .foregroundStyle(ProvisionTheme.textPrimary)
                         Spacer()
                         TextField("Optional", text: $unitPriceStr)
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+                            .tint(ProvisionTheme.provisionGreen)
                     }
                 }
                 
@@ -89,18 +106,22 @@ public struct EditBatchView: View {
                     } label: {
                         if isSubmitting {
                             ProgressView()
-                                .frame(maxWidth: .infinity)
+                                .tint(ProvisionTheme.onAccent)
+                                .frame(maxWidth: .infinity, minHeight: 48)
                         } else {
                             Text("Save Changes")
                                 .font(.system(size: 16, weight: .bold))
-                                .frame(maxWidth: .infinity)
-                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity, minHeight: 48)
+                                .foregroundStyle(ProvisionTheme.onAccent)
                         }
                     }
-                    .listRowBackground(ProvisionTheme.provisionGreen)
+                    .listRowBackground(isSubmitting ? ProvisionTheme.provisionGreen.opacity(0.4) : ProvisionTheme.provisionGreen)
                     .disabled(isSubmitting)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(ProvisionTheme.background.ignoresSafeArea())
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Edit Batch")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

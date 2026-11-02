@@ -25,6 +25,8 @@ class UserRead(BaseModel):
     display_name: Optional[str] = None
     is_active: bool
     created_at: datetime
+    default_household_id: Optional[int] = None
+    default_household_name: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

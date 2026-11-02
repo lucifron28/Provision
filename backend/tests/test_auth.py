@@ -1,6 +1,6 @@
 from datetime import timedelta
 import pytest
-from app.core.security import create_access_token
+from app.core.security import create_access_token, decode_access_token
 
 
 def test_registration_succeeds(unauthed_client):
@@ -56,6 +56,7 @@ def test_login_succeeds(unauthed_client, auth_user):
     assert "access_token" in data
     assert data["token_type"] == "bearer"
     assert len(data["access_token"]) > 20
+    assert decode_access_token(data["access_token"])["uid"] == str(auth_user.id)
 
 
 def test_wrong_password_fails_generic_401(unauthed_client, auth_user):
@@ -107,10 +108,23 @@ def test_auth_me_fails_with_expired_token(unauthed_client, auth_user):
     expired_token = create_access_token(
         subject=auth_user.email,
         expires_delta=timedelta(seconds=-10),  # expired 10s ago
+        user_id=auth_user.id,
     )
     response = unauthed_client.get(
         "/api/v1/auth/me",
         headers={"Authorization": f"Bearer {expired_token}"},
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.parametrize("user_id", [None, 999999])
+def test_auth_me_rejects_tokens_without_matching_immutable_user_id(
+    unauthed_client, auth_user, user_id
+):
+    token = create_access_token(subject=auth_user.email, user_id=user_id)
+    response = unauthed_client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 401
 

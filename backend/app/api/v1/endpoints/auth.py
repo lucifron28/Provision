@@ -5,6 +5,7 @@ from sqlalchemy import select
 
 from app.core.database import get_db
 from app.core.security import hash_password, verify_password, create_access_token, decode_access_token
+from app.models.household import Household, HouseholdMembership, HouseholdRole
 from app.models.user import User
 from app.schemas.auth import UserCreate, UserRead, LoginRequest, TokenResponse
 
@@ -43,6 +44,13 @@ def get_current_user(
             detail="User account not found",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    if payload.get("uid") != str(user.id):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     
     if not user.is_active:
         raise HTTPException(
@@ -52,6 +60,26 @@ def get_current_user(
         )
     
     return user
+
+
+def _user_read(db: Session, user: User) -> UserRead:
+    membership = db.scalar(
+        select(HouseholdMembership)
+        .where(
+            HouseholdMembership.user_id == user.id,
+            HouseholdMembership.is_default.is_(True),
+        )
+    )
+    household = db.get(Household, membership.household_id) if membership else None
+    return UserRead(
+        id=user.id,
+        email=user.email,
+        display_name=user.display_name,
+        is_active=user.is_active,
+        created_at=user.created_at,
+        default_household_id=household.id if household else None,
+        default_household_name=household.name if household else None,
+    )
 
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
@@ -79,9 +107,22 @@ def register_user(
         is_active=True,
     )
     db.add(user)
+    db.flush()
+
+    household = Household(name="Home", slug=f"user-{user.id}")
+    db.add(household)
+    db.flush()
+    db.add(
+        HouseholdMembership(
+            household_id=household.id,
+            user_id=user.id,
+            role=HouseholdRole.OWNER.value,
+            is_default=True,
+        )
+    )
     db.commit()
     db.refresh(user)
-    return user
+    return _user_read(db, user)
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -104,15 +145,16 @@ def login_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    access_token = create_access_token(subject=user.email)
+    access_token = create_access_token(subject=user.email, user_id=user.id)
     return TokenResponse(access_token=access_token, token_type="bearer")
 
 
 @router.get("/me", response_model=UserRead)
 def get_current_user_profile(
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
     Returns the authenticated user's profile details.
     """
-    return current_user
+    return _user_read(db, current_user)

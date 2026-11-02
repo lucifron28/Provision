@@ -19,6 +19,7 @@ public struct Product: Codable, Identifiable, Hashable, Sendable {
     // Aggregated stock metrics attached by backend
     public var total_remaining_quantity: Double?
     public var active_batches_count: Int?
+    public var daysUntilExpiration: Int?
     
     public init(
         id: Int,
@@ -33,7 +34,8 @@ public struct Product: Codable, Identifiable, Hashable, Sendable {
         created_at: String? = nil,
         updated_at: String? = nil,
         total_remaining_quantity: Double? = 0,
-        active_batches_count: Int? = 0
+        active_batches_count: Int? = 0,
+        daysUntilExpiration: Int? = nil
     ) {
         self.id = id
         self.name = name
@@ -48,6 +50,7 @@ public struct Product: Codable, Identifiable, Hashable, Sendable {
         self.updated_at = updated_at
         self.total_remaining_quantity = total_remaining_quantity
         self.active_batches_count = active_batches_count
+        self.daysUntilExpiration = daysUntilExpiration
     }
     
     // MARK: - Display Helpers
@@ -84,6 +87,11 @@ public struct Product: Codable, Identifiable, Hashable, Sendable {
     public var isLowStock: Bool {
         let stock = total_remaining_quantity ?? 0
         return stock > 0 && stock <= 2
+    }
+    
+    public var isExpiringSoon: Bool {
+        guard let days = daysUntilExpiration else { return false }
+        return days <= 7
     }
 }
 

@@ -31,6 +31,32 @@ from app.models.user import User
 from app.models.product import Product
 from app.models.batch import InventoryBatch
 from app.models.location import StorageLocation
+from app.models.household import Household, HouseholdMembership, HouseholdRole
+
+
+def _create_user_with_private_household(db, email, password, display_name):
+    user = User(
+        email=email,
+        hashed_password=hash_password(password),
+        display_name=display_name,
+        is_active=True,
+    )
+    db.add(user)
+    db.flush()
+    household = Household(name="Home", slug=f"user-{user.id}")
+    db.add(household)
+    db.flush()
+    db.add(
+        HouseholdMembership(
+            household_id=household.id,
+            user_id=user.id,
+            role=HouseholdRole.OWNER.value,
+            is_default=True,
+        )
+    )
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 # ============================================================================
@@ -89,6 +115,7 @@ def test_expired_token_rejects_protected_pantry_endpoints(unauthed_client, auth_
     expired_token = create_access_token(
         subject=auth_user.email,
         expires_delta=timedelta(seconds=-30),  # expired 30s ago
+        user_id=auth_user.id,
     )
     expired_headers = {"Authorization": f"Bearer {expired_token}"}
     endpoints = [
@@ -131,7 +158,7 @@ def test_deactivated_user_token_rejected_on_pantry_endpoints(db, unauthed_client
     When a user session is terminated or the user is marked inactive (e.g. deactivated account),
     their existing token MUST return 401 on protected pantry endpoints.
     """
-    valid_token = create_access_token(subject=auth_user.email)
+    valid_token = create_access_token(subject=auth_user.email, user_id=auth_user.id)
     headers = {"Authorization": f"Bearer {valid_token}"}
 
     # Verify access works while active
@@ -161,17 +188,11 @@ def test_deleted_user_token_rejected_on_pantry_endpoints(db, unauthed_client):
     A JWT whose subject refers to a user that was deleted or no longer exists in DB
     must return 401 'User no longer exists'.
     """
-    temp_user = User(
-        email="temporary@provision.local",
-        hashed_password=hash_password("temppass123"),
-        display_name="Temp User",
-        is_active=True,
+    temp_user = _create_user_with_private_household(
+        db, "temporary@provision.local", "temppass123", "Temp User"
     )
-    db.add(temp_user)
-    db.commit()
-    db.refresh(temp_user)
 
-    token = create_access_token(subject=temp_user.email)
+    token = create_access_token(subject=temp_user.email, user_id=temp_user.id)
     headers = {"Authorization": f"Bearer {token}"}
 
     # Verify access works before deletion
@@ -195,18 +216,12 @@ def test_session_separation_between_distinct_users(db, unauthed_client, auth_use
     Invalidating User A's session must not allow User A access, while User B
     continues to have access with their valid session.
     """
-    user_b = User(
-        email="user_b@provision.local",
-        hashed_password=hash_password("userbpass123"),
-        display_name="User B",
-        is_active=True,
+    user_b = _create_user_with_private_household(
+        db, "user_b@provision.local", "userbpass123", "User B"
     )
-    db.add(user_b)
-    db.commit()
-    db.refresh(user_b)
 
-    token_a = create_access_token(subject=auth_user.email)
-    token_b = create_access_token(subject=user_b.email)
+    token_a = create_access_token(subject=auth_user.email, user_id=auth_user.id)
+    token_b = create_access_token(subject=user_b.email, user_id=user_b.id)
 
     headers_a = {"Authorization": f"Bearer {token_a}"}
     headers_b = {"Authorization": f"Bearer {token_b}"}

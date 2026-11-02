@@ -23,7 +23,7 @@ Provision is the native backend service powering the Provision iOS food inventor
 - **Runtime:** Python 3.13+ (managed via `uv`)
 - **Web Framework:** FastAPI + Pydantic v2
 - **ORM:** SQLAlchemy 2.0 (`Mapped`, `mapped_column`, `DeclarativeBase`)
-- **Database:** SQLite
+- **Database:** PostgreSQL 18 (containerized via Docker Compose, synchronized via SQLAlchemy 2.0 + psycopg 3)
 - **Authentication:** JWT access tokens (HS256) + Argon2 password hashing (`pwdlib[argon2]`)
 - **Migrations:** Alembic
 - **Testing:** Pytest + HTTPX (`TestClient`)
@@ -140,29 +140,33 @@ Commit conventions:
 ## 6. Getting Started
 
 ### Prerequisites
+- Docker Desktop on macOS (or Docker Engine)
 - Python 3.13+
 - [`uv`](https://github.com/astral-sh/uv) (fast Python package manager)
 
 ### Installation & Run
 
 ```bash
-# Navigate to backend directory
+# 1. From repository root, start PostgreSQL 18 container
+docker compose up -d
+
+# 2. Navigate to backend directory
 cd backend
 
-# 1. Configure environment variables
+# 3. Configure environment variables
 cp .env.example .env
 # Set your local JWT_SECRET_KEY in .env
 
-# 2. Sync dependencies
+# 4. Sync dependencies
 uv sync
 
-# 3. Run database migrations
+# 5. Run database migrations
 uv run alembic upgrade head
 
-# 4. Seed Philippine supermarket demo data (optional / recommended)
+# 6. Seed Philippine supermarket demo data (optional / recommended)
 uv run python seed.py
 
-# 5. Start local server
+# 7. Start local server
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
@@ -174,8 +178,22 @@ uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```bash
 uv run pytest
 ```
-All tests execute against an isolated in-memory SQLite database with foreign-key enforcement enabled.
+All tests execute against an isolated PostgreSQL test database (`provision_test`) with automatic per-test table truncation, sequence reset, foreign-key RESTRICT enforcement, and transaction isolation.
 
+### Migrating Existing SQLite Data
+
+To safely transfer data from a previous SQLite `provision.db` database:
+
+```bash
+# Dry-run inspection
+uv run python scripts/migrate_sqlite_to_postgres.py --sqlite-path provision.db --dry-run
+
+# Execute migration (creates timestamped backup first)
+uv run python scripts/migrate_sqlite_to_postgres.py --sqlite-path provision.db
+
+# Verify row counts
+uv run python scripts/migrate_sqlite_to_postgres.py --sqlite-path provision.db --verify-only
+```
 ---
 
 ## 7. Philippine Supermarket Seed Data & Demo

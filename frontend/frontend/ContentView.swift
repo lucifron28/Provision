@@ -62,7 +62,10 @@ public struct ContentView: View {
                 HomeView(
                     viewModel: homeVM,
                     authVM: authVM,
-                    onNavigateToInventory: {
+                    onNavigateToInventory: { filter in
+                        if let filter = filter {
+                            inventoryVM.applyFilter(filter)
+                        }
                         selectedTab = 1
                     },
                     onNavigateToShopping: {

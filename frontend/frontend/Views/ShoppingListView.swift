@@ -2,6 +2,8 @@ import SwiftUI
 
 public struct ShoppingListView: View {
     @ObservedObject var viewModel: ShoppingViewModel
+    @State private var showingClearDoneConfirmation: Bool = false
+    @State private var itemToDelete: ShoppingItem? = nil
     
     public init(viewModel: ShoppingViewModel) {
         self.viewModel = viewModel
@@ -12,9 +14,9 @@ public struct ShoppingListView: View {
             VStack(spacing: 0) {
                 // Filter Picker
                 Picker("Filter", selection: $viewModel.filter) {
-                    ForEach(ShoppingFilter.allCases) { filter in
-                        Text(filter.rawValue).tag(filter)
-                    }
+                    Text("To Buy (\(viewModel.pendingCount))").tag(ShoppingFilter.pending)
+                    Text("Purchased (\(viewModel.purchasedCount))").tag(ShoppingFilter.completed)
+                    Text("All (\(viewModel.items.count))").tag(ShoppingFilter.all)
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 16)
@@ -41,6 +43,7 @@ public struct ShoppingListView: View {
                     shoppingItemsList
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .background(ProvisionTheme.background.ignoresSafeArea())
             .navigationTitle("Shopping List")
             .navigationBarTitleDisplayMode(.inline)
@@ -48,7 +51,7 @@ public struct ShoppingListView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     if viewModel.items.contains(where: { $0.is_bought }) {
                         Button("Clear Done") {
-                            Task { await viewModel.clearCompleted() }
+                            showingClearDoneConfirmation = true
                         }
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(ProvisionTheme.redAlert)
@@ -60,6 +63,35 @@ public struct ShoppingListView: View {
                     await viewModel.loadItems()
                 }
             }
+            .alert("Clear Completed Items?", isPresented: $showingClearDoneConfirmation) {
+                Button("Cancel", role: .cancel) {}
+                Button("Clear All", role: .destructive) {
+                    Task { await viewModel.clearCompleted() }
+                }
+            } message: {
+                let count = viewModel.items.filter { $0.is_bought }.count
+                Text("Are you sure you want to remove \(count) completed item(s) from your shopping list?")
+            }
+            .alert("Delete Item?", isPresented: Binding(get: { itemToDelete != nil }, set: { if !$0 { itemToDelete = nil } })) {
+                Button("Cancel", role: .cancel) { itemToDelete = nil }
+                Button("Delete", role: .destructive) {
+                    if let item = itemToDelete {
+                        Task { await viewModel.deleteItem(item) }
+                    }
+                    itemToDelete = nil
+                }
+            } message: {
+                if let item = itemToDelete {
+                    Text("Are you sure you want to remove '\(item.name)' from your shopping list?")
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if let msg = viewModel.toastMessage {
+                    toastView(message: msg, isError: false)
+                } else if let err = viewModel.errorMessage {
+                    toastView(message: err, isError: true)
+                }
+            }
         }
     }
     
@@ -69,58 +101,75 @@ public struct ShoppingListView: View {
         Button {
             Task { await viewModel.autoGenerateSuggestions() }
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
                 if viewModel.isGenerating {
                     ProgressView()
                         .tint(ProvisionTheme.provisionGreen)
                 } else {
                     Image(systemName: "sparkles")
-                        .font(.system(size: 15))
+                        .font(.system(size: 16))
                         .foregroundStyle(ProvisionTheme.provisionGreen)
                 }
                 
                 Text(viewModel.isGenerating ? "Analyzing inventory stock..." : "Auto-Generate from Low Stock")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(ProvisionTheme.provisionGreen)
                 
                 Spacer()
                 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(ProvisionTheme.provisionGreen.opacity(0.6))
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(ProvisionTheme.provisionGreen.opacity(0.7))
             }
+            .frame(minHeight: 44)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .background(ProvisionTheme.provisionGreenLight)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(ProvisionTheme.provisionGreen.opacity(0.25), lineWidth: 1)
+            )
         }
         .disabled(viewModel.isGenerating)
+        .accessibleTouchTarget()
     }
     
     private var addItemBar: some View {
         HStack(spacing: 8) {
-            TextField("Add grocery item...", text: $viewModel.newItemName)
-                .font(.system(size: 14))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(ProvisionTheme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(ProvisionTheme.border, lineWidth: 1))
-                .onSubmit {
-                    Task { await viewModel.addItem() }
-                }
+            HStack(spacing: 8) {
+                Image(systemName: "plus.circle")
+                    .font(.system(size: 15))
+                    .foregroundStyle(ProvisionTheme.textTertiary)
+                TextField("Add grocery item...", text: $viewModel.newItemName)
+                    .font(.system(size: 15))
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+                    .tint(ProvisionTheme.provisionGreen)
+                    .onSubmit {
+                        Task { await viewModel.addItem() }
+                    }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(ProvisionTheme.inputBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(ProvisionTheme.border, lineWidth: 1)
+            )
             
             Button {
                 Task { await viewModel.addItem() }
             } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 40, height: 40)
-                    .background(ProvisionTheme.provisionGreen)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(ProvisionTheme.onAccent)
+                    .frame(width: 44, height: 44)
+                    .background(viewModel.newItemName.trimmingCharacters(in: .whitespaces).isEmpty ? ProvisionTheme.provisionGreen.opacity(0.4) : ProvisionTheme.provisionGreen)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
             .disabled(viewModel.newItemName.trimmingCharacters(in: .whitespaces).isEmpty)
+            .accessibleTouchTarget()
         }
     }
     
@@ -128,8 +177,9 @@ public struct ShoppingListView: View {
         List {
             ForEach(viewModel.filteredItems) { item in
                 HStack(spacing: 12) {
-                    // Checkbox button
+                    // Checkbox button with haptic feedback and accessible touch target
                     Button {
+                        HapticFeedback.light()
                         Task { await viewModel.toggleItem(item) }
                     } label: {
                         ZStack {
@@ -143,11 +193,14 @@ public struct ShoppingListView: View {
                                     .frame(width: 16, height: 16)
                                 Image(systemName: "checkmark")
                                     .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(ProvisionTheme.onAccent)
                             }
                         }
+                        .accessibleTouchTarget()
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(item.is_bought ? "Mark \(item.name) as needed" : "Mark \(item.name) as purchased")
+                    .accessibilityValue(item.is_bought ? "Purchased" : "To buy")
                     
                     VStack(alignment: .leading, spacing: 2) {
                         Text(item.name)
@@ -170,12 +223,13 @@ public struct ShoppingListView: View {
                 }
                 .padding(.vertical, 6)
                 .listRowBackground(ProvisionTheme.surface)
-                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     Button(role: .destructive) {
-                        Task { await viewModel.deleteItem(item) }
+                        itemToDelete = item
                     } label: {
                         Label("Delete", systemImage: "trash")
                     }
+                    .tint(ProvisionTheme.redAlert)
                 }
             }
         }
@@ -189,21 +243,72 @@ public struct ShoppingListView: View {
     private var emptyShoppingList: some View {
         VStack(spacing: 16) {
             Spacer()
-            Image(systemName: "cart")
-                .font(.system(size: 48))
-                .foregroundStyle(ProvisionTheme.textTertiary)
+            if viewModel.filter == .pending || viewModel.filter == .all {
+                Image("pip_grocery")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 90, height: 90)
+                    .accessibilityHidden(true)
+            } else {
+                Image(systemName: emptyStateIcon)
+                    .font(.system(size: 44))
+                    .foregroundStyle(ProvisionTheme.textTertiary)
+            }
             
-            Text("No Items in Shopping List")
-                .font(.system(size: 18, weight: .bold, design: .serif))
+            Text(emptyStateTitle)
+                .font(ProvisionTypography.sectionSerif)
                 .foregroundStyle(ProvisionTheme.textPrimary)
             
-            Text("Add pantry items you need to restock or tap 'Auto-Generate' to populate based on low inventory.")
-                .font(.system(size: 14))
+            Text(emptyStateSubtitle)
+                .font(ProvisionTypography.subheadline)
                 .foregroundStyle(ProvisionTheme.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
             Spacer()
         }
+    }
+
+    private var emptyStateIcon: String {
+        switch viewModel.filter {
+        case .all: return "cart"
+        case .pending: return "checklist"
+        case .completed: return "checkmark.circle"
+        }
+    }
+
+    private var emptyStateTitle: String {
+        switch viewModel.filter {
+        case .all: return "Shopping List is Empty"
+        case .pending: return "No Items to Buy"
+        case .completed: return "No Completed Items"
+        }
+    }
+
+    private var emptyStateSubtitle: String {
+        switch viewModel.filter {
+        case .all:
+            return "Add grocery items manually above or tap 'Auto-Generate' to restock low pantry supplies."
+        case .pending:
+            return "You're all caught up! Everything on your list has been purchased."
+        case .completed:
+            return "Items you check off as bought will appear here until cleared."
+        }
+    }
+
+    private func toastView(message: String, isError: Bool) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: isError ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(isError ? ProvisionTheme.redAlert : ProvisionTheme.provisionGreen)
+            Text(message)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(ProvisionTheme.textPrimary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(isError ? ProvisionTheme.redLight : ProvisionTheme.provisionGreenLight)
+        .clipShape(Capsule())
+        .shadow(color: .black.opacity(0.08), radius: 6, y: 3)
+        .padding(.bottom, 16)
     }
 }
 

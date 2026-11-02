@@ -23,7 +23,12 @@ public struct ProductDetailView: View {
     @State private var adjustErrorMessage: String? = nil
     
     @State private var selectedBatchForDiscard: InventoryBatch? = nil
-    
+    @State private var showingDiscardBatchSelection: Bool = false
+    @State private var isDiscarding: Bool = false
+    @State private var isConsuming: Bool = false
+    @State private var isAdjusting: Bool = false
+    @State private var showingAdjustConfirmation: Bool = false
+    @State private var isBatchListExpanded: Bool = false
     public init(viewModel: InventoryViewModel, product: Product) {
         self.viewModel = viewModel
         self.product = product
@@ -77,20 +82,44 @@ public struct ProductDetailView: View {
         .sheet(isPresented: $showingAdjustSheet) {
             adjustSheet
         }
+        .confirmationDialog("Select Batch to Discard", isPresented: $showingDiscardBatchSelection, titleVisibility: .visible) {
+            ForEach(viewModel.productBatches) { batch in
+                Button("\(formatQuantity(batch.remaining_quantity)) \(currentProduct.displayUnit) • Exp: \(batch.displayExpiration)") {
+                    selectedBatchForDiscard = batch
+                    showingDiscardAlert = true
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Choose the specific inventory batch you want to log as discarded waste.")
+        }
         .alert("Discard Batch?", isPresented: $showingDiscardAlert) {
             Button("Cancel", role: .cancel) {}
             Button("Discard", role: .destructive) {
-                if let batch = selectedBatchForDiscard {
+                if let batch = selectedBatchForDiscard, !isDiscarding {
+                    isDiscarding = true
                     Task {
-                        _ = await viewModel.discardBatch(batchId: batch.id)
+                        let success = await viewModel.discardBatch(batchId: batch.id)
+                        isDiscarding = false
+                        if success {
+                            HapticFeedback.warning()
+                        }
                     }
                 }
             }
+            .disabled(isDiscarding)
         } message: {
             if let batch = selectedBatchForDiscard {
                 Text("Are you sure you want to discard \(formatQuantity(batch.remaining_quantity)) \(currentProduct.displayUnit) expiring \(batch.displayExpiration)? This will log a waste event.")
             } else {
                 Text("Are you sure you want to discard this batch?")
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if let msg = viewModel.toastMessage {
+                toastView(message: msg, isError: false)
+            } else if let err = viewModel.errorMessage {
+                toastView(message: err, isError: true)
             }
         }
     }
@@ -121,7 +150,7 @@ public struct ProductDetailView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(ProvisionTheme.amberWarning)
-            .foregroundStyle(.white)
+            .foregroundStyle(ProvisionTheme.onAccent)
             .clipShape(Capsule())
         }
         .padding(14)
@@ -170,7 +199,7 @@ public struct ProductDetailView: View {
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
                             .background(isUnitValid ? ProvisionTheme.provisionGreen : ProvisionTheme.textTertiary)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(ProvisionTheme.onAccent)
                             .clipShape(Capsule())
                     }
                     .disabled(!isUnitValid)
@@ -200,72 +229,84 @@ public struct ProductDetailView: View {
     }
     
     private var actionButtonsRow: some View {
-        HStack(spacing: 10) {
-            // Consume Button
+        VStack(spacing: 10) {
+            // Primary Prominent Button: Log Consumption
             Button {
                 consumeAmountText = "1"
                 consumeErrorMessage = nil
                 showingConsumeSheet = true
             } label: {
-                VStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Image(systemName: "minus.circle.fill")
-                        .font(.system(size: 18))
-                    Text("CONSUME")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.system(size: 18, weight: .bold))
+                    Text("Log Consumption")
+                        .font(.system(size: 16, weight: .bold))
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(currentProduct.isOutOfStock || !isUnitValid ? ProvisionTheme.surfaceSecondary : ProvisionTheme.provisionGreenLight)
-                .foregroundStyle(currentProduct.isOutOfStock || !isUnitValid ? ProvisionTheme.textTertiary : ProvisionTheme.provisionGreen)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(currentProduct.isOutOfStock || !isUnitValid ? ProvisionTheme.surfaceSecondary : ProvisionTheme.provisionGreen)
+                .foregroundStyle(currentProduct.isOutOfStock || !isUnitValid ? ProvisionTheme.textTertiary : ProvisionTheme.onAccent)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .shadow(color: currentProduct.isOutOfStock || !isUnitValid ? .clear : ProvisionTheme.provisionGreen.opacity(0.25), radius: 6, y: 3)
             }
             .disabled(currentProduct.isOutOfStock || !isUnitValid)
             
-            // Discard Button
-            Button {
-                if let earliest = viewModel.productBatches.first {
-                    selectedBatchForDiscard = earliest
-                    showingDiscardAlert = true
+            // Secondary Actions: Discard and Adjust
+            HStack(spacing: 10) {
+                // Discard Button
+                Button {
+                    if viewModel.productBatches.count == 1, let only = viewModel.productBatches.first {
+                        selectedBatchForDiscard = only
+                        showingDiscardAlert = true
+                    } else if viewModel.productBatches.count > 1 {
+                        showingDiscardBatchSelection = true
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "trash.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("Discard")
+                            .font(.system(size: 13, weight: .bold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(ProvisionTheme.surface)
+                    .foregroundStyle(ProvisionTheme.redAlert)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(ProvisionTheme.border, lineWidth: 1)
+                    )
                 }
-            } label: {
-                VStack(spacing: 6) {
-                    Image(systemName: "trash.fill")
-                        .font(.system(size: 18))
-                    Text("DISCARD")
-                        .font(.system(size: 12, weight: .bold))
+                .disabled(viewModel.productBatches.isEmpty || isDiscarding)
+                
+                // Adjust Button
+                Button {
+                    if let earliest = viewModel.productBatches.first {
+                        adjustBatchId = earliest.id
+                        adjustAmountText = formatQuantity(earliest.remaining_quantity)
+                        adjustErrorMessage = nil
+                        showingAdjustSheet = true
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("Adjust")
+                            .font(.system(size: 13, weight: .bold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(ProvisionTheme.surface)
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(ProvisionTheme.border, lineWidth: 1)
+                    )
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(ProvisionTheme.surface)
-                .foregroundStyle(ProvisionTheme.redAlert)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(ProvisionTheme.border, lineWidth: 1))
+                .disabled(viewModel.productBatches.isEmpty)
             }
-            .disabled(viewModel.productBatches.isEmpty)
-            
-            // Adjust Button
-            Button {
-                if let earliest = viewModel.productBatches.first {
-                    adjustBatchId = earliest.id
-                    adjustAmountText = formatQuantity(earliest.remaining_quantity)
-                    adjustErrorMessage = nil
-                    showingAdjustSheet = true
-                }
-            } label: {
-                VStack(spacing: 6) {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 18))
-                    Text("ADJUST")
-                        .font(.system(size: 12, weight: .bold))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(ProvisionTheme.surface)
-                .foregroundStyle(ProvisionTheme.textPrimary)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(ProvisionTheme.border, lineWidth: 1))
-            }
-            .disabled(viewModel.productBatches.isEmpty)
         }
     }
     
@@ -305,17 +346,35 @@ public struct ProductDetailView: View {
                 }
                 
                 // Rest of batches
+                // Collapsible Rest of Stock Batches (FEFO order)
                 if viewModel.productBatches.count > 1 {
-                    Text("REST OF STOCK")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(ProvisionTheme.textTertiary)
-                        .tracking(0.6)
-                        .padding(.top, 6)
-                    
-                    VStack(spacing: 8) {
-                        ForEach(viewModel.productBatches.dropFirst()) { batch in
-                            batchRow(batch: batch)
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isBatchListExpanded.toggle()
                         }
+                    } label: {
+                        HStack {
+                            Text("REST OF STOCK (\(viewModel.productBatches.count - 1))")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(ProvisionTheme.textTertiary)
+                                .tracking(0.6)
+                            Spacer()
+                            Image(systemName: isBatchListExpanded ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(ProvisionTheme.textTertiary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 6)
+                    
+                    if isBatchListExpanded {
+                        VStack(spacing: 8) {
+                            ForEach(viewModel.productBatches.dropFirst()) { batch in
+                                batchRow(batch: batch)
+                            }
+                        }
+                        .transition(.opacity)
                     }
                 }
             }
@@ -544,26 +603,38 @@ public struct ProductDetailView: View {
                     }
                     
                     Task {
+                        guard !isConsuming else { return }
+                        isConsuming = true
                         let success = await viewModel.consumeProduct(
                             productId: currentProduct.id,
                             quantity: amount,
                             reason: consumeReason
                         )
+                        isConsuming = false
                         if success {
+                            HapticFeedback.success()
                             showingConsumeSheet = false
                         } else {
                             consumeErrorMessage = viewModel.errorMessage
                         }
                     }
                 } label: {
-                    Text("Confirm Consumption")
-                        .font(.system(size: 16, weight: .bold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(ProvisionTheme.provisionGreen)
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    HStack {
+                        if isConsuming {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Text("Confirm Consumption")
+                                .font(.system(size: 16, weight: .bold))
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(ProvisionTheme.provisionGreen)
+                    .foregroundStyle(ProvisionTheme.onAccent)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
+                .disabled(isConsuming)
             }
             .padding(20)
             .background(ProvisionTheme.background.ignoresSafeArea())
@@ -640,27 +711,48 @@ public struct ProductDetailView: View {
                         return
                     }
                     
+                    showingAdjustConfirmation = true
+                } label: {
+                    HStack {
+                        if isAdjusting {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Text("Save Adjustment")
+                                .font(.system(size: 16, weight: .bold))
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(ProvisionTheme.provisionGreen)
+                    .foregroundStyle(ProvisionTheme.onAccent)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .disabled(isAdjusting)
+            }
+            .alert("Confirm Stock Adjustment", isPresented: $showingAdjustConfirmation) {
+                Button("Confirm Adjustment") {
+                    let parsed = Double(adjustAmountText.replacingOccurrences(of: ",", with: ".")) ?? 0
                     Task {
+                        guard !isAdjusting else { return }
+                        isAdjusting = true
                         let success = await viewModel.adjustBatch(
                             batchId: adjustBatchId,
-                            newQuantity: newAmount,
+                            newQuantity: parsed,
                             reason: adjustReason
                         )
+                        isAdjusting = false
                         if success {
                             showingAdjustSheet = false
+                            HapticFeedback.success()
                         } else {
                             adjustErrorMessage = viewModel.errorMessage
                         }
                     }
-                } label: {
-                    Text("Save Adjustment")
-                        .font(.system(size: 16, weight: .bold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(ProvisionTheme.provisionGreen)
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Are you sure you want to adjust the batch quantity to \(adjustAmountText) \(currentProduct.displayUnit)?")
             }
             .padding(20)
             .background(ProvisionTheme.background.ignoresSafeArea())
@@ -675,6 +767,22 @@ public struct ProductDetailView: View {
     
     private func formatQuantity(_ qty: Double) -> String {
         ProductUnits.formatAmount(qty)
+    }
+
+    private func toastView(message: String, isError: Bool) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: isError ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(isError ? ProvisionTheme.redAlert : ProvisionTheme.provisionGreen)
+            Text(message)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(ProvisionTheme.textPrimary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(isError ? ProvisionTheme.redLight : ProvisionTheme.provisionGreenLight)
+        .clipShape(Capsule())
+        .shadow(color: .black.opacity(0.08), radius: 6, y: 3)
+        .padding(.bottom, 16)
     }
 }
 

@@ -317,6 +317,28 @@ public struct PackageStampImagePicker: UIViewControllerRepresentable {
     }
 }
 
+// MARK: - Expiration Date Source State
+
+public enum ExpirationDateSource: Equatable, Sendable {
+    case none
+    case previouslySaved(Date)
+    case ocrRecognized(Date, rawText: String, isAmbiguous: Bool)
+    case manualSelected(Date)
+
+    public var description: String {
+        switch self {
+        case .none:
+            return "None (Unknown)"
+        case .previouslySaved:
+            return "Previously Saved on Package"
+        case .ocrRecognized:
+            return "OCR Proposed Stamp"
+        case .manualSelected:
+            return "Manually Selected"
+        }
+    }
+}
+
 // MARK: - Expiration Date Scanner Sheet View
 
 public struct ExpirationDateScannerSheet: View {
@@ -326,6 +348,8 @@ public struct ExpirationDateScannerSheet: View {
     public let onDateSelected: (Date?) -> Void
 
     @State private var selectedDate: Date
+    @State private var hasExplicitDate: Bool
+    @State private var dateSource: ExpirationDateSource
     @State private var parsedDate: Date? = nil
     @State private var detectedText: String? = nil
     @State private var isAmbiguous: Bool = false
@@ -345,6 +369,9 @@ public struct ExpirationDateScannerSheet: View {
         self.title = title
         self.initialDate = initialDate
         self.onDateSelected = onDateSelected
+        let hasInitial = initialDate != nil
+        _hasExplicitDate = State(initialValue: hasInitial)
+        _dateSource = State(initialValue: hasInitial ? .previouslySaved(initialDate!) : .none)
         _selectedDate = State(initialValue: initialDate ?? Date())
         _parsedDate = State(initialValue: initialDate)
     }
@@ -361,6 +388,9 @@ public struct ExpirationDateScannerSheet: View {
                 onDateSelected(date)
             }
         }
+        let hasInitial = initialDate != nil
+        _hasExplicitDate = State(initialValue: hasInitial)
+        _dateSource = State(initialValue: hasInitial ? .previouslySaved(initialDate!) : .none)
         _selectedDate = State(initialValue: initialDate ?? Date())
         _parsedDate = State(initialValue: initialDate)
     }
@@ -518,7 +548,7 @@ public struct ExpirationDateScannerSheet: View {
                                 HStack(spacing: 8) {
                                     Image(systemName: "exclamationmark.circle")
                                         .foregroundStyle(ProvisionTheme.amberWarning)
-                                    Text("No recognized date stamp. Please set date manually below.")
+                                    Text(hasExplicitDate ? "No date recognized in photo. Your current selection is preserved below." : "No recognized date stamp. Please set date manually below.")
                                         .font(.system(size: 12, weight: .medium))
                                         .foregroundStyle(ProvisionTheme.textSecondary)
                                 }
@@ -546,17 +576,51 @@ public struct ExpirationDateScannerSheet: View {
                 }
 
                 // Section 4: Date Confirmation / Fine-tuning
-                Section("Confirm Expiration Date") {
-                    DatePicker(
-                        "Expiration Date",
-                        selection: $selectedDate,
-                        displayedComponents: .date
-                    )
-                    .font(.system(size: 15, weight: .medium))
+                Section("Expiration Date Confirmation") {
+                    if hasExplicitDate {
+                        DatePicker(
+                            "Expiration Date",
+                            selection: $selectedDate,
+                            displayedComponents: .date
+                        )
+                        .font(.system(size: 15, weight: .medium))
+                        .onChange(of: selectedDate) { _, newDate in
+                            dateSource = .manualSelected(newDate)
+                            hasExplicitDate = true
+                        }
 
-                    Text("Fine-tune or manually correct the date before applying to the package.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(ProvisionTheme.textSecondary)
+                        HStack {
+                            Text("Source: \(dateSource.description)")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(ProvisionTheme.textSecondary)
+                            Spacer()
+                            Button("Clear Date") {
+                                hasExplicitDate = false
+                                dateSource = .none
+                                parsedDate = nil
+                                detectedText = nil
+                                isAmbiguous = false
+                            }
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(ProvisionTheme.redAlert)
+                        }
+                    } else {
+                        HStack {
+                            Image(systemName: "questionmark.circle")
+                                .foregroundStyle(ProvisionTheme.textTertiary)
+                            Text("No date selected (Unknown)")
+                                .font(.system(size: 14))
+                                .foregroundStyle(ProvisionTheme.textSecondary)
+                            Spacer()
+                            Button("+ Set Date") {
+                                hasExplicitDate = true
+                                selectedDate = Date()
+                            }
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                        }
+                        .padding(.vertical, 4)
+                    }
                 }
 
                 // Section 5: Manual Stamp Text Input
@@ -577,27 +641,13 @@ public struct ExpirationDateScannerSheet: View {
 
                 // Section 6: Action Buttons
                 Section {
-                    Button {
-                        onDateSelected(selectedDate)
-                        dismiss()
-                    } label: {
-                        HStack {
-                            Spacer()
-                            Image(systemName: "checkmark")
-                            Text("Apply Date (\(selectedDate, format: .dateTime.month().day().year()))")
-                                .font(.system(size: 15, weight: .semibold))
-                            Spacer()
-                        }
-                    }
-                    .foregroundStyle(ProvisionTheme.provisionGreen)
-
                     Button(role: .destructive) {
                         onDateSelected(nil)
                         dismiss()
                     } label: {
                         HStack {
                             Spacer()
-                            Image(systemName: "questionmark.circle")
+                            Image(systemName: "xmark.circle")
                             Text("Leave Unknown (No Expiration)")
                                 .font(.system(size: 14, weight: .medium))
                             Spacer()
@@ -612,8 +662,8 @@ public struct ExpirationDateScannerSheet: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Apply") {
-                        onDateSelected(selectedDate)
+                    Button(hasExplicitDate ? "Apply Date" : "Confirm Unknown") {
+                        onDateSelected(hasExplicitDate ? selectedDate : nil)
                         dismiss()
                     }
                     .font(.system(size: 15, weight: .bold))
@@ -666,7 +716,6 @@ public struct ExpirationDateScannerSheet: View {
         Task {
             let lines = await ExpirationDateOCRService.shared.recognizeTextLines(from: image)
             let parsed = ExpirationDateOCRService.shared.parseExpirationDate(from: lines)
-
             await MainActor.run {
                 self.isAnalyzing = false
                 if let parsed = parsed {
@@ -674,12 +723,34 @@ public struct ExpirationDateScannerSheet: View {
                     self.selectedDate = parsed.date
                     self.detectedText = parsed.rawString
                     self.isAmbiguous = parsed.isAmbiguous
-                } else if !lines.isEmpty {
-                    self.detectedText = lines.joined(separator: "\n")
-                    self.parsedDate = nil
+                    self.hasExplicitDate = true
+                    self.dateSource = .ocrRecognized(parsed.date, rawText: parsed.rawString, isAmbiguous: parsed.isAmbiguous)
                 } else {
-                    self.detectedText = "No readable text detected in photo"
                     self.parsedDate = nil
+                    self.isAmbiguous = false
+                    if !lines.isEmpty {
+                        self.detectedText = "OCR found text but no valid date stamp:\n" + lines.prefix(3).joined(separator: "\n")
+                    } else {
+                        self.detectedText = "No readable text detected in photo"
+                    }
+                    // Priority 5: Preserve existing date if present; do not misrepresent as newly recognized
+                    switch self.dateSource {
+                    case .previouslySaved(let saved):
+                        self.selectedDate = saved
+                        self.hasExplicitDate = true
+                    case .manualSelected(let manual):
+                        self.selectedDate = manual
+                        self.hasExplicitDate = true
+                    default:
+                        if let initial = self.initialDate {
+                            self.selectedDate = initial
+                            self.hasExplicitDate = true
+                            self.dateSource = .previouslySaved(initial)
+                        } else {
+                            self.hasExplicitDate = false
+                            self.dateSource = .none
+                        }
+                    }
                 }
             }
         }
@@ -694,9 +765,12 @@ public struct ExpirationDateScannerSheet: View {
             parsedDate = result.date
             detectedText = trimmed
             isAmbiguous = result.isAmbiguous
+            hasExplicitDate = true
+            dateSource = .manualSelected(result.date)
         } else {
-            detectedText = trimmed
+            detectedText = "Could not parse date stamp from '\(trimmed)'"
             parsedDate = nil
+            isAmbiguous = false
         }
     }
 }

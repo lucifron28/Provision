@@ -42,17 +42,20 @@ public struct GrocerySessionCreate: Codable, Sendable {
     public var purchase_date: String?
     public var total_amount: Double?
     public var notes: String?
+    public var idempotency_key: String?
     
     public init(
         store_name: String,
         purchase_date: String? = nil,
         total_amount: Double? = nil,
-        notes: String? = nil
+        notes: String? = nil,
+        idempotency_key: String? = nil
     ) {
         self.store_name = store_name
         self.purchase_date = purchase_date
         self.total_amount = total_amount
         self.notes = notes
+        self.idempotency_key = idempotency_key
     }
 }
 

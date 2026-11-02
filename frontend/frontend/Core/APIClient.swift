@@ -30,13 +30,32 @@ public enum APIError: LocalizedError, Sendable {
 }
 
 public enum APIEnvironment {
+    private static let hostKey = "provision_backend_host"
+    private static let fallbackHost = "10.212.56.11"
+
     /// Configurable local LAN host for physical iPhone testing.
-    /// Change this to your development Mac's local IP (e.g. "192.168.1.100") when testing on a physical device.
-    nonisolated(unsafe) public static var localDeviceHost: String = "127.0.0.1"
+    /// Can be customized at runtime via UserDefaults without requiring code recompilation.
+    nonisolated(unsafe) public static var localDeviceHost: String {
+        get {
+            UserDefaults.standard.string(forKey: hostKey) ?? fallbackHost
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: hostKey)
+        }
+    }
     nonisolated(unsafe) public static var port: Int = 8000
     nonisolated(unsafe) public static var apiVersionPath: String = "api/v1"
-    
-    public static var defaultBaseURL: URL {
+    nonisolated public static func validateHost(_ host: String) -> URL? {
+        let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard let url = URL(string: "http://\(trimmed):\(port)/\(apiVersionPath)"),
+              url.host != nil else {
+            return nil
+        }
+        return url
+    }
+
+    nonisolated public static var defaultBaseURL: URL {
         #if targetEnvironment(simulator)
         return URL(string: "http://127.0.0.1:\(port)/\(apiVersionPath)")!
         #else
@@ -196,7 +215,7 @@ public actor APIClient {
     
     // MARK: - Products
     
-    public func fetchProducts(search: String? = nil, category: String? = nil) async throws -> [Product] {
+    public func fetchProducts(search: String? = nil, category: String? = nil, skip: Int = 0, limit: Int? = 500) async throws -> [Product] {
         var components = URLComponents(url: baseURL.appendingPathComponent("products/"), resolvingAgainstBaseURL: true)
         var queryItems: [URLQueryItem] = []
         if let search = search, !search.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -204,6 +223,12 @@ public actor APIClient {
         }
         if let category = category, !category.trimmingCharacters(in: .whitespaces).isEmpty {
             queryItems.append(URLQueryItem(name: "category", value: category))
+        }
+        if skip > 0 {
+            queryItems.append(URLQueryItem(name: "skip", value: String(skip)))
+        }
+        if let limit = limit {
+            queryItems.append(URLQueryItem(name: "limit", value: String(limit)))
         }
         if !queryItems.isEmpty {
             components?.queryItems = queryItems
@@ -314,6 +339,20 @@ public actor APIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body = CommitSessionRequest(items: items)
         request.httpBody = try encoder.encode(body)
+        return try await execute(request)
+    }
+
+    public func fetchSession(id: Int) async throws -> GrocerySession {
+        let url = baseURL.appendingPathComponent("grocery-sessions/\(id)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        return try await execute(request)
+    }
+
+    public func cancelSession(id: Int) async throws -> GrocerySession {
+        let url = baseURL.appendingPathComponent("grocery-sessions/\(id)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
         return try await execute(request)
     }
 
