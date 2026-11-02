@@ -922,7 +922,7 @@ public struct ScanViewModelProductionTests {
                 stub.respond(status: 500, data: Data(#"{"detail":"Unexpected test request"}"#.utf8))
             }
         }
-        let vm = ScanViewModel(client: makeTestClient(server: server), isPreview: false, pendingCommitDefaults: defaults)
+        let vm = ScanViewModel(client: makeTestClient(server: server), isPreview: false, pendingCommitDefaults: defaults, scope: HouseholdScope(userID: 1, householdID: 1))
         let committedItem = makeConfirmedItem(productID: 10, locationID: 20)
         vm.scannedItems = [committedItem]
 
@@ -977,7 +977,7 @@ public struct ScanViewModelProductionTests {
             }
         }
 
-        let vm = ScanViewModel(client: makeTestClient(server: server), isPreview: false, pendingCommitDefaults: defaults)
+        let vm = ScanViewModel(client: makeTestClient(server: server), isPreview: false, pendingCommitDefaults: defaults, scope: HouseholdScope(userID: 1, householdID: 1))
         let item = makeConfirmedItem(productID: 41, locationID: 8)
         vm.scannedItems = [item]
         vm.storeName = "Test Store"
@@ -1026,7 +1026,7 @@ public struct ScanViewModelProductionTests {
                 stub.respond(status: 500, data: Data(#"{"detail":"Unexpected test request"}"#.utf8))
             }
         }
-        let vm = ScanViewModel(client: makeTestClient(server: server), isPreview: false, pendingCommitDefaults: makeTestDefaults())
+        let vm = ScanViewModel(client: makeTestClient(server: server), isPreview: false, pendingCommitDefaults: makeTestDefaults(), scope: HouseholdScope(userID: 1, householdID: 1))
         let capturedLines = ["Century Tuna Flakes in Oil 40.50"]
 
         await vm.processReceiptLines(capturedLines)
@@ -1046,7 +1046,7 @@ public struct ScanViewModelProductionTests {
     public static func testInitialCameraPermissionAndScanActivation() async throws {
         let server = ScannerTestServer()
         defer { server.clear(); ScannerTestURLProtocol.install(nil) }
-        let vm = ScanViewModel(client: makeTestClient(server: server), isPreview: false, pendingCommitDefaults: makeTestDefaults())
+        let vm = ScanViewModel(client: makeTestClient(server: server), isPreview: false, pendingCommitDefaults: makeTestDefaults(), scope: HouseholdScope(userID: 1, householdID: 1))
         vm.scannerManager.lockAcceptance()
         try assertTrue(vm.activeSuspensions.contains(.navigatedAway), "New scanner must remain stopped until Scan appears")
 
@@ -1090,13 +1090,13 @@ public struct ScanViewModelProductionTests {
             }
         }
 
-        let firstProcess = ScanViewModel(client: makeTestClient(server: server), isPreview: false, pendingCommitDefaults: defaults)
+        let firstProcess = ScanViewModel(client: makeTestClient(server: server), isPreview: false, pendingCommitDefaults: defaults, scope: HouseholdScope(userID: 1, householdID: 1))
         let item = makeConfirmedItem(productID: 17, locationID: 5)
         firstProcess.scannedItems = [item]
         await firstProcess.commitIntakeSession()
         try assertEquals(firstProcess.pendingDraftSessionId, 702, "Uncertain session ID must be persisted before commit")
 
-        let relaunchedProcess = ScanViewModel(client: makeTestClient(server: server), isPreview: false, pendingCommitDefaults: defaults)
+        let relaunchedProcess = ScanViewModel(client: makeTestClient(server: server), isPreview: false, pendingCommitDefaults: defaults, scope: HouseholdScope(userID: 1, householdID: 1))
         try assertEquals(relaunchedProcess.pendingDraftSessionId, 702, "Relaunch must restore pending session ID")
         try assertEquals(relaunchedProcess.scannedItems, [item], "Relaunch must restore exact intake snapshot")
         await relaunchedProcess.commitIntakeSession()
@@ -1131,7 +1131,7 @@ public struct ScanViewModelProductionTests {
                 stub.respond(status: 500, data: Data(#"{"detail":"Unexpected test request"}"#.utf8))
             }
         }
-        let vm = ScanViewModel(client: makeTestClient(server: server), isPreview: false, pendingCommitDefaults: defaults)
+        let vm = ScanViewModel(client: makeTestClient(server: server), isPreview: false, pendingCommitDefaults: defaults, scope: HouseholdScope(userID: 1, householdID: 1))
         let item = makeConfirmedItem(productID: 28, locationID: 6)
         vm.scannedItems = [item]
         await vm.commitIntakeSession()
@@ -1194,7 +1194,7 @@ public struct ScanViewModelProductionTests {
         let firstProcess = ScanViewModel(
             client: makeTestClient(server: server),
             isPreview: false,
-            pendingCommitDefaults: defaults
+            pendingCommitDefaults: defaults, scope: HouseholdScope(userID: 1, householdID: 1)
         )
         let item = makeConfirmedItem(productID: 51, locationID: 12)
         firstProcess.scannedItems = [item]
@@ -1207,7 +1207,7 @@ public struct ScanViewModelProductionTests {
         let relaunchedProcess = ScanViewModel(
             client: makeTestClient(server: server),
             isPreview: false,
-            pendingCommitDefaults: defaults
+            pendingCommitDefaults: defaults, scope: HouseholdScope(userID: 1, householdID: 1)
         )
         try assertEquals(relaunchedProcess.pendingDraftSessionId, nil, "Relaunch must preserve the unresolved server-generated ID state")
         try assertEquals(relaunchedProcess.scannedItems, [item], "Relaunch must restore the original intake snapshot")
@@ -1238,7 +1238,7 @@ public struct ScanViewModelProductionTests {
 
     // 25. Resume removes only the user-owned reason and arms scanning after all other holds clear.
     public static func testUserPauseResumesIndependently() async throws {
-        let vm = ScanViewModel(isPreview: false, pendingCommitDefaults: makeTestDefaults())
+        let vm = ScanViewModel(isPreview: false, pendingCommitDefaults: makeTestDefaults(), scope: HouseholdScope(userID: 1, householdID: 1))
         let startingGeneration = vm.currentScanGeneration
         vm.pauseScanning(reason: "Manual pause")
         vm.suspendScanning(for: .receiptMode)
@@ -1267,7 +1267,7 @@ public struct ScanViewModelProductionTests {
         configuration.protocolClasses = [ScannerTestURLProtocol.self]
         ScannerTestURLProtocol.install(server)
         let session = URLSession(configuration: configuration)
-        return APIClient(baseURL: URL(string: "http://provision.test/api/v1")!, session: session)
+        return APIClient(baseURL: URL(string: "http://provision.test/api/v1")!, session: session, initialScope: HouseholdScope(userID: 1, householdID: 1))
     }
 
     private static func makeTestDefaults() -> UserDefaults {

@@ -14,10 +14,12 @@ public class AnalyticsViewModel: ObservableObject {
     @Published public var hasLoadedOnce: Bool = false
     @Published public var errorMessage: String? = nil
     private let client: APIClient
+    private let scope: HouseholdScope?
     public var isPreview: Bool
 
-    public init(client: APIClient = .shared, isPreview: Bool = false) {
+    public init(client: APIClient = .shared, isPreview: Bool = false, scope: HouseholdScope? = nil) {
         self.client = client
+        self.scope = scope
         self.isPreview = isPreview
     }
 
@@ -30,11 +32,11 @@ public class AnalyticsViewModel: ObservableObject {
         errorMessage = nil
 
         do {
-            async let valTask = client.fetchValuation()
-            async let spendTask = client.fetchSpending()
-            async let wasteTask = client.fetchWaste()
-            async let expiringTask = client.fetchExpiringSoon(days: 14)
-            async let lowStockTask = client.fetchLowStock(threshold: 2.0)
+            async let valTask = client.fetchValuation(expectedScope: scope)
+            async let spendTask = client.fetchSpending(expectedScope: scope)
+            async let wasteTask = client.fetchWaste(expectedScope: scope)
+            async let expiringTask = client.fetchExpiringSoon(days: 14, expectedScope: scope)
+            async let lowStockTask = client.fetchLowStock(threshold: 2.0, expectedScope: scope)
 
             let (val, spend, waste, expiring, lowStock) = try await (valTask, spendTask, wasteTask, expiringTask, lowStockTask)
 

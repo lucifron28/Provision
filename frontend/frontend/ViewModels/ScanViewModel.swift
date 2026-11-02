@@ -119,6 +119,9 @@ public struct IntakeFingerprintPayload: Codable {
 }
 
 public let pendingIntakeCommitStorageKey = "provision.pending-intake-commit.v1"
+public func scopedPendingIntakeCommitStorageKey(for scope: HouseholdScope) -> String {
+    "\(pendingIntakeCommitStorageKey).\(scope.storageKey)"
+}
 
 @MainActor
 public class ScanViewModel: ObservableObject {
@@ -176,6 +179,8 @@ public class ScanViewModel: ObservableObject {
     @Published public private(set) var pendingCommitRecoveryError: String? = nil
     private var pendingIntakeCommit: PendingIntakeCommit? = nil
     private let pendingCommitDefaults: UserDefaults
+    private let scope: HouseholdScope?
+    private var scopedPendingKey: String? { scope.map { scopedPendingIntakeCommitStorageKey(for: $0) } }
     private var postCommitDeferredItems: [ScannedIntakeItem] = []
     public var isPreview: Bool
     public let scannerManager: BarcodeScannerManager
@@ -196,16 +201,24 @@ public class ScanViewModel: ObservableObject {
     public init(
         client: APIClient = .shared,
         isPreview: Bool = false,
-        pendingCommitDefaults: UserDefaults = .standard
+        pendingCommitDefaults: UserDefaults = .standard,
+        scope: HouseholdScope? = nil
     ) {
         self.client = client
         self.isPreview = isPreview
         self.pendingCommitDefaults = pendingCommitDefaults
+        self.scope = scope
         self.storeName = isPreview ? "SM Supermarket Megamall" : ""
         self.scannerManager = BarcodeScannerManager()
         if !isPreview {
             self.activeSuspensions.insert(.navigatedAway)
-            if let data = pendingCommitDefaults.data(forKey: pendingIntakeCommitStorageKey) {
+            if scope == nil || pendingCommitDefaults.data(forKey: pendingIntakeCommitStorageKey) != nil {
+                self.pendingCommitRecoveryError = "Saved intake ownership cannot be verified. Preserve the saved data and contact support before submitting."
+                self.activeSuspensions.insert(.pendingCommitRecovery)
+                self.scannerManager.lockAcceptance()
+                self.scannerManager.stopScanning()
+                self.errorMessage = self.pendingCommitRecoveryError
+            } else if let key = scopedPendingKey, let data = pendingCommitDefaults.data(forKey: key) {
                 do {
                     let pending = try JSONDecoder().decode(PendingIntakeCommit.self, from: data)
                     self.pendingIntakeCommit = pending
@@ -248,7 +261,7 @@ public class ScanViewModel: ObservableObject {
 
     public func loadLocations() async {
         do {
-            let locations = try await client.fetchLocations()
+            let locations = try await client.fetchLocations(expectedScope: scope)
             self.availableLocations = locations
         } catch {
             self.errorMessage = "Failed to load locations: \(error.localizedDescription)"
@@ -262,7 +275,7 @@ public class ScanViewModel: ObservableObject {
             return
         }
         do {
-            self.availableCatalog = try await client.fetchProducts(limit: 500)
+            self.availableCatalog = try await client.fetchProducts(limit: 500, expectedScope: scope)
         } catch {
             // Keep existing or empty
         }
@@ -455,7 +468,7 @@ public class ScanViewModel: ObservableObject {
             resolvedProduct = PreviewData.products.first(where: { $0.barcode == barcode })
         } else {
             do {
-                resolvedProduct = try await client.fetchProduct(barcode: barcode)
+                resolvedProduct = try await client.fetchProduct(barcode: barcode, expectedScope: scope)
             } catch {
                 if case APIError.unauthorized = error {
                     lookupErrorText = "Session expired or authentication required. Please log in again."
@@ -558,7 +571,7 @@ public class ScanViewModel: ObservableObject {
                     unit: unit
                 )
             } else {
-                createdProduct = try await client.createProduct(create)
+                createdProduct = try await client.createProduct(create, expectedScope: scope)
             }
 
             // Requirement 3: Update original intake entry instead of creating duplicate unresolved entries
@@ -757,7 +770,7 @@ public class ScanViewModel: ObservableObject {
             catalog = PreviewData.products
         } else {
             do {
-                catalog = try await client.fetchProducts(limit: 500)
+                catalog = try await client.fetchProducts(limit: 500, expectedScope: scope)
             } catch {
                 self.errorMessage = "Failed to load product catalog for receipt matching: \(error.localizedDescription). Tap 'Retry Matching' to retry without recapturing."
                 return
@@ -1203,13 +1216,14 @@ public class ScanViewModel: ObservableObject {
             guard let sessionID = pending.sessionID else {
                 throw IntakeCommitError.unidentifiedSession
             }
-            let session = try await client.fetchSession(id: sessionID)
+            guard let scope else { throw IntakeCommitError.unidentifiedSession }
+            let session = try await client.fetchSession(id: sessionID, expectedScope: scope)
             switch session.status.uppercased() {
             case "COMPLETED":
                 clearCommittedIntake(committedCount: pending.requestItems.count)
                 errorMessage = "The previous intake was already committed. Its result has been reconciled."
             case "DRAFT":
-                let cancelled = try await client.cancelSession(id: sessionID)
+                let cancelled = try await client.cancelSession(id: sessionID, expectedScope: scope)
                 guard cancelled.status.uppercased() == "CANCELLED" else {
                     errorMessage = "The previous draft was not confirmed cancelled. The intake remains locked for reconciliation."
                     return
@@ -1234,7 +1248,8 @@ public class ScanViewModel: ObservableObject {
         if let createdSession {
             sessionStatus = createdSession.status
         } else {
-            sessionStatus = try await client.fetchSession(id: sessionID).status
+            guard let scope else { throw IntakeCommitError.unidentifiedSession }
+            sessionStatus = try await client.fetchSession(id: sessionID, expectedScope: scope).status
         }
         switch sessionStatus.uppercased() {
         case "COMPLETED":
@@ -1256,7 +1271,8 @@ public class ScanViewModel: ObservableObject {
               creationRequest.idempotency_key != nil else {
             throw IntakeCommitError.unidentifiedSession
         }
-        let createdSession = try await client.createSession(creationRequest)
+        guard let scope else { throw IntakeCommitError.unidentifiedSession }
+        let createdSession = try await client.createSession(creationRequest, expectedScope: scope)
         let identifiedPending = pending.attaching(sessionID: createdSession.id)
         try persistPendingCommit(identifiedPending)
         return (identifiedPending, createdSession)
@@ -1268,7 +1284,8 @@ public class ScanViewModel: ObservableObject {
             return
         }
         do {
-            let committed = try await client.commitSession(id: sessionID, items: pending.requestItems)
+            guard let scope else { throw IntakeCommitError.unidentifiedSession }
+            let committed = try await client.commitSession(id: sessionID, items: pending.requestItems, expectedScope: scope)
             guard committed.status.uppercased() == "COMPLETED" else {
                 errorMessage = "Session #\(sessionID) returned status '\(committed.status)'. Its saved submission remains locked for reconciliation."
                 return
@@ -1291,7 +1308,8 @@ public class ScanViewModel: ObservableObject {
 
     private func persistPendingCommit(_ pending: PendingIntakeCommit) throws {
         let data = try JSONEncoder().encode(pending)
-        pendingCommitDefaults.set(data, forKey: pendingIntakeCommitStorageKey)
+        guard let key = scopedPendingKey else { throw IntakeCommitError.unidentifiedSession }
+        pendingCommitDefaults.set(data, forKey: key)
         pendingIntakeCommit = pending
         pendingDraftSessionId = pending.sessionID
         storeName = pending.storeName
@@ -1301,8 +1319,8 @@ public class ScanViewModel: ObservableObject {
     }
 
     private func clearPendingCommitState() {
-        if pendingIntakeCommit != nil {
-            pendingCommitDefaults.removeObject(forKey: pendingIntakeCommitStorageKey)
+        if pendingIntakeCommit != nil, let key = scopedPendingKey {
+            pendingCommitDefaults.removeObject(forKey: key)
         }
         pendingIntakeCommit = nil
         pendingDraftSessionId = nil
