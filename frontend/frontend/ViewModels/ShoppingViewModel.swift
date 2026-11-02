@@ -35,9 +35,11 @@ public class ShoppingViewModel: ObservableObject {
     }
 
     private let client: APIClient
+    private let scope: HouseholdScope?
     public var isPreview: Bool
-    public init(client: APIClient = .shared, isPreview: Bool = false) {
+    public init(client: APIClient = .shared, isPreview: Bool = false, scope: HouseholdScope? = nil) {
         self.client = client
+        self.scope = scope
         self.isPreview = isPreview
     }
 
@@ -65,7 +67,7 @@ public class ShoppingViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         do {
-            self.items = try await client.fetchShoppingList()
+            self.items = try await client.fetchShoppingList(expectedScope: scope)
         } catch {
             self.errorMessage = error.localizedDescription
         }
@@ -101,7 +103,7 @@ public class ShoppingViewModel: ObservableObject {
         )
 
         do {
-            let item = try await client.createShoppingItem(createItem)
+            let item = try await client.createShoppingItem(createItem, expectedScope: scope)
             self.items.insert(item, at: 0)
             self.newItemName = ""
             self.newItemQuantity = 1.0
@@ -123,7 +125,7 @@ public class ShoppingViewModel: ObservableObject {
         }
 
         do {
-            let updated = try await client.toggleShoppingItem(id: item.id)
+            let updated = try await client.toggleShoppingItem(id: item.id, expectedScope: scope)
             if let idx = items.firstIndex(where: { $0.id == item.id }) {
                 items[idx] = updated
             }
@@ -145,7 +147,7 @@ public class ShoppingViewModel: ObservableObject {
         let original = items
         items.removeAll { $0.id == item.id }
         do {
-            try await client.deleteShoppingItem(id: item.id)
+            try await client.deleteShoppingItem(id: item.id, expectedScope: scope)
             showToast("Item deleted")
         } catch {
             self.items = original
@@ -160,7 +162,7 @@ public class ShoppingViewModel: ObservableObject {
             return
         }
         do {
-            try await client.clearCompletedShoppingItems()
+            try await client.clearCompletedShoppingItems(expectedScope: scope)
             self.items.removeAll { $0.is_bought }
             showToast("Completed items cleared")
         } catch {
@@ -177,7 +179,7 @@ public class ShoppingViewModel: ObservableObject {
         errorMessage = nil
 
         do {
-            let suggestions = try await client.generateShoppingSuggestions(threshold: 2.0)
+            let suggestions = try await client.generateShoppingSuggestions(threshold: 2.0, expectedScope: scope)
             showToast("Generated \(suggestions.count) low-stock suggestions")
             await loadItems()
         } catch {

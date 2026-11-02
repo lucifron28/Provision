@@ -734,6 +734,7 @@ public struct HomeView: View {
                                     APIEnvironment.localDeviceHost = trimmed
                                     Task {
                                         await APIClient.shared.setBaseURL(validURL)
+                                        await authVM.logout()
                                     }
                                     hostUpdateMessage = "Host updated to \(trimmed)"
                                 } else {

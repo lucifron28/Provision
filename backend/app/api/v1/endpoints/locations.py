@@ -28,7 +28,7 @@ def list_locations(
         .where(StorageLocation.household_id == household_id)
         .offset(skip)
         .limit(limit)
-        .order_by(StorageLocation.name)
+        .order_by(StorageLocation.name, StorageLocation.id)
     )
     return db.scalars(stmt).all()
 

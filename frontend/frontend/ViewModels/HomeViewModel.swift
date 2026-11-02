@@ -27,10 +27,12 @@ public class HomeViewModel: ObservableObject {
     }
 
     private let client: APIClient
+    private let scope: HouseholdScope?
     public var isPreview: Bool
 
-    public init(client: APIClient = .shared, isPreview: Bool = false) {
+    public init(client: APIClient = .shared, isPreview: Bool = false, scope: HouseholdScope? = nil) {
         self.client = client
+        self.scope = scope
         self.isPreview = isPreview
     }
 
@@ -43,10 +45,10 @@ public class HomeViewModel: ObservableObject {
         errorMessage = nil
 
         do {
-            async let valTask = client.fetchValuation()
-            async let spendTask = client.fetchSpending()
-            async let expiringTask = client.fetchExpiringSoon(days: 7)
-            async let lowStockTask = client.fetchLowStock(threshold: 2.0)
+            async let valTask = client.fetchValuation(expectedScope: scope)
+            async let spendTask = client.fetchSpending(expectedScope: scope)
+            async let expiringTask = client.fetchExpiringSoon(days: 7, expectedScope: scope)
+            async let lowStockTask = client.fetchLowStock(threshold: 2.0, expectedScope: scope)
 
             let (val, spend, expiring, lowStock) = try await (valTask, spendTask, expiringTask, lowStockTask)
 
@@ -268,7 +270,7 @@ public class HomeViewModel: ObservableObject {
                 unit: item.unit,
                 notes: "Auto-added from Restock Needed"
             )
-            _ = try await client.createShoppingItem(createItem)
+            _ = try await client.createShoppingItem(createItem, expectedScope: scope)
             showToast("Added \(item.product_name) to Shopping List")
         } catch {
             self.errorMessage = "Failed to add to shopping list: \(error.localizedDescription)"
@@ -285,7 +287,8 @@ public class HomeViewModel: ObservableObject {
             _ = try await client.consumeProduct(
                 productId: item.product_id,
                 quantity: quantity,
-                reason: "Quick consumption from Home screen"
+                reason: "Quick consumption from Home screen",
+                expectedScope: scope
             )
             showToast("Consumed \(item.product_name)")
             await loadDashboard()

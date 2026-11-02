@@ -517,10 +517,10 @@ public struct HomeInventoryAndPipTests {
             creationRequest: nil
         )
         let data = try JSONEncoder().encode(pending)
-        defaults.set(data, forKey: pendingIntakeCommitStorageKey)
+        defaults.set(data, forKey: scopedPendingIntakeCommitStorageKey(for: HouseholdScope(userID: 1, householdID: 1)))
 
         // 2. Reconstruct brand-new ScanViewModel from defaults (simulating fresh app launch)
-        let restoredVM = ScanViewModel(isPreview: false, pendingCommitDefaults: defaults)
+        let restoredVM = ScanViewModel(isPreview: false, pendingCommitDefaults: defaults, scope: HouseholdScope(userID: 1, householdID: 1))
 
         // 3. Verify restored data
         try assertEquals(restoredVM.pendingDraftSessionId, 999, "Draft session ID must be restored")

@@ -326,7 +326,7 @@ public struct AddInventoryView: View {
         if viewModel.isPreview { return }
         isLoadingLocations = true
         do {
-            locations = try await APIClient.shared.fetchLocations()
+            locations = try await APIClient.shared.fetchLocations(expectedScope: viewModel.scope)
         } catch {
             errorMessage = "Could not load storage locations."
         }

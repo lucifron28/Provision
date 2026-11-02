@@ -74,7 +74,7 @@ def list_products(
                 Product.brand.ilike(search_pattern),
             )
         )
-    stmt = stmt.offset(skip).limit(limit).order_by(Product.name)
+    stmt = stmt.offset(skip).limit(limit).order_by(Product.name, Product.id)
     products = db.scalars(stmt).all()
 
     return [_get_product_with_stock(db, p, household_id) for p in products]

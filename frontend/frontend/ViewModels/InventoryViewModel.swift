@@ -52,10 +52,12 @@ public class InventoryViewModel: ObservableObject {
     @Published public var errorMessage: String? = nil
     @Published public var toastMessage: String? = nil
     private let client: APIClient
+    public let scope: HouseholdScope?
     public var isPreview: Bool
     
-    public init(client: APIClient = .shared, isPreview: Bool = false) {
+    public init(client: APIClient = .shared, isPreview: Bool = false, scope: HouseholdScope? = nil) {
         self.client = client
+        self.scope = scope
         self.isPreview = isPreview
     }
     
@@ -123,9 +125,9 @@ public class InventoryViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         do {
-            async let prodsTask = client.fetchProducts()
-            async let locsTask = client.fetchLocations()
-            async let expiringTask = client.fetchExpiringSoon(days: 14)
+            async let prodsTask = client.fetchProducts(expectedScope: scope)
+            async let locsTask = client.fetchLocations(expectedScope: scope)
+            async let expiringTask = client.fetchExpiringSoon(days: 14, expectedScope: scope)
             
             let (prods, locs) = try await (prodsTask, locsTask)
             var expirations: [Int: Int] = [:]
@@ -160,7 +162,7 @@ public class InventoryViewModel: ObservableObject {
         if isPreview { return }
         self.isDetailLoading = true
         do {
-            let batches = try await client.fetchBatches(productId: current.id, activeOnly: true)
+            let batches = try await client.fetchBatches(productId: current.id, activeOnly: true, expectedScope: scope)
             // Sort FEFO (Earliest expiration first)
             self.productBatches = batches.sorted {
                 ($0.expiration_date ?? "9999-12-31") < ($1.expiration_date ?? "9999-12-31")
@@ -178,7 +180,7 @@ public class InventoryViewModel: ObservableObject {
             return true
         }
         do {
-            let res = try await client.consumeProduct(productId: productId, quantity: quantity, reason: reason)
+            let res = try await client.consumeProduct(productId: productId, quantity: quantity, reason: reason, expectedScope: scope)
             self.toastMessage = "Successfully consumed \(String(format: "%.1f", res.total_consumed)) units"
             
             // Refresh product and batches
@@ -200,7 +202,7 @@ public class InventoryViewModel: ObservableObject {
             return true
         }
         do {
-            _ = try await client.discardBatch(batchId: batchId, reason: reason)
+            _ = try await client.discardBatch(batchId: batchId, reason: reason, expectedScope: scope)
             self.toastMessage = "Batch discarded"
             
             await loadData()
@@ -223,7 +225,7 @@ public class InventoryViewModel: ObservableObject {
             return true
         }
         do {
-            _ = try await client.adjustBatch(batchId: batchId, newQuantity: newQuantity, reason: reason)
+            _ = try await client.adjustBatch(batchId: batchId, newQuantity: newQuantity, reason: reason, expectedScope: scope)
             self.toastMessage = "Batch adjusted to \(newQuantity)"
             
             await loadData()
@@ -256,7 +258,7 @@ public class InventoryViewModel: ObservableObject {
             return true
         }
         do {
-            let updated = try await client.updateProduct(id: productId, update: update)
+            let updated = try await client.updateProduct(id: productId, update: update, expectedScope: scope)
             self.toastMessage = "Product updated successfully"
             
             await loadData()
@@ -278,7 +280,7 @@ public class InventoryViewModel: ObservableObject {
             
             // 1. Create product if new
             if let p = product {
-                let createdProduct = try await client.createProduct(p)
+                let createdProduct = try await client.createProduct(p, expectedScope: scope)
                 targetProductId = createdProduct.id
             }
             
@@ -291,7 +293,7 @@ public class InventoryViewModel: ObservableObject {
             var finalBatch = batch
             finalBatch.product_id = pid
             
-            _ = try await client.createBatch(finalBatch)
+            _ = try await client.createBatch(finalBatch, expectedScope: scope)
             self.toastMessage = "Inventory added successfully"
             
             await loadData()
@@ -319,7 +321,7 @@ public class InventoryViewModel: ObservableObject {
             return true
         }
         do {
-            _ = try await client.updateBatchMetadata(batchId: batchId, updates: updates)
+            _ = try await client.updateBatchMetadata(batchId: batchId, updates: updates, expectedScope: scope)
             self.toastMessage = "Batch updated successfully"
             
             await loadData()
