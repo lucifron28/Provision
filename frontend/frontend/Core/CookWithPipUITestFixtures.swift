@@ -478,12 +478,13 @@ struct CookWithPipUITestHost: View {
         let fixtureID = Int(Self.launchArgument("-pip-ui-fixture-id") ?? "0") ?? 0
         return HouseholdScope(userID: 9901 + fixtureID, householdID: 9902 + fixtureID, serverID: "ui-test-fixtures")
     }
-    private let service = CookWithPipUITestService()
+    @State private var service: CookWithPipUITestService
     @State private var showingShoppingList = false
     @StateObject private var shoppingViewModel: ShoppingViewModel
     @State private var pendingShoppingStore: any PendingRecipeShoppingStore
 
     init() {
+        _service = State(initialValue: CookWithPipUITestService())
         let fixtureID = Int(Self.launchArgument("-pip-ui-fixture-id") ?? "0") ?? 0
         let scope = HouseholdScope(userID: 9901 + fixtureID, householdID: 9902 + fixtureID,
                                    serverID: "ui-test-fixtures")
