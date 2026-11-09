@@ -11,30 +11,40 @@ public struct HomeView: View {
     @State private var devBackendHost: String = APIEnvironment.localDeviceHost
     @State private var hostUpdateMessage: String? = nil
     @State private var itemToConsume: ExpiringSoonItem? = nil
+    private let cookWithPipScope: HouseholdScope?
+    private let cookWithPipService: any CookWithPipService
 
     public init(
         viewModel: HomeViewModel,
         authVM: AuthViewModel,
         onNavigateToInventory: @escaping (InventoryQuickFilter?) -> Void = { _ in },
-        onNavigateToShopping: @escaping () -> Void = {}
+        onNavigateToShopping: @escaping () -> Void = {},
+        cookWithPipScope: HouseholdScope? = nil,
+        cookWithPipService: any CookWithPipService = APIClient.shared
     ) {
         self.viewModel = viewModel
         self.authVM = authVM
         self.onNavigateToInventory = onNavigateToInventory
         self.onNavigateToShopping = onNavigateToShopping
+        self.cookWithPipScope = cookWithPipScope
+        self.cookWithPipService = cookWithPipService
     }
 
     public init(
         viewModel: HomeViewModel,
         authVM: AuthViewModel,
         onNavigateToInventory: @escaping () -> Void,
-        onNavigateToShopping: @escaping () -> Void = {}
+        onNavigateToShopping: @escaping () -> Void = {},
+        cookWithPipScope: HouseholdScope? = nil,
+        cookWithPipService: any CookWithPipService = APIClient.shared
     ) {
         self.init(
             viewModel: viewModel,
             authVM: authVM,
             onNavigateToInventory: { _ in onNavigateToInventory() },
-            onNavigateToShopping: onNavigateToShopping
+            onNavigateToShopping: onNavigateToShopping,
+            cookWithPipScope: cookWithPipScope,
+            cookWithPipService: cookWithPipService
         )
     }
 
@@ -44,6 +54,7 @@ public struct HomeView: View {
                 VStack(spacing: 20) {
                     // Header Bar
                     headerBar
+                    cookWithPipEntryCard
                     if viewModel.isLoading && !viewModel.hasLoadedOnce {
                         VStack(spacing: 12) {
                             ProgressView()
@@ -152,6 +163,58 @@ public struct HomeView: View {
     }
 
     // MARK: - Subviews
+
+    @ViewBuilder
+    private var cookWithPipEntryCard: some View {
+        if let scope = activeCookWithPipScope {
+            NavigationLink {
+                CookWithPipView(scope: scope, service: cookWithPipService)
+            } label: {
+                HStack(spacing: 14) {
+                    Image("pip_chef")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 60, height: 60)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Cook with Pip")
+                            .font(ProvisionTypography.sectionSerif)
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+                        Text("Explore household recipes checked against current stock")
+                            .font(.subheadline)
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("No live internet search")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                    }
+                    Spacer(minLength: 4)
+                    Image(systemName: "arrow.up.right")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(ProvisionTheme.onAccent)
+                        .frame(width: 44, height: 44)
+                        .background(ProvisionTheme.provisionGreen)
+                        .clipShape(Circle())
+                        .accessibilityHidden(true)
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(ProvisionTheme.heroCard)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(ProvisionTheme.border, lineWidth: 1))
+                .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Cook with Pip. Browse household recipes checked against current stock.")
+            .accessibilityHint("Opens Cook Now, Almost There, and My Recipes.")
+            .accessibilityIdentifier("cook-with-pip-entry")
+        }
+    }
+
+    private var activeCookWithPipScope: HouseholdScope? {
+        if let cookWithPipScope { return cookWithPipScope }
+        return authVM.selectedScope
+    }
 
     private var headerBar: some View {
         HStack(spacing: 12) {
@@ -813,9 +876,12 @@ public struct HomeView: View {
     }
 }
 
+#if DEBUG
 #Preview("Home - Philippine Pantry") {
     HomeView(
         viewModel: PreviewData.makeHomeViewModel(),
-        authVM: PreviewData.makeAuthViewModel()
+        authVM: PreviewData.makeAuthViewModel(),
+        cookWithPipScope: HouseholdScope(userID: 1, householdID: 1)
     )
 }
+#endif
