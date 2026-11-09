@@ -2,17 +2,32 @@
 import Foundation
 import SwiftUI
 
-private actor CookWithPipUITestScenarioCounter {
-    static let shared = CookWithPipUITestScenarioCounter()
+private actor CookWithPipUITestLoadingGate {
+    static let shared = CookWithPipUITestLoadingGate()
 
+    private var released = false
+    private var continuations: [CheckedContinuation<Void, Never>] = []
+
+    func waitForRelease() async {
+        guard !released else { return }
+        await withCheckedContinuation { continuations.append($0) }
+    }
+
+    func release() {
+        released = true
+        let waiting = continuations
+        continuations.removeAll()
+        waiting.forEach { $0.resume() }
+    }
+}
+
+private actor CookWithPipUITestScenarioCounter {
     private var recommendationRequests = 0
     private var sourceRequests = 0
     private var previewRequests = 0
     private var confirmationRequests = 0
     private var lastConfirmedLines: [RecipeShoppingAcceptedLine] = []
     private var confirmations: [RecipeShoppingConfirmation] = []
-    private var loadingReleased = false
-    private var loadingContinuations: [CheckedContinuation<Void, Never>] = []
 
     func nextRecommendation() -> Int { recommendationRequests += 1; return recommendationRequests }
     func nextSource() -> Int { sourceRequests += 1; return sourceRequests }
@@ -21,16 +36,6 @@ private actor CookWithPipUITestScenarioCounter {
     func recordConfirmation(_ confirmation: RecipeShoppingConfirmation) {
         confirmations.append(confirmation)
         lastConfirmedLines = confirmation.accepted_lines
-    }
-    func waitForLoadingRelease() async {
-        guard !loadingReleased else { return }
-        await withCheckedContinuation { loadingContinuations.append($0) }
-    }
-    func releaseLoading() {
-        loadingReleased = true
-        let continuations = loadingContinuations
-        loadingContinuations.removeAll()
-        continuations.forEach { $0.resume() }
     }
     func confirmedLines() -> [RecipeShoppingAcceptedLine] { lastConfirmedLines }
     func recordedConfirmations() -> [RecipeShoppingConfirmation] { confirmations }
@@ -43,6 +48,7 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
     private let evaluations: [Int: RecipeEvaluation]
     private let scenario: String
     private let counter: CookWithPipUITestScenarioCounter
+    private let loadingGate: CookWithPipUITestLoadingGate
 
     static func launchArgument(_ name: String) -> String? {
         let arguments = ProcessInfo.processInfo.arguments
@@ -52,7 +58,8 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
 
     init(scenario override: String? = nil) {
         scenario = override ?? Self.launchArgument("-pip-ui-scenario") ?? "default"
-        counter = .shared
+        counter = CookWithPipUITestScenarioCounter()
+        loadingGate = .shared
         let unknown = IngredientAvailabilitySnapshot(
             ingredient_id: 901,
             canonical_name: nil,
@@ -242,7 +249,7 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
             throw APIError.networkError(URLError(.notConnectedToInternet))
         }
         if scenario == "recipes-loading" {
-            await counter.waitForLoadingRelease()
+            await loadingGate.waitForRelease()
         }
         let candidates = scenario == "recipes-empty" ? [] : (payload.mode == "cook_now" ? cookNowResults : almostThereResults)
         let matching = candidates.filter { recommendation in
@@ -259,10 +266,6 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
             excluded_unknown_quantities: 0,
             provider_enabled: false
         )
-    }
-
-    func releaseLoadingScenario() async {
-        await counter.releaseLoading()
     }
 
     func fetchRecipeSourceReference(id: Int, scope: HouseholdScope) async throws -> RecipeSourceReference {
@@ -482,6 +485,7 @@ struct CookWithPipUITestHost: View {
     }
     @State private var service: CookWithPipUITestService
     @State private var showingShoppingList = false
+    @State private var loadingReleased = false
     @StateObject private var shoppingViewModel: ShoppingViewModel
     @State private var pendingShoppingStore: any PendingRecipeShoppingStore
 
@@ -536,10 +540,11 @@ struct CookWithPipUITestHost: View {
         }
         .overlay(alignment: .bottomTrailing) {
             if Self.launchArgument("-pip-ui-scenario") == "recipes-loading" {
-                Button("Release loading fixture") {
-                    Task { await service.releaseLoadingScenario() }
+                Button(loadingReleased ? "Loading fixture released" : "Release loading fixture") {
+                    loadingReleased = true
+                    Task { await CookWithPipUITestLoadingGate.shared.release() }
                 }
-                .accessibilityIdentifier("cook-with-pip-release-loading")
+                .accessibilityIdentifier(loadingReleased ? "cook-with-pip-loading-released" : "cook-with-pip-release-loading")
                 .frame(width: 44, height: 44)
                 .opacity(0.01)
             }
