@@ -1,6 +1,6 @@
 import Foundation
 
-public enum FoodAllergenCode: String, Codable, CaseIterable, Identifiable, Sendable {
+nonisolated public enum FoodAllergenCode: String, Codable, CaseIterable, Identifiable, Sendable {
     case milk, egg, fish, crustaceanShellfish = "crustacean_shellfish"
     case treeNuts = "tree_nuts", peanuts, wheat, soy, sesame
 
@@ -14,7 +14,7 @@ public enum FoodAllergenCode: String, Codable, CaseIterable, Identifiable, Senda
     }
 }
 
-public struct FoodPreferences: Codable, Equatable, Sendable {
+nonisolated public struct FoodPreferences: Codable, Equatable, Sendable {
     public var preferred_cuisines: [String]
     public var preferred_regions: [String]
     public var dislikes: [String]
@@ -46,7 +46,7 @@ public struct FoodPreferences: Codable, Equatable, Sendable {
     }
 }
 
-public struct FoodAllergy: Codable, Equatable, Sendable {
+nonisolated public struct FoodAllergy: Codable, Equatable, Sendable {
     public var allergen_code: String?
     public var custom_text: String?
     public var severity: String?
@@ -63,7 +63,7 @@ public struct FoodAllergy: Codable, Equatable, Sendable {
     }
 }
 
-public struct FoodProfileRead: Decodable, Equatable, Sendable {
+nonisolated public struct FoodProfileRead: Decodable, Equatable, Sendable {
     public let scope: String
     public let revision: Int?
     public var preferences: FoodPreferences
@@ -80,7 +80,7 @@ public struct FoodProfileRead: Decodable, Equatable, Sendable {
     }
 }
 
-public struct FoodProfileWrite: Encodable, Sendable {
+nonisolated public struct FoodProfileWrite: Encodable, Sendable {
     public let expected_revision: Int?
     public let preferences: FoodPreferences
     public let allergy_status: String
@@ -94,13 +94,13 @@ public struct FoodProfileWrite: Encodable, Sendable {
     }
 }
 
-public struct IngredientAlias: Decodable, Sendable {
+nonisolated public struct IngredientAlias: Decodable, Sendable {
     public let alias: String
     public let language: String
     public let region: String?
 }
 
-public struct IngredientCandidate: Decodable, Identifiable, Sendable {
+nonisolated public struct IngredientCandidate: Decodable, Identifiable, Sendable {
     public let id: Int
     public let canonical_name: String
     public let filipino_name: String?
@@ -111,19 +111,19 @@ public struct IngredientCandidate: Decodable, Identifiable, Sendable {
     public let matched_alias: String?
 }
 
-public struct IngredientLookup: Decodable, Sendable {
+nonisolated public struct IngredientLookup: Decodable, Sendable {
     public let query: String?
     public let ambiguous: Bool
     public let results: [IngredientCandidate]
 }
 
-public enum IngredientMappingMode: String, Codable, Sendable {
+nonisolated public enum IngredientMappingMode: String, Codable, Sendable {
     case direct = "DIRECT"
     case composite = "COMPOSITE"
     case unknown = "UNKNOWN"
 }
 
-public struct ProductIngredientMappingRead: Decodable, Sendable {
+nonisolated public struct ProductIngredientMappingRead: Decodable, Sendable {
     public let id: Int
     public let product_id: Int
     public let version: Int
@@ -142,7 +142,7 @@ public struct ProductIngredientMappingRead: Decodable, Sendable {
     public let updated_at: String
 }
 
-public struct ProductPackageFactorRead: Decodable, Sendable {
+nonisolated public struct ProductPackageFactorRead: Decodable, Sendable {
     public let ingredient_id: Int
     public let inventory_unit: String
     public let ingredient_amount: Decimal
@@ -152,12 +152,12 @@ public struct ProductPackageFactorRead: Decodable, Sendable {
     public let verified_at: String
 }
 
-public struct IngredientMappingComponent: Codable, Sendable {
+nonisolated public struct IngredientMappingComponent: Codable, Sendable {
     public let ingredient_id: Int
     public init(ingredientID: Int) { ingredient_id = ingredientID }
 }
 
-public struct ProductPackageFactorWrite: Encodable, Sendable {
+nonisolated public struct ProductPackageFactorWrite: Encodable, Sendable {
     public let ingredient_id: Int
     public let inventory_unit: String
     public let ingredient_amount: ExactQuantity
@@ -174,7 +174,7 @@ public struct ProductPackageFactorWrite: Encodable, Sendable {
     }
 }
 
-public struct ProductIngredientMappingWrite: Encodable, Sendable {
+nonisolated public struct ProductIngredientMappingWrite: Encodable, Sendable {
     public let expected_version: Int?
     public let mode: IngredientMappingMode
     public let ingredient_id: Int?
@@ -199,7 +199,7 @@ public struct ProductIngredientMappingWrite: Encodable, Sendable {
     }
 }
 
-public struct ProductLabelRead: Decodable, Sendable {
+nonisolated public struct ProductLabelRead: Decodable, Sendable {
     public let product_id: Int
     public let mapping_version: Int
     public let revision: Int
@@ -216,7 +216,7 @@ public struct ProductLabelRead: Decodable, Sendable {
     public let revoked_by_user_id: Int?
 }
 
-public struct ProductLabelWrite: Encodable, Sendable {
+nonisolated public struct ProductLabelWrite: Encodable, Sendable {
     public let expected_revision: Int?
     public let expected_mapping_version: Int
     public let expected_product_updated_at: String

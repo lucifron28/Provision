@@ -3,7 +3,7 @@ import Foundation
 // MARK: - User Model
 // Conforms to FastAPI backend app.schemas.auth.UserRead
 
-public struct User: Codable, Identifiable, Hashable, Sendable {
+nonisolated public struct User: Codable, Identifiable, Hashable, Sendable {
     public let id: Int
     public var email: String
     public var display_name: String?
@@ -38,21 +38,21 @@ public struct User: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
-public struct HouseholdMembership: Codable, Identifiable, Hashable, Sendable {
+nonisolated public struct HouseholdMembership: Codable, Identifiable, Hashable, Sendable {
     public let id: Int
     public let name: String
     public let role: String
     public let is_default: Bool
 }
 
-public struct HouseholdContext: Codable, Sendable {
+nonisolated public struct HouseholdContext: Codable, Sendable {
     public let id: Int
     public let name: String
     public let role: String
 }
 
 /// Stored in Keychain only after the server has verified this exact token and household.
-public struct VerifiedHouseholdSession: Codable, Sendable {
+nonisolated public struct VerifiedHouseholdSession: Codable, Sendable {
     public let token: String
     public let user: User
     public let scope: HouseholdScope
@@ -74,7 +74,7 @@ public struct VerifiedHouseholdSession: Codable, Sendable {
 
 // MARK: - Authentication DTOs
 
-public struct AuthToken: Codable, Sendable {
+nonisolated public struct AuthToken: Codable, Sendable {
     public let access_token: String
     public let token_type: String
     
@@ -84,7 +84,7 @@ public struct AuthToken: Codable, Sendable {
     }
 }
 
-public struct LoginRequest: Codable, Sendable {
+nonisolated public struct LoginRequest: Codable, Sendable {
     public let email: String
     public let password: String
     
@@ -94,7 +94,7 @@ public struct LoginRequest: Codable, Sendable {
     }
 }
 
-public struct RegisterRequest: Codable, Sendable {
+nonisolated public struct RegisterRequest: Codable, Sendable {
     public let email: String
     public let password: String
     public let display_name: String?

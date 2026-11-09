@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Shopping List Models
 // Conforms to FastAPI app.schemas.shopping
 
-public struct ShoppingItem: Codable, Identifiable, Hashable, Sendable {
+nonisolated public struct ShoppingItem: Codable, Identifiable, Hashable, Sendable {
     public let id: Int
     public var name: String
     public var product_id: Int?
@@ -48,7 +48,7 @@ public struct ShoppingItem: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
-public struct ShoppingItemCreate: Codable, Sendable {
+nonisolated public struct ShoppingItemCreate: Codable, Sendable {
     public var name: String?
     public var product_id: Int?
     public var quantity: Double
@@ -64,7 +64,7 @@ public struct ShoppingItemCreate: Codable, Sendable {
     }
 }
 
-public struct ShoppingItemUpdate: Codable, Sendable {
+nonisolated public struct ShoppingItemUpdate: Codable, Sendable {
     public var name: String?
     public var product_id: Int?
     public var quantity: Double?

@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Product Model
 // Conforms to FastAPI app.schemas.product.ProductWithStock
 
-public struct Product: Codable, Identifiable, Hashable, Sendable {
+nonisolated public struct Product: Codable, Identifiable, Hashable, Sendable {
     public let id: Int
     public var name: String
     public var brand: String?
@@ -128,7 +128,7 @@ public enum ProductUnits {
     }
 }
 
-public struct ProductCreate: Codable, Sendable {
+nonisolated public struct ProductCreate: Codable, Sendable {
     public var name: String
     public var brand: String?
     public var barcode: String?
@@ -148,7 +148,7 @@ public struct ProductCreate: Codable, Sendable {
     }
 }
 
-public struct ProductUpdate: Codable, Sendable {
+nonisolated public struct ProductUpdate: Codable, Sendable {
     public var name: String?
     public var brand: String?
     public var barcode: String?

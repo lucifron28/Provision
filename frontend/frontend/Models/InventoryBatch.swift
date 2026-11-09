@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Storage Location Model
 
-public struct StorageLocation: Codable, Identifiable, Hashable, Sendable {
+nonisolated public struct StorageLocation: Codable, Identifiable, Hashable, Sendable {
     public let id: Int
     public var name: String
     public var location_type: String?
@@ -17,7 +17,7 @@ public struct StorageLocation: Codable, Identifiable, Hashable, Sendable {
 // MARK: - Inventory Batch Model
 // Conforms to FastAPI app.schemas.batch.InventoryBatchWithDetails
 
-public struct InventoryBatch: Codable, Identifiable, Hashable, Sendable {
+nonisolated public struct InventoryBatch: Codable, Identifiable, Hashable, Sendable {
     public let id: Int
     public var product_id: Int
     public var storage_location_id: Int?
@@ -165,7 +165,7 @@ public struct InventoryBatch: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
-public struct InventoryBatchCreate: Codable, Sendable {
+nonisolated public struct InventoryBatchCreate: Codable, Sendable {
     public var product_id: Int
     public var storage_location_id: Int?
     public var purchased_at: String?
@@ -183,7 +183,7 @@ public struct InventoryBatchCreate: Codable, Sendable {
     }
 }
 
-public struct InventoryBatchUpdate: Codable, Sendable {
+nonisolated public struct InventoryBatchUpdate: Codable, Sendable {
     // using Property Wrappers or just optional logic to handle null vs omitted? 
     // Wait, standard Codable drops nils from JSON but the backend uses Pydantic's `exclude_unset=True`. 
     // Swift's default JSONEncoder encodes nils as 'null' if we write a custom encoder or we don't.

@@ -7,7 +7,7 @@ import UIKit
 // MARK: - Scanner Diagnostics Logger
 
 public enum DiagnosticLogger {
-    private static let lock = NSLock()
+    nonisolated(unsafe) private static let lock = NSLock()
     nonisolated(unsafe) private static var lastLogTimes: [String: Date] = [:]
 
     nonisolated public static func log(_ message: String) {
@@ -89,7 +89,7 @@ public final class ScannerAcceptanceGate: @unchecked Sendable {
 
 // MARK: - Scanner State Machine
 
-public enum ScannerState: Equatable, Sendable {
+nonisolated public enum ScannerState: Equatable, Sendable {
     case ready
     case processing(String)
     case detected(barcode: String, productName: String)
@@ -122,7 +122,7 @@ public enum ScannerState: Equatable, Sendable {
 
 // MARK: - Camera Permission States
 
-public enum CameraPermission: Sendable {
+nonisolated public enum CameraPermission: Sendable {
     case notDetermined
     case authorized
     case denied
@@ -152,7 +152,7 @@ public final class BarcodeScannerManager: ObservableObject {
     nonisolated(unsafe) private var delegateHolder: AnyObject?
     private var notificationTokens: [NSObjectProtocol] = []
 
-    public var onBarcodeDetected: (@MainActor @Sendable (String, Int) -> Void)?
+    public var onBarcodeDetected: (@MainActor (String, Int) -> Void)?
     public var onSessionInterrupted: (@MainActor @Sendable () -> Void)?
     public var onSessionInterruptionEnded: (@MainActor @Sendable () -> Void)?
     public var onPermissionGranted: (@MainActor @Sendable () -> Void)?
@@ -527,11 +527,11 @@ public final class CameraPreviewUIView: UIView {
 
 public struct BarcodeScannerView: View {
     @ObservedObject public var manager: BarcodeScannerManager
-    public let onBarcodeDetected: (@MainActor @Sendable (String, Int) -> Void)?
+    public let onBarcodeDetected: (@MainActor (String, Int) -> Void)?
     
     public init(
         manager: BarcodeScannerManager,
-        onBarcodeDetected: (@MainActor @Sendable (String, Int) -> Void)? = nil
+        onBarcodeDetected: (@MainActor (String, Int) -> Void)? = nil
     ) {
         self.manager = manager
         self.onBarcodeDetected = onBarcodeDetected

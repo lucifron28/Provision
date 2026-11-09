@@ -1,6 +1,6 @@
 import Foundation
 
-public enum APIErrorDetail: Decodable, Sendable, Equatable {
+nonisolated public enum APIErrorDetail: Decodable, Sendable, Equatable {
     case string(String), number(Double), bool(Bool), object([String: APIErrorDetail]), array([APIErrorDetail]), null
 
     public init(from decoder: Decoder) throws {
@@ -14,14 +14,14 @@ public enum APIErrorDetail: Decodable, Sendable, Equatable {
     }
 }
 
-private struct APIErrorEnvelope: Decodable {
+nonisolated private struct APIErrorEnvelope: Decodable {
     let detail: APIErrorDetail?
 }
 
 // MARK: - API Client
 // Concrete, readable URLSession async/await client communicating with the FastAPI backend
 
-public enum APIError: LocalizedError, Sendable {
+nonisolated public enum APIError: LocalizedError, Sendable {
     case invalidURL
     case sessionChanged
     case networkError(Error)
@@ -72,8 +72,8 @@ public enum APIError: LocalizedError, Sendable {
 }
 
 public enum APIEnvironment {
-    private static let hostKey = "provision_backend_host"
-    private static let fallbackHost = "10.212.56.11"
+    nonisolated private static let hostKey = "provision_backend_host"
+    nonisolated private static let fallbackHost = "10.212.56.11"
 
     /// Configurable local LAN host for physical iPhone testing.
     /// Can be customized at runtime via UserDefaults without requiring code recompilation.

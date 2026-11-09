@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Consume Schemas
 
-public struct ConsumeRequest: Codable, Sendable {
+nonisolated public struct ConsumeRequest: Codable, Sendable {
     public var product_id: Int
     public var quantity: Double
     public var reason: String?
@@ -16,7 +16,7 @@ public struct ConsumeRequest: Codable, Sendable {
     }
 }
 
-public struct BatchDeduction: Codable, Identifiable, Hashable, Sendable {
+nonisolated public struct BatchDeduction: Codable, Identifiable, Hashable, Sendable {
     public var batch_id: Int
     public var quantity_deducted: Double
     public var remaining_in_batch: Double
@@ -25,7 +25,7 @@ public struct BatchDeduction: Codable, Identifiable, Hashable, Sendable {
     public var id: Int { batch_id }
 }
 
-public struct ConsumeResponse: Codable, Sendable {
+nonisolated public struct ConsumeResponse: Codable, Sendable {
     public var product_id: Int
     public var requested_quantity: Double
     public var total_consumed: Double
@@ -35,7 +35,7 @@ public struct ConsumeResponse: Codable, Sendable {
 
 // MARK: - Discard Schema
 
-public struct DiscardRequest: Codable, Sendable {
+nonisolated public struct DiscardRequest: Codable, Sendable {
     public var reason: String?
     public var notes: String?
     
@@ -47,7 +47,7 @@ public struct DiscardRequest: Codable, Sendable {
 
 // MARK: - Adjustment Schema
 
-public struct AdjustmentRequest: Codable, Sendable {
+nonisolated public struct AdjustmentRequest: Codable, Sendable {
     public var new_remaining_quantity: Double
     public var reason: String
     public var notes: String?

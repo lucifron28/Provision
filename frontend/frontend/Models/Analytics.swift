@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Analytics Models
 // Conforms to FastAPI app.schemas.analytics
 
-public struct InventoryValuation: Codable, Sendable {
+nonisolated public struct InventoryValuation: Codable, Sendable {
     public var total_value: Double
     public var total_active_batches: Int
     public var total_active_products: Int
@@ -34,7 +34,7 @@ public struct InventoryValuation: Codable, Sendable {
     }
 }
 
-public struct SpendingSummary: Codable, Sendable {
+nonisolated public struct SpendingSummary: Codable, Sendable {
     public var total_spent: Double
     public var sessions_count: Int
     
@@ -61,7 +61,7 @@ public struct SpendingSummary: Codable, Sendable {
     }
 }
 
-public struct WasteSummary: Codable, Sendable {
+nonisolated public struct WasteSummary: Codable, Sendable {
     public var total_waste_events: Int
     public var total_quantity_wasted: Double
     public var total_financial_loss: Double
@@ -92,7 +92,7 @@ public struct WasteSummary: Codable, Sendable {
     }
 }
 
-public struct ExpiringSoonItem: Codable, Identifiable, Hashable, Sendable {
+nonisolated public struct ExpiringSoonItem: Codable, Identifiable, Hashable, Sendable {
     public var batch_id: Int
     public var product_id: Int
     public var product_name: String
@@ -126,7 +126,7 @@ public struct ExpiringSoonItem: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
-public struct LowStockItem: Codable, Identifiable, Hashable, Sendable {
+nonisolated public struct LowStockItem: Codable, Identifiable, Hashable, Sendable {
     public var product_id: Int
     public var product_name: String
     public var brand: String?
