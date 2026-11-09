@@ -414,6 +414,50 @@ extension APIStatusTests {
 }
 
 extension APIStatusTests {
+    func testRecipeRecommendationsDecodeServerQuantitiesAndSafetyState() throws {
+        let json = #"""
+        {
+          "items": [{
+            "recipe": {
+              "id": 21, "revision": 3, "is_active": true, "provenance": "USER_ENTERED",
+              "title": "Sinigang", "summary": null, "cuisine": "Filipino",
+              "content_permission": "OWNED_OR_PERMISSION_GRANTED",
+              "adapted_from_recipe_id": null, "adapted_from_recipe_revision": null,
+              "ph_regions": ["Tagalog"], "course_categories": ["dinner"], "dish_types": ["soup"],
+              "difficulty": "beginner", "prep_minutes": 10, "cook_minutes": 35,
+              "servings": "4", "equipment": [], "spice_level": "mild",
+              "instructions": ["Cook the measured ingredients."],
+              "ingredients": [{"ingredient_id": 7, "display_name": "baboy", "amount": "0.123456",
+                "unit": "kg", "required": true, "preparation": null, "substitution_options": []}]
+            },
+            "evaluation": {
+              "decision": "eligible", "reasons": [],
+              "ingredients": [{"requirement_index": 0, "ingredient_id": 7, "decision": "eligible", "reasons": []}],
+              "availability": {"recipe_servings": "4", "servings": "4", "overall_status": "full",
+                "requirements": [{"ingredient_id": 7, "canonical_name": "pork", "display_names": ["baboy"],
+                  "required": true, "required_amount": "0.123456", "available_amount": "0.123456",
+                  "shortfall": "0", "unit": "kg", "status": "full", "covered_batch_ids": [2],
+                  "missing_expiry_batch_ids": [], "unknown_reasons": []}]},
+              "notice": "Check actual labels and preparation."
+            },
+            "coverage": 1.0, "missing_ingredient_count": 0, "near_expiry_batch_count": 0,
+            "preference_match": true, "source_reference": null
+          }],
+          "candidates_evaluated": 1, "has_more_candidates": false, "excluded_blocked": 0,
+          "excluded_review_required": 0, "excluded_unknown_quantities": 0, "provider_enabled": false
+        }
+        """#
+        let response = try JSONDecoder().decode(RecipeRecommendations.self, from: Data(json.utf8))
+        XCTAssertEqual(response.items.first?.recipe.ingredients.first?.amount,
+                       ExactQuantity(Decimal(string: "0.123456")!))
+        XCTAssertEqual(response.items.first?.evaluation.availability.requirements.first?.available_amount,
+                       ExactQuantity(Decimal(string: "0.123456")!))
+        XCTAssertEqual(response.items.first?.evaluation.decision, "eligible")
+        XCTAssertFalse(response.provider_enabled)
+    }
+}
+
+extension APIStatusTests {
     @MainActor
     func testOwnedPendingIntakeCanBeRecoveredWhileLegacyDataRemainsQuarantined() throws {
         let suite = "provision.pending-legacy.\(UUID().uuidString)"
