@@ -117,7 +117,7 @@ public struct RecipeShoppingPreview: Decodable, Sendable {
     public let unlinked_manual_items: [UnlinkedShoppingReview]
 }
 
-public struct RecipeShoppingAcceptedLine: Codable, Sendable {
+public struct RecipeShoppingAcceptedLine: Codable, Equatable, Sendable {
     public let ingredient_id: Int
     public let target_quantity: ExactQuantity
     public let consolidate_existing: Bool
@@ -130,7 +130,7 @@ public struct RecipeShoppingAcceptedLine: Codable, Sendable {
 }
 
 /// Persist this exact value for retries; edits require a new idempotency key.
-public struct RecipeShoppingConfirmation: Codable, Sendable {
+public struct RecipeShoppingConfirmation: Codable, Equatable, Sendable {
     public let preview_id: String
     public let idempotency_key: String
     public let expected_revision: Int
@@ -141,6 +141,33 @@ public struct RecipeShoppingConfirmation: Codable, Sendable {
         idempotency_key = idempotencyKey
         expected_revision = revision
         accepted_lines = acceptedLines
+    }
+}
+
+public struct PendingRecipeShoppingLine: Codable, Equatable, Sendable {
+    public let name: String
+    public let targetQuantity: ExactQuantity
+    public let unit: String?
+
+    public init(name: String, targetQuantity: ExactQuantity, unit: String?) {
+        self.name = name
+        self.targetQuantity = targetQuantity
+        self.unit = unit
+    }
+}
+
+public struct PendingRecipeShoppingRecord: Codable, Equatable, Sendable {
+    public let scopeStorageKey: String
+    public let recipeTitle: String
+    public let lines: [PendingRecipeShoppingLine]
+    public let confirmation: RecipeShoppingConfirmation
+
+    public init(scopeStorageKey: String, recipeTitle: String, lines: [PendingRecipeShoppingLine],
+                confirmation: RecipeShoppingConfirmation) {
+        self.scopeStorageKey = scopeStorageKey
+        self.recipeTitle = recipeTitle
+        self.lines = lines
+        self.confirmation = confirmation
     }
 }
 

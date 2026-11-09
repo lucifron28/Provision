@@ -108,6 +108,9 @@ private struct HouseholdTabs: View {
                     },
                     onNavigateToShopping: {
                         selectedTab = 3
+                    },
+                    onShoppingConfirmed: {
+                        await shoppingVM.refreshFromServer()
                     }
                 )
             }

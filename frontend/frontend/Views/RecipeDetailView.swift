@@ -2,8 +2,22 @@ import SwiftUI
 
 public struct RecipeDetailView: View {
     @StateObject private var viewModel: RecipeDetailViewModel
+    private let scope: HouseholdScope
+    private let service: any CookWithPipService
+    private let workflowService: any CookWithPipWorkflowService
+    private let onShoppingConfirmed: () async -> Void
+    private let onNavigateToShopping: () -> Void
+    @State private var showingSubstitutionEditor = false
 
-    public init(recipeID: Int, scope: HouseholdScope, service: any CookWithPipService = APIClient.shared) {
+    public init(recipeID: Int, scope: HouseholdScope, service: any CookWithPipService = APIClient.shared,
+                workflowService: any CookWithPipWorkflowService = APIClient.shared,
+                onShoppingConfirmed: @escaping () async -> Void = {},
+                onNavigateToShopping: @escaping () -> Void = {}) {
+        self.scope = scope
+        self.service = service
+        self.workflowService = workflowService
+        self.onShoppingConfirmed = onShoppingConfirmed
+        self.onNavigateToShopping = onNavigateToShopping
         _viewModel = StateObject(wrappedValue: RecipeDetailViewModel(recipeID: recipeID, scope: scope, service: service))
     }
 
@@ -38,12 +52,19 @@ public struct RecipeDetailView: View {
                 } else if let recipe = viewModel.recipe, let evaluation = viewModel.evaluation {
                     RecipeDetailContents(
                         recipe: recipe,
+                        scope: scope,
                         evaluation: evaluation,
+                        appliedSubstitutions: viewModel.appliedSubstitutions,
                         sourceReference: viewModel.sourceReference,
                         sourceReferenceErrorMessage: viewModel.sourceReferenceErrorMessage,
                         isSourceOffline: viewModel.isSourceOffline,
                         isLoadingSourceReference: viewModel.isLoadingSourceReference,
-                        retrySourceReference: { Task { await viewModel.retrySourceReference() } }
+                        retrySourceReference: { Task { await viewModel.retrySourceReference() } },
+                        workflowService: workflowService,
+                        onCustomizeSubstitutions: { showingSubstitutionEditor = true },
+                        onShoppingConfirmed: onShoppingConfirmed,
+                        onNavigateToShopping: onNavigateToShopping,
+                        refreshEvaluation: { await viewModel.load() }
                     )
                 }
             }
@@ -58,17 +79,32 @@ public struct RecipeDetailView: View {
         .task {
             if !viewModel.hasLoadedOnce { await viewModel.load() }
         }
+        .sheet(isPresented: $showingSubstitutionEditor) {
+            if let recipe = viewModel.recipe {
+                RecipeSubstitutionEditorView(recipe: recipe, scope: scope, service: service) { evaluation, substitutions in
+                    viewModel.applyEvaluation(evaluation, substitutions: substitutions)
+                    showingSubstitutionEditor = false
+                }
+            }
+        }
     }
 }
 
 private struct RecipeDetailContents: View {
     let recipe: HouseholdRecipe
+    let scope: HouseholdScope
     let evaluation: RecipeEvaluation
+    let appliedSubstitutions: [Int: IngredientRequirement]
     let sourceReference: RecipeSourceReference?
     let sourceReferenceErrorMessage: String?
     let isSourceOffline: Bool
     let isLoadingSourceReference: Bool
     let retrySourceReference: () -> Void
+    let workflowService: any CookWithPipWorkflowService
+    let onCustomizeSubstitutions: () -> Void
+    let onShoppingConfirmed: () async -> Void
+    let onNavigateToShopping: () -> Void
+    let refreshEvaluation: () async -> Void
 
     private var availabilityByRecipeIndex: [Int: IngredientAvailabilitySnapshot] {
         var result: [Int: IngredientAvailabilitySnapshot] = [:]
@@ -100,6 +136,7 @@ private struct RecipeDetailContents: View {
         VStack(alignment: .leading, spacing: 18) {
             titleSection
             evaluationSection
+            workflowActions
             if let sourceReference {
                 sourceSection(sourceReference)
             } else if let sourceReferenceErrorMessage {
@@ -118,6 +155,48 @@ private struct RecipeDetailContents: View {
             }
             instructionsSection
         }
+    }
+
+    private var workflowActions: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if recipe.ingredients.contains(where: { !$0.substitution_options.isEmpty }) {
+                Button(action: onCustomizeSubstitutions) {
+                    Label("Review substitutions", systemImage: "arrow.triangle.swap")
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                }
+                .accessibilityIdentifier("recipe-review-substitutions")
+            }
+            NavigationLink {
+                CookWithPipPreferencesView(scope: scope, service: workflowService,
+                                           onProfileUpdated: refreshEvaluation)
+            } label: {
+                Label("Review my preferences and allergies", systemImage: "person.crop.circle.badge.checkmark")
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            }
+            .accessibilityIdentifier("recipe-review-preferences")
+            NavigationLink {
+                ProductLabelReviewListView(scope: scope, service: workflowService,
+                                           onLabelReviewUpdated: refreshEvaluation)
+            } label: {
+                Label("Review package labels", systemImage: "tag")
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            }
+            .accessibilityIdentifier("recipe-review-product-labels")
+            NavigationLink {
+                RecipeShoppingReviewView(recipe: recipe, scope: scope, service: workflowService,
+                                         onShoppingConfirmed: onShoppingConfirmed,
+                                         onNavigateToShopping: onNavigateToShopping,
+                                         hasAppliedSubstitutions: !appliedSubstitutions.isEmpty)
+            } label: {
+                Label("Preview shopping list changes", systemImage: "cart.badge.plus")
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            }
+            .accessibilityIdentifier("recipe-shopping-preview-link")
+        }
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(ProvisionTheme.provisionGreen)
+        .padding(14)
+        .provisionCard(backgroundColor: ProvisionTheme.surfaceSecondary)
     }
 
     private var titleSection: some View {
@@ -246,6 +325,7 @@ private struct RecipeDetailContents: View {
                 RecipeIngredientRow(
                     index: index,
                     ingredient: recipe.ingredients[index],
+                    substitution: appliedSubstitutions[index],
                     availability: availabilityByRecipeIndex[index],
                     safety: safetyByRecipeIndex[index]
                 )
@@ -296,16 +376,18 @@ private struct RecipeDetailContents: View {
 private struct RecipeIngredientRow: View {
     let index: Int
     let ingredient: RecipeIngredient
+    let substitution: IngredientRequirement?
     let availability: IngredientAvailabilitySnapshot?
     let safety: IngredientSafetySnapshot?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(ingredient.display_name)
+            Text(substitution.map { "\(ingredient.display_name) → \($0.display_name ?? "Selected ingredient")" } ?? ingredient.display_name)
                 .font(.headline)
                 .foregroundStyle(ProvisionTheme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Recipe amount: \(QuantityText.string(ingredient.amount)) \(ingredient.unit)")
+            Text(substitution.map { "Selected amount: \(QuantityText.string($0.amount)) \($0.unit)" }
+                 ?? "Recipe amount: \(QuantityText.string(ingredient.amount)) \(ingredient.unit)")
                 .font(.subheadline)
                 .foregroundStyle(ProvisionTheme.textSecondary)
             if let preparation = ingredient.preparation, !preparation.isEmpty {
@@ -342,7 +424,7 @@ private struct RecipeIngredientRow: View {
 
     @ViewBuilder
     private func availabilityQuantities(_ line: IngredientAvailabilitySnapshot) -> some View {
-        let unit = line.unit ?? ingredient.unit
+        let unit = line.unit ?? substitution?.unit ?? ingredient.unit
         VStack(alignment: .leading, spacing: 3) {
             if let required = line.required_amount {
                 Text("Needed: \(QuantityText.string(required)) \(unit)")

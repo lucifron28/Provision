@@ -4,10 +4,19 @@ public struct CookWithPipView: View {
     @StateObject private var viewModel: CookWithPipViewModel
     private let scope: HouseholdScope
     private let service: any CookWithPipService
+    private let workflowService: any CookWithPipWorkflowService
+    private let onShoppingConfirmed: () async -> Void
+    private let onNavigateToShopping: () -> Void
 
-    public init(scope: HouseholdScope, service: any CookWithPipService = APIClient.shared) {
+    public init(scope: HouseholdScope, service: any CookWithPipService = APIClient.shared,
+                workflowService: any CookWithPipWorkflowService = APIClient.shared,
+                onShoppingConfirmed: @escaping () async -> Void = {},
+                onNavigateToShopping: @escaping () -> Void = {}) {
         self.scope = scope
         self.service = service
+        self.workflowService = workflowService
+        self.onShoppingConfirmed = onShoppingConfirmed
+        self.onNavigateToShopping = onNavigateToShopping
         _viewModel = StateObject(wrappedValue: CookWithPipViewModel(scope: scope, service: service))
     }
 
@@ -15,6 +24,15 @@ public struct CookWithPipView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 introduction
+                NavigationLink {
+                    CookWithPipManagementView(scope: scope, service: workflowService)
+                } label: {
+                    Label("Preferences and product labels", systemImage: "fork.knife.circle")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(ProvisionTheme.provisionGreen)
+                        .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
+                }
+                .accessibilityIdentifier("cook-with-pip-management")
                 modePicker
 
                 if viewModel.hasExcludedCandidates && viewModel.mode != .myRecipes {
@@ -150,7 +168,10 @@ public struct CookWithPipView: View {
             if viewModel.mode == .myRecipes {
                 ForEach(viewModel.recipes) { recipe in
                     NavigationLink {
-                        RecipeDetailView(recipeID: recipe.id, scope: scope, service: service)
+                        RecipeDetailView(recipeID: recipe.id, scope: scope, service: service,
+                                         workflowService: workflowService,
+                                         onShoppingConfirmed: onShoppingConfirmed,
+                                         onNavigateToShopping: onNavigateToShopping)
                     } label: {
                         HouseholdRecipeCard(recipe: recipe)
                     }
@@ -160,7 +181,10 @@ public struct CookWithPipView: View {
             } else {
                 ForEach(viewModel.recommendations, id: \.recipe.id) { recommendation in
                     NavigationLink {
-                        RecipeDetailView(recipeID: recommendation.recipe.id, scope: scope, service: service)
+                        RecipeDetailView(recipeID: recommendation.recipe.id, scope: scope, service: service,
+                                         workflowService: workflowService,
+                                         onShoppingConfirmed: onShoppingConfirmed,
+                                         onNavigateToShopping: onNavigateToShopping)
                     } label: {
                         RecommendationRecipeCard(recommendation: recommendation)
                     }

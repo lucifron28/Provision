@@ -30,6 +30,17 @@ public enum APIError: LocalizedError, Sendable {
     case invalidResponse(Int, String?)
     case decodingError(Error)
     case serverMessage(String)
+
+    public var serverErrorCode: String? {
+        guard case .http(_, let wrappedDetail, _) = self,
+              let detail = wrappedDetail else { return nil }
+        return switch detail {
+        case .string(let value): value
+        case .object(let values):
+            if case .string(let code)? = values["code"] { code } else { nil }
+        default: nil
+        }
+    }
     
     public var errorDescription: String? {
         switch self {
@@ -385,6 +396,78 @@ public actor APIClient {
         request.httpMethod = "GET"
         return try await execute(request, expectedScope: expectedScope)
     }
+
+    public func fetchProductsForCookWithPip(scope: HouseholdScope) async throws -> [Product] {
+        guard scope == householdScope else { throw APIError.sessionChanged }
+        let generation = sessionGeneration
+        guard let components = URLComponents(url: baseURL.appendingPathComponent("products/"), resolvingAgainstBaseURL: true) else {
+            throw APIError.invalidURL
+        }
+        let products: [Product] = try await fetchAllPages(components, generation: generation, expectedScope: scope)
+        guard generation == sessionGeneration else { throw APIError.sessionChanged }
+        isOfflineMode = false
+        await LocalCacheStore.shared.saveProducts(products, scope: scope)
+        return products
+    }
+
+    public func fetchProductForCookWithPip(id: Int, scope: HouseholdScope) async throws -> Product {
+        try await fetchProduct(id: id, expectedScope: scope)
+    }
+
+    public func fetchMyFoodProfile(scope: HouseholdScope) async throws -> FoodProfileRead {
+        let url = baseURL.appendingPathComponent("food-profiles/me")
+        return try await execute(URLRequest(url: url), expectedScope: scope)
+    }
+
+    public func saveMyFoodProfile(_ profile: FoodProfileWrite, scope: HouseholdScope) async throws -> FoodProfileRead {
+        let url = baseURL.appendingPathComponent("food-profiles/me")
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(profile)
+        return try await execute(request, expectedScope: scope)
+    }
+
+    public func lookupIngredients(query: String?, limit: Int = 50, scope: HouseholdScope) async throws -> IngredientLookup {
+        var components = URLComponents(url: baseURL.appendingPathComponent("ingredients/"), resolvingAgainstBaseURL: true)
+        var items: [URLQueryItem] = [URLQueryItem(name: "limit", value: String(limit))]
+        if let query, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            items.append(URLQueryItem(name: "query", value: query))
+        }
+        components?.queryItems = items
+        guard let url = components?.url else { throw APIError.invalidURL }
+        return try await execute(URLRequest(url: url), expectedScope: scope)
+    }
+
+    public func fetchProductMapping(productID: Int, scope: HouseholdScope) async throws -> ProductIngredientMappingRead {
+        let url = baseURL.appendingPathComponent("ingredients/products/\(productID)/mapping")
+        return try await execute(URLRequest(url: url), expectedScope: scope)
+    }
+
+    public func saveProductMapping(productID: Int, mapping: ProductIngredientMappingWrite,
+                                   scope: HouseholdScope) async throws -> ProductIngredientMappingRead {
+        let url = baseURL.appendingPathComponent("ingredients/products/\(productID)/mapping")
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(mapping)
+        return try await execute(request, expectedScope: scope)
+    }
+
+    public func fetchProductLabel(productID: Int, scope: HouseholdScope) async throws -> ProductLabelRead {
+        let url = baseURL.appendingPathComponent("food-safety/products/\(productID)/label")
+        return try await execute(URLRequest(url: url), expectedScope: scope)
+    }
+
+    public func saveProductLabel(productID: Int, label: ProductLabelWrite,
+                                 scope: HouseholdScope) async throws -> ProductLabelRead {
+        let url = baseURL.appendingPathComponent("food-safety/products/\(productID)/label")
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(label)
+        return try await execute(request, expectedScope: scope)
+    }
     
     public func fetchProduct(barcode: String, expectedScope: HouseholdScope? = nil) async throws -> Product? {
         var components = URLComponents(url: baseURL.appendingPathComponent("products/"), resolvingAgainstBaseURL: true)
@@ -662,6 +745,20 @@ public actor APIClient {
             }
             throw error
         }
+    }
+
+    /// Fetches the shared list from the server without returning an offline cache fallback.
+    public func fetchShoppingListFromServer(scope: HouseholdScope) async throws -> [ShoppingItem] {
+        guard scope == householdScope else { throw APIError.sessionChanged }
+        let generation = sessionGeneration
+        guard let components = URLComponents(url: baseURL.appendingPathComponent("shopping-list/"), resolvingAgainstBaseURL: true) else {
+            throw APIError.invalidURL
+        }
+        let items: [ShoppingItem] = try await fetchAllPages(components, generation: generation, expectedScope: scope)
+        guard generation == sessionGeneration else { throw APIError.sessionChanged }
+        isOfflineMode = false
+        await LocalCacheStore.shared.saveShoppingItems(items, scope: scope)
+        return items
     }
     
     public func updateShoppingItem(id: Int, update: ShoppingItemUpdate, expectedScope: HouseholdScope? = nil) async throws -> ShoppingItem {

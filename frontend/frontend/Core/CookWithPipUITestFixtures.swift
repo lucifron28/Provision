@@ -2,13 +2,43 @@
 import Foundation
 import SwiftUI
 
-struct CookWithPipUITestService: CookWithPipService {
+private actor CookWithPipUITestScenarioCounter {
+    private var recommendationRequests = 0
+    private var sourceRequests = 0
+    private var previewRequests = 0
+    private var confirmationRequests = 0
+    private var lastConfirmedLines: [RecipeShoppingAcceptedLine] = []
+    private var confirmations: [RecipeShoppingConfirmation] = []
+
+    func nextRecommendation() -> Int { recommendationRequests += 1; return recommendationRequests }
+    func nextSource() -> Int { sourceRequests += 1; return sourceRequests }
+    func nextPreview() -> Int { previewRequests += 1; return previewRequests }
+    func nextConfirmation() -> Int { confirmationRequests += 1; return confirmationRequests }
+    func recordConfirmation(_ confirmation: RecipeShoppingConfirmation) {
+        confirmations.append(confirmation)
+        lastConfirmedLines = confirmation.accepted_lines
+    }
+    func confirmedLines() -> [RecipeShoppingAcceptedLine] { lastConfirmedLines }
+    func recordedConfirmations() -> [RecipeShoppingConfirmation] { confirmations }
+}
+
+struct CookWithPipUITestService: CookWithPipService, CookWithPipWorkflowService {
     private let recipes: [HouseholdRecipe]
     private let cookNowResults: [RecipeRecommendation]
     private let almostThereResults: [RecipeRecommendation]
     private let evaluations: [Int: RecipeEvaluation]
+    private let scenario: String
+    private let counter: CookWithPipUITestScenarioCounter
 
-    init() {
+    static func launchArgument(_ name: String) -> String? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: name), arguments.indices.contains(index + 1) else { return nil }
+        return arguments[index + 1]
+    }
+
+    init(scenario override: String? = nil) {
+        scenario = override ?? Self.launchArgument("-pip-ui-scenario") ?? "default"
+        counter = CookWithPipUITestScenarioCounter()
         let unknown = IngredientAvailabilitySnapshot(
             ingredient_id: 901,
             canonical_name: nil,
@@ -61,7 +91,10 @@ struct CookWithPipUITestService: CookWithPipService {
             cookMinutes: 40,
             ingredients: [
                 Self.makeIngredient(id: 911, name: "baboy", amount: "0.500000", unit: "kg"),
-                Self.makeIngredient(id: 912, name: "sampalok", amount: "45.250000", unit: "g"),
+                Self.makeIngredient(id: 912, name: "sampalok", amount: "45.250000", unit: "g",
+                                    substitutionOptions: [IngredientRequirement(
+                                        displayName: "calamansi", amount: Self.quantity("30.000000"), unit: "g"
+                                    )]),
                 Self.makeIngredient(id: 913, name: "kangkong", amount: "120", unit: "g", required: false)
             ]
         )
@@ -87,6 +120,18 @@ struct CookWithPipUITestService: CookWithPipService {
             ingredients: [
                 Self.makeIngredient(id: nil, name: "kangkong", amount: "100.000000", unit: "g"),
                 Self.makeIngredient(id: 914, name: "gata", amount: "200.000000", unit: "ml")
+            ]
+        )
+        let pinakbet = Self.makeRecipe(
+            id: 304,
+            title: "Test Recipe: Pinakbet na Ilokano na may mahahabang pangalan ng sangkap",
+            region: "Ilocos",
+            summary: "A synthetic fixture for long Filipino ingredient names and blocked safety states.",
+            prepMinutes: 18,
+            cookMinutes: 42,
+            ingredients: [
+                Self.makeIngredient(id: 915, name: "talong na hiniwa nang pahaba at inalisan ng dulo", amount: "250", unit: "g"),
+                Self.makeIngredient(id: 916, name: "bagoong isda na may hindi pa nasusuring label", amount: "30", unit: "g")
             ]
         )
 
@@ -125,12 +170,27 @@ struct CookWithPipUITestService: CookWithPipService {
             ],
             overallAvailability: "unknown"
         )
+        let pinakbetEvaluation = Self.makeEvaluation(
+            recipe: pinakbet,
+            decision: "blocked",
+            reasons: ["declared_allergen_conflict"],
+            availability: [
+                Self.availabilityLine(id: 915, name: "talong", required: true, needed: "250", available: "0", shortfall: "250", unit: "g", status: "missing", batchIDs: []),
+                Self.availabilityLine(id: 916, name: "bagoong isda", required: true, needed: "30", available: "30", shortfall: "0", unit: "g", status: "full", batchIDs: [1906])
+            ],
+            ingredientDecisions: [
+                Self.safetyLine(index: 0, id: 915, decision: "eligible"),
+                Self.safetyLine(index: 1, id: 916, decision: "blocked", reasons: ["declared_allergen_conflict"])
+            ],
+            overallAvailability: "missing"
+        )
 
-        recipes = [bicolExpress, laing, sinigang]
+        recipes = [bicolExpress, laing, sinigang, pinakbet]
         evaluations = [
             sinigang.id: sinigangEvaluation,
             laing.id: laingEvaluation,
-            bicolExpress.id: bicolExpressEvaluation
+            bicolExpress.id: bicolExpressEvaluation,
+            pinakbet.id: pinakbetEvaluation
         ]
         cookNowResults = [Self.recommendation(recipe: sinigang, evaluation: sinigangEvaluation, missingCount: 0)]
         almostThereResults = [Self.recommendation(recipe: laing, evaluation: laingEvaluation, missingCount: 2)]
@@ -138,6 +198,7 @@ struct CookWithPipUITestService: CookWithPipService {
 
     func fetchRecipePage(query: String?, limit: Int, offset: Int,
                          scope: HouseholdScope) async throws -> [HouseholdRecipe] {
+        if scenario == "recipes-empty" { return [] }
         let matching = recipes.filter { recipe in
             guard let query, !query.isEmpty else { return true }
             return recipe.title.localizedCaseInsensitiveContains(query)
@@ -162,7 +223,14 @@ struct CookWithPipUITestService: CookWithPipService {
 
     func recommendRecipes(_ payload: RecipeRecommendationRequest,
                           scope: HouseholdScope) async throws -> RecipeRecommendations {
-        let candidates = payload.mode == "cook_now" ? cookNowResults : almostThereResults
+        let requestNumber = await counter.nextRecommendation()
+        if scenario == "recipes-offline-once", requestNumber == 1 {
+            throw APIError.networkError(URLError(.notConnectedToInternet))
+        }
+        if scenario == "recipes-loading", requestNumber == 1 {
+            try? await Task.sleep(for: .seconds(3))
+        }
+        let candidates = scenario == "recipes-empty" ? [] : (payload.mode == "cook_now" ? cookNowResults : almostThereResults)
         let matching = candidates.filter { recommendation in
             guard let query = payload.query, !query.isEmpty else { return true }
             return recommendation.recipe.title.localizedCaseInsensitiveContains(query)
@@ -180,14 +248,212 @@ struct CookWithPipUITestService: CookWithPipService {
     }
 
     func fetchRecipeSourceReference(id: Int, scope: HouseholdScope) async throws -> RecipeSourceReference {
+        if scenario == "source-error-once", await counter.nextSource() == 1 {
+            throw APIError.http(status: 503, detail: .string("synthetic source failure"), retryAfter: nil)
+        }
         throw APIError.http(status: 404, detail: nil, retryAfter: nil)
+    }
+
+    func fetchMyFoodProfile(scope: HouseholdScope) async throws -> FoodProfileRead {
+        FoodProfileRead(
+            scope: "member",
+            revision: 2,
+            preferences: FoodPreferences(preferred_cuisines: ["Filipino", "Bicolano"], servings: Decimal(string: "2.5")!),
+            allergy_status: "DECLARED",
+            allergies: [FoodAllergy(allergen_code: "milk", severity: "severe", cross_contact_concern: true)]
+        )
+    }
+
+    func saveMyFoodProfile(_ profile: FoodProfileWrite, scope: HouseholdScope) async throws -> FoodProfileRead {
+        FoodProfileRead(scope: "member", revision: (profile.expected_revision ?? 0) + 1,
+                        preferences: profile.preferences, allergy_status: profile.allergy_status,
+                        allergies: profile.allergies)
+    }
+
+    func lookupIngredients(query: String?, limit: Int, scope: HouseholdScope) async throws -> IngredientLookup {
+        let values = [
+            IngredientCandidate(id: 9201, canonical_name: "coconut milk", filipino_name: "gata", family: "coconut",
+                                default_unit: "mL", aliases: [], is_active: true, matched_alias: "gata"),
+            IngredientCandidate(id: 9202, canonical_name: "water spinach", filipino_name: "kangkong", family: "leafy greens",
+                                default_unit: "g", aliases: [], is_active: true, matched_alias: nil)
+        ]
+        let matches = values.filter { query == nil || $0.canonical_name.localizedCaseInsensitiveContains(query!) || $0.filipino_name?.localizedCaseInsensitiveContains(query!) == true }
+        return IngredientLookup(query: query, ambiguous: matches.count > 1, results: Array(matches.prefix(limit)))
+    }
+
+    func fetchProductsForCookWithPip(scope: HouseholdScope) async throws -> [Product] {
+        [Self.product]
+    }
+
+    func fetchProductForCookWithPip(id: Int, scope: HouseholdScope) async throws -> Product {
+        guard id == Self.product.id else { throw APIError.http(status: 404, detail: nil, retryAfter: nil) }
+        return Self.product
+    }
+
+    func fetchProductMapping(productID: Int, scope: HouseholdScope) async throws -> ProductIngredientMappingRead {
+        guard productID == Self.product.id else { throw APIError.http(status: 404, detail: nil, retryAfter: nil) }
+        return Self.mapping(version: 1)
+    }
+
+    func saveProductMapping(productID: Int, mapping: ProductIngredientMappingWrite,
+                            scope: HouseholdScope) async throws -> ProductIngredientMappingRead {
+        Self.mapping(version: (mapping.expected_version ?? 0) + 1, write: mapping)
+    }
+
+    func fetchProductLabel(productID: Int, scope: HouseholdScope) async throws -> ProductLabelRead {
+        if scenario == "product-label-stale" {
+            return ProductLabelRead(product_id: productID, mapping_version: 1, revision: 4,
+                                    declared_allergens: ["milk"], possible_allergens: [], custom_allergens: [],
+                                    composition_known: false, source_reference: "Synthetic package label",
+                                    reviewed_by_user_id: 9901, reviewed_at: "2026-11-01T00:00:00Z",
+                                    current_for_product: false, revoked: false, revoked_at: nil, revoked_by_user_id: nil)
+        }
+        throw APIError.http(status: 404, detail: nil, retryAfter: nil)
+    }
+
+    func saveProductLabel(productID: Int, label: ProductLabelWrite,
+                          scope: HouseholdScope) async throws -> ProductLabelRead {
+        ProductLabelRead(product_id: productID, mapping_version: label.expected_mapping_version,
+                         revision: (label.expected_revision ?? 0) + 1,
+                         declared_allergens: label.declared_allergens,
+                         possible_allergens: label.possible_allergens,
+                         custom_allergens: label.custom_allergens, composition_known: label.composition_known,
+                         source_reference: label.source_reference, reviewed_by_user_id: 9901,
+                         reviewed_at: "2026-11-09T00:00:00Z", current_for_product: true,
+                         revoked: false, revoked_at: nil, revoked_by_user_id: nil)
+    }
+
+    func previewRecipeShopping(_ request: RecipeShoppingPreviewRequest,
+                               scope: HouseholdScope) async throws -> RecipeShoppingPreview {
+        if scenario == "shopping-offline-once", await counter.nextPreview() == 1 {
+            throw APIError.networkError(URLError(.notConnectedToInternet))
+        }
+        let decision = scenario == "shopping-review-required" ? "review_required"
+            : (scenario == "shopping-blocked" ? "blocked" : "eligible")
+        let reasons = decision == "review_required" ? ["product_allergen_label_not_reviewed"]
+            : (decision == "blocked" ? ["declared_allergen_conflict"] : [])
+        let secondLine = RecipeShoppingLine(
+            ingredient_id: 914, canonical_name: "gata", display_name: "gata", unit: "mL",
+            required_quantity: Self.quantity("200"), pantry_quantity: Self.quantity("50"),
+            shortage: Self.quantity("150"), pending_quantity: Self.quantity("100"),
+            target_quantity: Self.quantity("150"), additional_quantity: Self.quantity("50"),
+            pending_item_ids: [9911, 9912], covered_batch_ids: [9905], status: "ready", review_reasons: [])
+        let firstLine = RecipeShoppingLine(
+            ingredient_id: 901, canonical_name: "kangkong", display_name: "kangkong", unit: "g",
+            required_quantity: Self.quantity("120"), pantry_quantity: Self.quantity("20"),
+            shortage: Self.quantity("100"), pending_quantity: Self.quantity("0"),
+            target_quantity: Self.quantity("100"), additional_quantity: Self.quantity("100"),
+            pending_item_ids: [], covered_batch_ids: [9904], status: "ready", review_reasons: [])
+        var requirements = [
+            IngredientAvailabilitySnapshot(ingredient_id: 901, canonical_name: "kangkong", display_names: ["kangkong"],
+                required: true, required_amount: Self.quantity("120"), available_amount: Self.quantity("20"),
+                shortfall: Self.quantity("100"), unit: "g", status: "partial", covered_batch_ids: [9904],
+                missing_expiry_batch_ids: [], unknown_reasons: []),
+            IngredientAvailabilitySnapshot(ingredient_id: 914, canonical_name: "gata", display_names: ["gata"],
+                required: true, required_amount: Self.quantity("200"), available_amount: Self.quantity("50"),
+                shortfall: Self.quantity("150"), unit: "mL", status: "partial", covered_batch_ids: [9905],
+                missing_expiry_batch_ids: [], unknown_reasons: [])
+        ]
+        let optionalLine = RecipeShoppingLine(
+            ingredient_id: 913, canonical_name: "kangkong", display_name: "kangkong (optional)", unit: "g",
+            required_quantity: Self.quantity("120"), pantry_quantity: Self.quantity("120"),
+            shortage: Self.quantity("0"), pending_quantity: Self.quantity("0"),
+            target_quantity: Self.quantity("0"), additional_quantity: Self.quantity("0"),
+            pending_item_ids: [], covered_batch_ids: [9904], status: "ready", review_reasons: [])
+        if request.include_optional {
+            requirements.append(IngredientAvailabilitySnapshot(
+                ingredient_id: 913, canonical_name: "kangkong", display_names: ["kangkong"], required: false,
+                required_amount: Self.quantity("120"), available_amount: Self.quantity("120"),
+                shortfall: Self.quantity("0"), unit: "g", status: "full", covered_batch_ids: [9904],
+                missing_expiry_batch_ids: [], unknown_reasons: []))
+        }
+        let readySafety = FoodSafetySnapshot(
+            decision: decision, reasons: reasons,
+            ingredients: [IngredientSafetySnapshot(requirement_index: 0, ingredient_id: 901,
+                decision: decision, reasons: reasons)],
+            availability: RecipeAvailabilitySnapshot(
+                recipe_servings: request.servings, servings: request.servings, overall_status: "partial",
+                requirements: requirements
+            ), notice: "No known conflict is not a safety guarantee. Check actual labels and preparation."
+        )
+        return RecipeShoppingPreview(
+            preview_id: "synthetic-preview-9905", expires_at: "2026-11-09T00:10:00Z", recipe_id: request.recipe_id,
+            recipe_revision: request.expected_recipe_revision, servings: request.servings,
+            include_optional: request.include_optional, shopping_revision: 3, inventory_revision: 7,
+            included_requirement_indexes: request.include_optional ? [0, 1, 2] : [0, 1], safety: readySafety,
+            lines: request.include_optional ? [firstLine, secondLine, optionalLine] : [firstLine, secondLine],
+            unlinked_manual_items: [UnlinkedShoppingReview(item_id: 9906, name: "manual market note",
+                quantity: Self.quantity("1"), unit: nil, candidate_ingredient_ids: [], reason: "not_linked")]
+        )
+    }
+
+    func confirmRecipeShopping(_ confirmation: RecipeShoppingConfirmation,
+                               scope: HouseholdScope) async throws -> RecipeShoppingConfirmationResult {
+        await counter.recordConfirmation(confirmation)
+        let attempt = await counter.nextConfirmation()
+        if scenario == "shopping-retry" && attempt == 1 {
+            throw APIError.networkError(URLError(.timedOut))
+        }
+        if scenario == "shopping-stale" && attempt == 1 {
+            throw APIError.http(status: 409, detail: .string("STALE_PREVIEW"), retryAfter: nil)
+        }
+        return RecipeShoppingConfirmationResult(
+            preview_id: confirmation.preview_id, shopping_revision: confirmation.expected_revision + 1,
+            created: confirmation.accepted_lines.map { line in
+                let name = line.ingredient_id == 914 ? "gata" : "kangkong"
+                let unit = line.ingredient_id == 914 ? "mL" : "g"
+                return RecipeShoppingChange(id: 9907 + line.ingredient_id, name: name, quantity: line.target_quantity,
+                    unit: unit, is_bought: false, notes: nil, product_id: nil, ingredient_id: line.ingredient_id,
+                    origin_recipe_id: 301, origin_recipe_revision: 1, origin_plan_id: nil, origin_plan_revision: nil,
+                    created_at: nil, updated_at: nil)
+            }, updated: [], unchanged: [], consolidated: confirmation.accepted_lines.filter { $0.consolidate_existing }.map { line in
+                ConsolidatedShoppingItems(kept_item_id: 9911,
+                    removed_items: [RecipeShoppingChange(id: 9912, name: "gata", quantity: line.target_quantity,
+                        unit: "mL", is_bought: false, notes: nil, product_id: nil, ingredient_id: line.ingredient_id,
+                        origin_recipe_id: nil, origin_recipe_revision: nil, origin_plan_id: nil,
+                        origin_plan_revision: nil, created_at: nil, updated_at: nil)])
+            }
+        )
+    }
+
+    func fetchShoppingListFromServer(scope: HouseholdScope) async throws -> [ShoppingItem] {
+        let lines = await counter.confirmedLines()
+        return lines.enumerated().map { index, line in
+            let name = line.ingredient_id == 914 ? "gata" : "kangkong"
+            let unit = line.ingredient_id == 914 ? "mL" : "g"
+            let amount = NSDecimalNumber(decimal: line.target_quantity.value).doubleValue
+            return ShoppingItem(id: 9907 + index, name: name, product_id: nil, quantity: amount,
+                                unit: unit, is_bought: false)
+        }
+    }
+
+    func recordedConfirmations() async -> [RecipeShoppingConfirmation] {
+        await counter.recordedConfirmations()
     }
 }
 
 @MainActor
 struct CookWithPipUITestHost: View {
-    private let scope = HouseholdScope(userID: 9901, householdID: 9902, serverID: "ui-test-fixtures")
+    private var scope: HouseholdScope {
+        let fixtureID = Int(Self.launchArgument("-pip-ui-fixture-id") ?? "0") ?? 0
+        return HouseholdScope(userID: 9901 + fixtureID, householdID: 9902 + fixtureID, serverID: "ui-test-fixtures")
+    }
     private let service = CookWithPipUITestService()
+    @State private var showingShoppingList = false
+    @StateObject private var shoppingViewModel: ShoppingViewModel
+
+    init() {
+        let fixtureID = Int(Self.launchArgument("-pip-ui-fixture-id") ?? "0") ?? 0
+        let scope = HouseholdScope(userID: 9901 + fixtureID, householdID: 9902 + fixtureID,
+                                   serverID: "ui-test-fixtures")
+        _shoppingViewModel = StateObject(wrappedValue: ShoppingViewModel(isPreview: true, scope: scope))
+    }
+
+    private static func launchArgument(_ name: String) -> String? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: name), arguments.indices.contains(index + 1) else { return nil }
+        return arguments[index + 1]
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -201,17 +467,53 @@ struct CookWithPipUITestHost: View {
                 }
                 .accessibilityIdentifier("ui-test-fixture-banner")
 
-            HomeView(
-                viewModel: HomeViewModel(isPreview: true),
-                authVM: PreviewData.makeAuthViewModel(),
-                cookWithPipScope: scope,
-                cookWithPipService: service
-            )
+            if showingShoppingList {
+                NavigationStack {
+                    ShoppingListView(viewModel: shoppingViewModel)
+                }
+            } else {
+                HomeView(
+                    viewModel: HomeViewModel(isPreview: true),
+                    authVM: PreviewData.makeAuthViewModel(),
+                    onNavigateToShopping: { showingShoppingList = true },
+                    onShoppingConfirmed: {
+                        shoppingViewModel.items = (try? await service.fetchShoppingListFromServer(scope: scope)) ?? []
+                    },
+                    cookWithPipScope: scope,
+                    cookWithPipService: service,
+                    cookWithPipWorkflowService: service
+                )
+            }
         }
+        .preferredColorScheme(Self.launchArgument("-pip-ui-appearance") == "dark" ? .dark : nil)
+        .environment(\.dynamicTypeSize,
+                     Self.launchArgument("-pip-ui-type") == "accessibility" ? .accessibility3 : .large)
     }
 }
 
 private extension CookWithPipUITestService {
+    static var product: Product {
+        Product(id: 9903, name: "Test Product: Gata", brand: "Synthetic fixture", category: "Canned goods",
+                package_size: 400, unit: "mL", updated_at: "2026-11-09T00:00:00Z")
+    }
+
+    static func mapping(version: Int, write: ProductIngredientMappingWrite? = nil) -> ProductIngredientMappingRead {
+        let mode = write?.mode ?? .direct
+        let verified = write?.verified ?? true
+        let componentIDs = mode == .composite ? (write?.components.map(\.ingredient_id) ?? []) : []
+        return ProductIngredientMappingRead(
+            id: 9908, product_id: product.id, version: version, is_current: true, mode: mode,
+            ingredient_id: mode == .direct ? (write?.ingredient_id ?? 9201) : nil,
+            verification_status: mode == .unknown ? "UNKNOWN" : (verified ? "VERIFIED" : "UNVERIFIED"),
+            method: write?.method ?? "synthetic fixture",
+            verified_by_user_id: verified ? 9901 : nil,
+            verified_at: verified ? "2026-11-09T00:00:00Z" : nil, confidence: nil,
+            unknown_composition: write?.unknown_composition ?? false,
+            component_ingredient_ids: componentIDs, package_factors: [],
+            created_at: "2026-11-09T00:00:00Z", updated_at: "2026-11-09T00:00:00Z"
+        )
+    }
+
     static func makeRecipe(id: Int, title: String, region: String, summary: String,
                             prepMinutes: Int, cookMinutes: Int,
                             ingredients: [RecipeIngredient]) -> HouseholdRecipe {
@@ -241,7 +543,8 @@ private extension CookWithPipUITestService {
     }
 
     static func makeIngredient(id: Int?, name: String, amount: String, unit: String,
-                                required: Bool = true) -> RecipeIngredient {
+                               required: Bool = true,
+                               substitutionOptions: [IngredientRequirement] = []) -> RecipeIngredient {
         RecipeIngredient(
             ingredient_id: id,
             display_name: name,
@@ -249,7 +552,7 @@ private extension CookWithPipUITestService {
             unit: unit,
             required: required,
             preparation: nil,
-            substitution_options: []
+            substitution_options: substitutionOptions
         )
     }
 

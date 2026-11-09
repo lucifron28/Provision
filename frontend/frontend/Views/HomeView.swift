@@ -5,6 +5,7 @@ public struct HomeView: View {
     @ObservedObject var authVM: AuthViewModel
     var onNavigateToInventory: (InventoryQuickFilter?) -> Void
     var onNavigateToShopping: () -> Void
+    var onShoppingConfirmed: () async -> Void
 
     @State private var showingProfileSheet: Bool = false
     @State private var notificationsEnabled: Bool = NotificationService.shared.isAlertsEnabled
@@ -13,21 +14,26 @@ public struct HomeView: View {
     @State private var itemToConsume: ExpiringSoonItem? = nil
     private let cookWithPipScope: HouseholdScope?
     private let cookWithPipService: any CookWithPipService
+    private let cookWithPipWorkflowService: any CookWithPipWorkflowService
 
     public init(
         viewModel: HomeViewModel,
         authVM: AuthViewModel,
         onNavigateToInventory: @escaping (InventoryQuickFilter?) -> Void = { _ in },
         onNavigateToShopping: @escaping () -> Void = {},
+        onShoppingConfirmed: @escaping () async -> Void = {},
         cookWithPipScope: HouseholdScope? = nil,
-        cookWithPipService: any CookWithPipService = APIClient.shared
+        cookWithPipService: any CookWithPipService = APIClient.shared,
+        cookWithPipWorkflowService: any CookWithPipWorkflowService = APIClient.shared
     ) {
         self.viewModel = viewModel
         self.authVM = authVM
         self.onNavigateToInventory = onNavigateToInventory
         self.onNavigateToShopping = onNavigateToShopping
+        self.onShoppingConfirmed = onShoppingConfirmed
         self.cookWithPipScope = cookWithPipScope
         self.cookWithPipService = cookWithPipService
+        self.cookWithPipWorkflowService = cookWithPipWorkflowService
     }
 
     public init(
@@ -35,16 +41,20 @@ public struct HomeView: View {
         authVM: AuthViewModel,
         onNavigateToInventory: @escaping () -> Void,
         onNavigateToShopping: @escaping () -> Void = {},
+        onShoppingConfirmed: @escaping () async -> Void = {},
         cookWithPipScope: HouseholdScope? = nil,
-        cookWithPipService: any CookWithPipService = APIClient.shared
+        cookWithPipService: any CookWithPipService = APIClient.shared,
+        cookWithPipWorkflowService: any CookWithPipWorkflowService = APIClient.shared
     ) {
         self.init(
             viewModel: viewModel,
             authVM: authVM,
             onNavigateToInventory: { _ in onNavigateToInventory() },
             onNavigateToShopping: onNavigateToShopping,
+            onShoppingConfirmed: onShoppingConfirmed,
             cookWithPipScope: cookWithPipScope,
-            cookWithPipService: cookWithPipService
+            cookWithPipService: cookWithPipService,
+            cookWithPipWorkflowService: cookWithPipWorkflowService
         )
     }
 
@@ -168,7 +178,10 @@ public struct HomeView: View {
     private var cookWithPipEntryCard: some View {
         if let scope = activeCookWithPipScope {
             NavigationLink {
-                CookWithPipView(scope: scope, service: cookWithPipService)
+                CookWithPipView(scope: scope, service: cookWithPipService,
+                                workflowService: cookWithPipWorkflowService,
+                                onShoppingConfirmed: onShoppingConfirmed,
+                                onNavigateToShopping: onNavigateToShopping)
             } label: {
                 HStack(spacing: 14) {
                     Image("pip_chef")
