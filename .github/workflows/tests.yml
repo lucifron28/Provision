@@ -13,8 +13,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Show Xcode and simulator runtimes
         run: xcodebuild -version && xcrun simctl list devices available
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
       - name: Prepare iOS test artifact folder
-        run: mkdir -p artifacts
+        run: mkdir -p artifacts/raw-cook-with-pip-screenshots artifacts/cook-with-pip-screenshots
       - name: Run iOS XCTest and UI screenshot suite
         run: >-
           xcodebuild test
@@ -29,26 +32,31 @@ jobs:
           if [ -d artifacts/frontend.xcresult ]; then
             xcrun xcresulttool export attachments \
               --path artifacts/frontend.xcresult \
-              --output-path artifacts/cook-with-pip-screenshots
+              --output-path artifacts/raw-cook-with-pip-screenshots
           else
-            echo "No xcresult bundle was produced."
+            echo "No xcresult bundle was produced." >&2
+            exit 1
           fi
-      - name: Verify screenshot attachments
+      - name: Organize and verify required screenshot scenarios
         if: always()
-        run: |
-          if [ -d artifacts/frontend.xcresult ]; then
-            count=$(find artifacts/cook-with-pip-screenshots -type f -iname '*.png' 2>/dev/null | wc -l | tr -d ' ')
-            echo "Exported screenshot count: ${count:-0}"
-            test "${count:-0}" -ge 5
-          fi
-      - name: Upload iOS screenshots and test results
+        run: >-
+          python .github/scripts/organize_ios_screenshots.py
+          --input artifacts/raw-cook-with-pip-screenshots
+          --output artifacts/cook-with-pip-screenshots
+          --required .github/scripts/required_ios_screenshots.json
+      - name: Upload organized iOS screenshots and scenario manifest
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cook-with-pip-ios-test-results
-          path: |
-            artifacts/frontend.xcresult
-            artifacts/cook-with-pip-screenshots
+          name: cook-with-pip-ios-screenshots
+          path: artifacts/cook-with-pip-screenshots
+          if-no-files-found: error
+      - name: Upload iOS test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cook-with-pip-xcresult
+          path: artifacts/frontend.xcresult
           if-no-files-found: warn
 
   backend:
