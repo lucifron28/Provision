@@ -1,18 +1,50 @@
-name: Optional DeepSeek live smoke
+name: Optional DeepSeek live recipe smoke
 
 on:
-  workflow_dispatch:
-    inputs:
-      run_live_smoke:
-        description: Send one bounded test prompt to the configured DeepSeek provider
-        type: boolean
-        required: true
-        default: false
+  push:
+    branches:
+      - feat/cook-with-pip-ios-m1
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deepseek-live-recipe-smoke
+  cancel-in-progress: false
 
 jobs:
-  live-smoke:
-    if: ${{ inputs.run_live_smoke }}
+  live-recipe:
+    if: >-
+      github.event.before == '7424e3c5480d0666db3c86b629aab9b516c625ce' &&
+      github.event.head_commit.message == 'Run approved DeepSeek recipe smoke once' &&
+      github.run_attempt == 1
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: provision
+          POSTGRES_PASSWORD: provision
+          POSTGRES_DB: provision_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://provision:provision@localhost:5432/provision_test
+      TEST_DATABASE_URL: postgresql+psycopg://provision:provision@localhost:5432/provision_test
+      JWT_SECRET_KEY: test-secret-key-for-live-smoke-only
+      DEEPSEEK_ENABLED: "true"
+      DEEPSEEK_TIMEOUT_SECONDS: "45"
+      DEEPSEEK_REQUEST_BUDGET: "1"
+      DEEPSEEK_HOUSEHOLD_REQUEST_BUDGET: "1"
+      DEEPSEEK_REQUESTS_PER_MINUTE: "1"
+      DEEPSEEK_MAX_OUTPUT_TOKENS: "512"
+      PROVISION_DEEPSEEK_LIVE_SMOKE: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -23,25 +55,30 @@ jobs:
       - name: Sync backend environment
         working-directory: backend
         run: uv sync --frozen
-      - name: Check whether the provider secret is available
-        id: provider-secret
+      - name: Prepare live test evidence folder
+        run: mkdir -p artifacts
+      - name: Check provider secret without exposing its value
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: |
-          if [ -n "$DEEPSEEK_API_KEY" ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "DeepSeek live smoke skipped because DEEPSEEK_API_KEY is not configured."
+          if [ -z "$DEEPSEEK_API_KEY" ]; then
+            echo "DEEPSEEK_API_KEY is not configured."
+            exit 1
           fi
-      - name: Run one bounded live provider request
-        if: steps.provider-secret.outputs.available == 'true'
+          echo "DEEPSEEK_API_KEY is configured."
+      - name: Generate one synthetic recipe through FastAPI
         working-directory: backend
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          DEEPSEEK_ENABLED: "true"
-          DEEPSEEK_REQUEST_BUDGET: "1"
-          DEEPSEEK_REQUESTS_PER_MINUTE: "1"
-          DEEPSEEK_MAX_OUTPUT_TOKENS: "128"
-          JWT_SECRET_KEY: test-secret-key-for-live-smoke-only
-        run: uv run python scripts/deepseek_live_smoke.py
+          PROVISION_DEEPSEEK_LIVE_EVIDENCE_PATH: ../artifacts/deepseek-live-evidence.json
+        run: >-
+          uv run pytest -q -s
+          tests/test_deepseek_live_smoke.py::test_live_generation_api_with_consented_test_household
+          --junitxml=../artifacts/deepseek-live-junit.xml
+      - name: Upload sanitized live test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deepseek-live-recipe-evidence
+          path: artifacts/
+          if-no-files-found: warn

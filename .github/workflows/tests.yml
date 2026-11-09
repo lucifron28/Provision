@@ -102,6 +102,15 @@ jobs:
           uv run alembic downgrade base
           uv run alembic upgrade head
           uv run alembic check
+      - name: Prepare backend test artifact folder
+        run: mkdir -p artifacts
       - name: Run backend tests
         working-directory: backend
-        run: uv run pytest
+        run: uv run pytest --junitxml=../artifacts/backend-junit.xml
+      - name: Upload backend test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: artifacts/backend-junit.xml
+          if-no-files-found: warn
