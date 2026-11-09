@@ -219,6 +219,7 @@ public struct RecipeShoppingReviewView: View {
                     }
                 }
                 .padding(.vertical, 5)
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("recipe-shopping-row-\(line.ingredient_id ?? -1)")
             }
         }
