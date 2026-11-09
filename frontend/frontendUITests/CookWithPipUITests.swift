@@ -264,8 +264,9 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(staleReady, in: staleApp)
     }
 
-    func testAmbiguousShoppingConfirmationRetainsExactRetry() {
-        let app = launch(scenario: "shopping-retry")
+    func testAmbiguousShoppingConfirmationSurvivesAppRelaunch() {
+        let fixtureID = Int.random(in: 10_000...90_000)
+        let app = launch(scenario: "shopping-restart", fixtureID: fixtureID, useKeychain: true)
         openShoppingPreview(app)
         element("recipe-shopping-confirm", in: app).tap()
         element("recipe-shopping-confirm-action", in: app).tap()
@@ -276,8 +277,17 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(pendingLine.waitForExistence(timeout: 5))
         XCTAssertTrue(pendingLine.label.contains("kangkong"))
         capture("Shopping_Confirmation_Retry_Pending", app: app)
-        app.buttons["recipe-shopping-retry-pending"].tap()
-        XCTAssertTrue(element("recipe-shopping-result-counts", in: app).waitForExistence(timeout: 10))
+        app.terminate()
+
+        let relaunched = launch(scenario: "shopping-restart", fixtureID: fixtureID, useKeychain: true)
+        openShoppingPreview(relaunched)
+        let relaunchedPending = element("recipe-shopping-pending-line-0", in: relaunched)
+        XCTAssertTrue(relaunchedPending.waitForExistence(timeout: 10))
+        XCTAssertTrue(relaunchedPending.label.contains("kangkong"))
+        relaunched.buttons["recipe-shopping-retry-pending"].tap()
+        let resultCounts = element("recipe-shopping-result-counts", in: relaunched)
+        XCTAssertTrue(resultCounts.waitForExistence(timeout: 10))
+        XCTAssertTrue(resultCounts.label.contains("Created 2"))
     }
 
     func testSourceLookupErrorKeepsRecipeAndCanRetry() {
@@ -337,13 +347,15 @@ final class CookWithPipUITests: XCTestCase {
     }
 
     private func launch(scenario: String = "default", appearance: String? = nil,
-                        dynamicType: String? = nil) -> XCUIApplication {
+                        dynamicType: String? = nil, fixtureID: Int? = nil,
+                        useKeychain: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments.append(contentsOf: [
             "-cook-with-pip-ui-tests",
             "-pip-ui-scenario", scenario,
-            "-pip-ui-fixture-id", String(Int.random(in: 10_000...90_000))
+            "-pip-ui-fixture-id", String(fixtureID ?? Int.random(in: 10_000...90_000))
         ])
+        if useKeychain { app.launchArguments.append(contentsOf: ["-pip-ui-use-keychain", "1"]) }
         if let appearance {
             app.launchArguments.append(contentsOf: ["-pip-ui-appearance", appearance])
         }
@@ -376,8 +388,10 @@ final class CookWithPipUITests: XCTestCase {
         previewLink.tap()
         let ready = element("recipe-shopping-safety-status", in: app)
         let retry = element("recipe-shopping-load-preview", in: app)
+        let pending = element("recipe-shopping-pending-status", in: app)
+        let recovery = element("recipe-shopping-recovery-retry", in: app)
         let settings = element("recipe-shopping-servings", in: app)
-        let previewLoaded = NSPredicate { _, _ in settings.exists || retry.exists }
+        let previewLoaded = NSPredicate { _, _ in settings.exists || retry.exists || pending.exists || recovery.exists }
         let loadExpectation = XCTNSPredicateExpectation(predicate: previewLoaded, object: app)
         XCTAssertEqual(XCTWaiter.wait(for: [loadExpectation], timeout: 10), .completed)
         if settings.exists {

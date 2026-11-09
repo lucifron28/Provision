@@ -50,6 +50,8 @@ public struct RecipeShoppingReviewView: View {
                 confirmationResultSection(result)
             } else if let pending = viewModel.pendingRecord {
                 pendingConfirmationSection(pending)
+            } else if viewModel.pendingStorageState != .missing {
+                pendingStorageRecoverySection
             } else if let preview = viewModel.preview {
                 previewControls(preview)
                 safetySection(preview)
@@ -286,6 +288,19 @@ public struct RecipeShoppingReviewView: View {
             }
             .disabled(viewModel.isConfirming)
             .accessibilityIdentifier("recipe-shopping-retry-pending")
+        }
+    }
+
+    private var pendingStorageRecoverySection: some View {
+        Section("Saved confirmation check") {
+            Text("Provision cannot safely tell whether an earlier shopping confirmation is still pending. Check the saved request again before asking for a preview or sending another change.")
+                .font(.footnote)
+                .foregroundStyle(ProvisionTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Check saved confirmation again") {
+                Task { await viewModel.reloadPendingState() }
+            }
+            .accessibilityIdentifier("recipe-shopping-recovery-retry")
         }
     }
 

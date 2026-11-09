@@ -397,7 +397,31 @@ struct CookWithPipUITestService: CookWithPipService, CookWithPipWorkflowService 
         if scenario == "shopping-stale" && attempt == 1 {
             throw APIError.http(status: 409, detail: .string("STALE_PREVIEW"), retryAfter: nil)
         }
-        return RecipeShoppingConfirmationResult(
+        if scenario == "shopping-restart" {
+            let fixtureID = Self.launchArgument("-pip-ui-fixture-id") ?? "missing-fixture"
+            let defaults = UserDefaults.standard
+            let requestKey = "cook-with-pip-ui-server-request-\(fixtureID)"
+            let mutationCountKey = "cook-with-pip-ui-server-mutations-\(fixtureID)"
+            if let data = defaults.data(forKey: requestKey) {
+                guard let previous = try? JSONDecoder().decode(RecipeShoppingConfirmation.self, from: data),
+                      previous == confirmation,
+                      defaults.integer(forKey: mutationCountKey) == 1 else {
+                    throw APIError.invalidResponse(502, "The fixture server rejected a non-identical retry")
+                }
+                return confirmationResult(for: confirmation)
+            }
+            guard let data = try? JSONEncoder().encode(confirmation) else {
+                throw APIError.invalidResponse(502, "The fixture server could not save the confirmation")
+            }
+            defaults.set(data, forKey: requestKey)
+            defaults.set(1, forKey: mutationCountKey)
+            throw APIError.networkError(URLError(.timedOut))
+        }
+        return confirmationResult(for: confirmation)
+    }
+
+    private func confirmationResult(for confirmation: RecipeShoppingConfirmation) -> RecipeShoppingConfirmationResult {
+        RecipeShoppingConfirmationResult(
             preview_id: confirmation.preview_id, shopping_revision: confirmation.expected_revision + 1,
             created: confirmation.accepted_lines.map { line in
                 let name = line.ingredient_id == 914 ? "gata" : "kangkong"
@@ -441,14 +465,17 @@ struct CookWithPipUITestHost: View {
     private let service = CookWithPipUITestService()
     @State private var showingShoppingList = false
     @StateObject private var shoppingViewModel: ShoppingViewModel
-    @State private var pendingShoppingStore: CookWithPipUITestPendingShoppingStore
+    @State private var pendingShoppingStore: any PendingRecipeShoppingStore
 
     init() {
         let fixtureID = Int(Self.launchArgument("-pip-ui-fixture-id") ?? "0") ?? 0
         let scope = HouseholdScope(userID: 9901 + fixtureID, householdID: 9902 + fixtureID,
                                    serverID: "ui-test-fixtures")
         _shoppingViewModel = StateObject(wrappedValue: ShoppingViewModel(isPreview: true, scope: scope))
-        _pendingShoppingStore = State(initialValue: CookWithPipUITestPendingShoppingStore())
+        let pendingStore: any PendingRecipeShoppingStore = Self.launchArgument("-pip-ui-use-keychain") == "1"
+            ? KeychainStore.shared
+            : CookWithPipUITestPendingShoppingStore()
+        _pendingShoppingStore = State(initialValue: pendingStore)
     }
 
     private static func launchArgument(_ name: String) -> String? {
@@ -628,15 +655,16 @@ private final class CookWithPipUITestPendingShoppingStore: PendingRecipeShopping
     private let lock = NSLock()
     private var records: [String: PendingRecipeShoppingRecord] = [:]
 
-    func readPendingRecipeShopping(scope: HouseholdScope) -> PendingRecipeShoppingRecord? {
+    func readPendingRecipeShopping(scope: HouseholdScope) -> PendingRecipeShoppingReadResult {
         lock.lock()
         defer { lock.unlock() }
-        return records[scope.storageKey]
+        return records[scope.storageKey].map(PendingRecipeShoppingReadResult.record) ?? .missing
     }
 
     func savePendingRecipeShopping(_ record: PendingRecipeShoppingRecord, scope: HouseholdScope) -> Bool {
         lock.lock()
         defer { lock.unlock() }
+        guard record.scopeStorageKey == scope.storageKey, records[scope.storageKey] == nil else { return false }
         records[scope.storageKey] = record
         return true
     }

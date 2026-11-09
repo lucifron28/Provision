@@ -2,7 +2,7 @@ import Combine
 import Foundation
 
 public protocol PendingRecipeShoppingStore {
-    func readPendingRecipeShopping(scope: HouseholdScope) -> PendingRecipeShoppingRecord?
+    func readPendingRecipeShopping(scope: HouseholdScope) -> PendingRecipeShoppingReadResult
     @discardableResult func savePendingRecipeShopping(_ record: PendingRecipeShoppingRecord, scope: HouseholdScope) -> Bool
     @discardableResult func deletePendingRecipeShopping(scope: HouseholdScope) -> Bool
 }
@@ -13,6 +13,7 @@ extension KeychainStore: PendingRecipeShoppingStore {}
 public final class RecipeShoppingReviewViewModel: ObservableObject {
     @Published public private(set) var preview: RecipeShoppingPreview?
     @Published public private(set) var pendingRecord: PendingRecipeShoppingRecord?
+    @Published public private(set) var pendingStorageState: PendingRecipeShoppingReadResult = .missing
     @Published public private(set) var confirmationResult: RecipeShoppingConfirmationResult?
     @Published public var includeOptional = false
     @Published public var servingsText: String
@@ -32,12 +33,12 @@ public final class RecipeShoppingReviewViewModel: ObservableObject {
     private let pendingStore: any PendingRecipeShoppingStore
 
     public init(recipe: HouseholdRecipe, scope: HouseholdScope,
-                service: any CookWithPipWorkflowService = APIClient.shared,
-                pendingStore: any PendingRecipeShoppingStore = KeychainStore.shared) {
+                service: (any CookWithPipWorkflowService)? = nil,
+                pendingStore: (any PendingRecipeShoppingStore)? = nil) {
         self.recipe = recipe
         self.scope = scope
-        self.service = service
-        self.pendingStore = pendingStore
+        self.service = service ?? APIClient.shared
+        self.pendingStore = pendingStore ?? KeychainStore.shared
         servingsText = NSDecimalNumber(decimal: recipe.servings.value).stringValue
     }
 
@@ -47,7 +48,7 @@ public final class RecipeShoppingReviewViewModel: ObservableObject {
     }
 
     public var canConfirm: Bool {
-        guard pendingRecord == nil, let preview, isPreviewCurrent,
+        guard pendingStorageState == .missing, pendingRecord == nil, let preview, isPreviewCurrent,
               !selectedIngredientIDs.isEmpty else { return false }
         switch preview.safety.decision {
         case "eligible": break
@@ -70,17 +71,61 @@ public final class RecipeShoppingReviewViewModel: ObservableObject {
     public func load() async {
         guard !hasLoaded else { return }
         hasLoaded = true
-        if let stored = pendingStore.readPendingRecipeShopping(scope: scope) {
+        await reloadPendingState()
+    }
+
+    public func reloadPendingState() async {
+        errorMessage = nil
+        switch pendingStore.readPendingRecipeShopping(scope: scope) {
+        case .missing:
+            pendingStorageState = .missing
+            pendingRecord = nil
+            statusMessage = nil
+            if preview == nil { await refreshPreview() }
+        case .record(let stored):
+            pendingStorageState = .record(stored)
             pendingRecord = stored
+            preview = nil
             statusMessage = "A confirmation is saved on this device. Retry the exact request to check its result."
-            return
+        case .corrupt:
+            pendingStorageState = .corrupt
+            pendingRecord = nil
+            preview = nil
+            statusMessage = nil
+            errorMessage = "A saved shopping confirmation could not be read. No new shopping changes can be sent from this screen. Check the saved request again later."
+        case .unavailable:
+            pendingStorageState = .unavailable
+            pendingRecord = nil
+            preview = nil
+            statusMessage = nil
+            errorMessage = "This device could not check for a saved shopping confirmation. No new shopping changes can be sent until storage is available. Check again later."
         }
-        await refreshPreview()
     }
 
     public func refreshPreview() async {
-        guard pendingRecord == nil else {
-            errorMessage = "Retry the saved confirmation before requesting another preview."
+        errorMessage = nil
+        let storedState = pendingStore.readPendingRecipeShopping(scope: scope)
+        pendingStorageState = storedState
+        switch storedState {
+        case .missing:
+            pendingRecord = nil
+            statusMessage = nil
+        case .record(let stored):
+            pendingRecord = stored
+            preview = nil
+            statusMessage = "A confirmation is saved on this device. Retry the exact request to check its result."
+            return
+        case .corrupt:
+            pendingRecord = nil
+            preview = nil
+            statusMessage = nil
+            errorMessage = "A saved shopping confirmation could not be read. No new shopping changes can be sent from this screen. Check the saved request again later."
+            return
+        case .unavailable:
+            pendingRecord = nil
+            preview = nil
+            statusMessage = nil
+            errorMessage = "This device could not check for a saved shopping confirmation. No new shopping changes can be sent until storage is available. Check again later."
             return
         }
         guard let servings = decimal(servingsText), servings > 0, servings <= 10_000,
@@ -128,6 +173,10 @@ public final class RecipeShoppingReviewViewModel: ObservableObject {
             errorMessage = "Refresh the preview and review every selected line before confirming."
             return
         }
+        guard case .missing = pendingStore.readPendingRecipeShopping(scope: scope) else {
+            await reloadPendingState()
+            return
+        }
         let lines = preview.lines.compactMap { line -> RecipeShoppingAcceptedLine? in
             guard let id = line.ingredient_id, selectedIngredientIDs.contains(id),
                   let text = targetQuantityTexts[id], let value = decimal(text) else { return nil }
@@ -155,9 +204,13 @@ public final class RecipeShoppingReviewViewModel: ObservableObject {
                                                  lines: displayLines,
                                                  confirmation: confirmation)
         guard pendingStore.savePendingRecipeShopping(record, scope: scope) else {
-            errorMessage = "This device could not save a retry record, so the shopping list was not changed."
+            await reloadPendingState()
+            if pendingStorageState == .missing {
+                errorMessage = "This device could not save a retry record, so the shopping list was not changed."
+            }
             return
         }
+        pendingStorageState = .record(record)
         pendingRecord = record
         await send(record)
     }
@@ -166,6 +219,12 @@ public final class RecipeShoppingReviewViewModel: ObservableObject {
         guard let record = pendingRecord,
               record.scopeStorageKey == scope.storageKey else {
             errorMessage = "No saved confirmation matches the current household."
+            return
+        }
+        guard case .record(let stored) = pendingStore.readPendingRecipeShopping(scope: scope),
+              stored == record else {
+            await reloadPendingState()
+            errorMessage = "The saved confirmation changed or could not be checked. No request was sent."
             return
         }
         await send(record)
@@ -178,18 +237,22 @@ public final class RecipeShoppingReviewViewModel: ObservableObject {
         do {
             confirmationResult = try await service.confirmRecipeShopping(record.confirmation, scope: scope)
             if pendingStore.deletePendingRecipeShopping(scope: scope) {
+                pendingStorageState = .missing
                 pendingRecord = nil
                 statusMessage = "Shopping list updated. Pantry quantities were not changed."
             } else {
+                pendingStorageState = .record(record)
                 statusMessage = "Shopping list updated. The saved retry record remains on this device; retrying it is idempotent."
             }
         } catch {
             if let apiError = error as? APIError, apiError.serverErrorCode == "STALE_PREVIEW" {
                 if pendingStore.deletePendingRecipeShopping(scope: scope) {
+                    pendingStorageState = .missing
                     pendingRecord = nil
                     preview = nil
                     statusMessage = "Inventory or shopping data changed. Load a fresh preview before confirming."
                 } else {
+                    pendingStorageState = .record(record)
                     errorMessage = "The preview is stale, and this device could not clear its saved request. Retry the same request or reload."
                 }
             } else {
