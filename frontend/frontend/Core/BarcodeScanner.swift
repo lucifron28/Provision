@@ -594,7 +594,9 @@ public struct BarcodeScannerView: View {
         .onAppear {
             // Only override manager callback if caller supplied an explicit custom handler
             if let customCallback = onBarcodeDetected {
-                manager.onBarcodeDetected = customCallback
+                manager.onBarcodeDetected = { barcode, generation in
+                    customCallback(barcode, generation)
+                }
             }
             if manager.isCameraAvailable && manager.permission == .notDetermined {
                 Task {
