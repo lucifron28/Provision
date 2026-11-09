@@ -1,6 +1,6 @@
 # Cook with Pip — Product Roadmap and Execution Checklist
 
-Status: **Windows backend foundations implemented; provider and Mac/client phases deferred** | Last reviewed: 2026-10-30 | Base: `feat/complete-ui-ux-refinement`
+Status: **Windows backend foundations and read-only iOS Cook with Pip milestone 1 implemented; provider, account-cache, and device acceptance deferred** | Last reviewed: 2026-11-09 | Evidence branch: `feat/cook-with-pip-ios-m1` at `f13af692`
 
 **Purpose.** Evolve Provision from pantry tracking into a Filipino-first household food assistant: discover credible recipes, identify what can be cooked from usable inventory, respect allergies and preferences, buy missing ingredients without duplicates, plan meals, track leftovers, and measure waste. This document is the actionable backlog, not evidence that features already exist.
 
@@ -210,6 +210,23 @@ The seeded household test at `280901b` covers Cook Now, Almost There, mocked
 discovery, shopping preview, confirmation, and idempotent replay. It checks
 that the flow leaves pantry quantities unchanged; it does not prove live page
 extraction or SwiftUI integration.
+
+**Read-only iOS milestone 1 — verified 2026-11-09.** [Draft PR #4](https://github.com/lucifron28/Provision/pull/4)
+adds the Home entry, Cook with Pip discovery, Cook Now, Almost There,
+My Recipes, and Recipe Detail using the existing authenticated
+household-scoped recipe API. The screens show current server safety and
+availability results and exact ingredient quantities, without changing pantry
+stock or shopping lists. The five-tab shell and heuristic Pip hints remain
+separate; live web and DeepSeek calls remain disabled.
+
+[GitHub Actions run 42550293924](https://github.com/lucifron28/Provision/actions/runs/42550293924),
+on commit `f13af69229b837233484fd4b40336c83a4e27b86`, passed the iPhone 17
+simulator XCTest suite (28 unit tests and one UI journey) and backend suite
+(935 passed, 12 skipped). Artifact `cook-with-pip-ios-test-results` contains
+the `.xcresult` bundle and six screen captures. This verifies the read-only
+iOS slice on hosted macOS CI; no local Xcode or physical-device acceptance was
+performed. Provider integration and the remaining P4 checklist items are still
+open.
 
 - [ ] Add provider interface `RecipeAIProvider` and server-side DeepSeek implementation; model, base URL, search feature flags, budgets, timeouts, and retries belong in env/config, NEVER app bundle.
 - [ ] Use structured JSON/Pydantic DTOs for recipes; validate source attribution, recipe ID, title, description, cuisine/region, category tags, prep/cook duration, servings, ingredients, instructions, substitutions, uncertainty flags, provenance, and generated/adapted marker.
