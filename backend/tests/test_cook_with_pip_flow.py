@@ -118,6 +118,7 @@ def test_postgres_fastapi_cook_now_to_confirmed_shopping_retry_pipeline(
         role=HouseholdRole.OWNER.value,
         is_default=True,
     ))
+    db.flush()
     isolated_recipe = make_recipe(db, isolated_household, isolated_user, ingredient, amount=10)
     denied_headers = {"X-Household-ID": str(isolated_household.id)}
     assert client.get(f"/api/v1/recipes/{isolated_recipe.id}", headers=denied_headers).status_code == 403
