@@ -538,15 +538,19 @@ struct CookWithPipUITestHost: View {
                 )
             }
         }
-        .overlay(alignment: .bottomTrailing) {
+        .overlay(alignment: .topTrailing) {
             if Self.launchArgument("-pip-ui-scenario") == "recipes-loading" {
-                Button(loadingReleased ? "Loading fixture released" : "Release loading fixture") {
+                Button {
                     loadingReleased = true
                     Task { await CookWithPipUITestLoadingGate.shared.release() }
+                } label: {
+                    Color.clear
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(loadingReleased ? "Loading fixture released" : "Release loading fixture")
                 .accessibilityIdentifier(loadingReleased ? "cook-with-pip-loading-released" : "cook-with-pip-release-loading")
-                .frame(width: 44, height: 44)
-                .opacity(0.01)
             }
         }
         .preferredColorScheme(Self.launchArgument("-pip-ui-appearance") == "dark" ? .dark : nil)

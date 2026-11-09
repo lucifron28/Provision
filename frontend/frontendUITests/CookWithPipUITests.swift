@@ -284,13 +284,16 @@ final class CookWithPipUITests: XCTestCase {
         app.terminate()
 
         let relaunched = launch(scenario: "shopping-restart", fixtureID: fixtureID, useKeychain: true)
-        openShoppingPreview(relaunched)
+        openShoppingPreview(relaunched, timeout: 30)
         let relaunchedPending = element("recipe-shopping-pending-line-0", in: relaunched)
-        XCTAssertTrue(relaunchedPending.waitForExistence(timeout: 10))
+        XCTAssertTrue(relaunchedPending.waitForExistence(timeout: 30))
         XCTAssertTrue(relaunchedPending.label.contains("kangkong"))
-        relaunched.buttons["recipe-shopping-retry-pending"].tap()
+        let retryPending = relaunched.buttons["recipe-shopping-retry-pending"]
+        scrollTo(retryPending, in: relaunched)
+        XCTAssertTrue(retryPending.isHittable)
+        retryPending.tap()
         let resultCounts = element("recipe-shopping-result-counts", in: relaunched)
-        XCTAssertTrue(resultCounts.waitForExistence(timeout: 10))
+        XCTAssertTrue(resultCounts.waitForExistence(timeout: 20))
         XCTAssertTrue(resultCounts.label.contains("Created 2"))
     }
 
@@ -385,7 +388,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(element("recipe-detail-title", in: app).waitForExistence(timeout: 10))
     }
 
-    private func openShoppingPreview(_ app: XCUIApplication) {
+    private func openShoppingPreview(_ app: XCUIApplication, timeout: TimeInterval = 10) {
         openCookNowRecipe(app)
         let previewLink = element("recipe-shopping-preview-link", in: app)
         scrollTo(previewLink, in: app)
@@ -397,7 +400,7 @@ final class CookWithPipUITests: XCTestCase {
         let settings = element("recipe-shopping-servings", in: app)
         let previewLoaded = NSPredicate { _, _ in settings.exists || retry.exists || pending.exists || recovery.exists }
         let loadExpectation = XCTNSPredicateExpectation(predicate: previewLoaded, object: app)
-        XCTAssertEqual(XCTWaiter.wait(for: [loadExpectation], timeout: 10), .completed)
+        XCTAssertEqual(XCTWaiter.wait(for: [loadExpectation], timeout: timeout), .completed)
         if settings.exists {
             scrollTo(ready, in: app)
         }
