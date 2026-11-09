@@ -22,7 +22,7 @@ private actor CookWithPipUITestScenarioCounter {
     func recordedConfirmations() -> [RecipeShoppingConfirmation] { confirmations }
 }
 
-struct CookWithPipUITestService: CookWithPipService, CookWithPipWorkflowService {
+nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWorkflowService {
     private let recipes: [HouseholdRecipe]
     private let cookNowResults: [RecipeRecommendation]
     private let almostThereResults: [RecipeRecommendation]

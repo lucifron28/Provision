@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 @testable import frontend
 
-private enum CookServiceBehavior: Sendable, Equatable {
+nonisolated private enum CookServiceBehavior: Sendable, Equatable {
     case fixture
     case empty
     case paged

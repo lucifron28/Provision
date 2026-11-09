@@ -97,7 +97,7 @@ nonisolated public struct Product: Codable, Identifiable, Hashable, Sendable {
 
 // MARK: - Product Units Helper
 
-public enum ProductUnits {
+nonisolated public enum ProductUnits {
     public static let measuredUnits: [String] = ["kg", "g", "L", "mL"]
     public static let countUnits: [String] = ["pcs", "cans", "bottles", "packs", "boxes", "bags"]
     public static let allUnits: [String] = ["pcs", "kg", "g", "L", "mL", "cans", "bottles", "packs", "boxes", "bags"]
