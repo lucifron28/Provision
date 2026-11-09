@@ -195,7 +195,7 @@ public struct CookWithPipView: View {
 
     private var emptyTitle: String {
         if !viewModel.normalizedQuery.isEmpty { return "No matching household recipes" }
-        switch viewModel.mode {
+        return switch viewModel.mode {
         case .cookNow: "No recipes are ready to cook"
         case .almostThere: "No recipes are almost ready"
         case .myRecipes: "No household recipes yet"
