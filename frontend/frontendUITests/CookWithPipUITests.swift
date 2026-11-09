@@ -42,6 +42,9 @@ final class CookWithPipUITests: XCTestCase {
         openCookWithPip(loadingApp)
         XCTAssertTrue(element("cook-with-pip-loading-state", in: loadingApp).waitForExistence(timeout: 5))
         capture("Cook_with_Pip_Loading", app: loadingApp)
+        let releaseLoading = loadingApp.buttons["cook-with-pip-release-loading"]
+        XCTAssertTrue(releaseLoading.waitForExistence(timeout: 5))
+        releaseLoading.tap()
         XCTAssertTrue(element("recipe-card-301", in: loadingApp).waitForExistence(timeout: 10))
 
         loadingApp.terminate()

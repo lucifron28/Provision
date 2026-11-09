@@ -9,6 +9,8 @@ private actor CookWithPipUITestScenarioCounter {
     private var confirmationRequests = 0
     private var lastConfirmedLines: [RecipeShoppingAcceptedLine] = []
     private var confirmations: [RecipeShoppingConfirmation] = []
+    private var loadingReleased = false
+    private var loadingContinuations: [CheckedContinuation<Void, Never>] = []
 
     func nextRecommendation() -> Int { recommendationRequests += 1; return recommendationRequests }
     func nextSource() -> Int { sourceRequests += 1; return sourceRequests }
@@ -17,6 +19,16 @@ private actor CookWithPipUITestScenarioCounter {
     func recordConfirmation(_ confirmation: RecipeShoppingConfirmation) {
         confirmations.append(confirmation)
         lastConfirmedLines = confirmation.accepted_lines
+    }
+    func waitForLoadingRelease() async {
+        guard !loadingReleased else { return }
+        await withCheckedContinuation { loadingContinuations.append($0) }
+    }
+    func releaseLoading() {
+        loadingReleased = true
+        let continuations = loadingContinuations
+        loadingContinuations.removeAll()
+        continuations.forEach { $0.resume() }
     }
     func confirmedLines() -> [RecipeShoppingAcceptedLine] { lastConfirmedLines }
     func recordedConfirmations() -> [RecipeShoppingConfirmation] { confirmations }
@@ -227,8 +239,8 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
         if scenario == "recipes-offline-once", requestNumber == 1 {
             throw APIError.networkError(URLError(.notConnectedToInternet))
         }
-        if scenario == "recipes-loading", requestNumber == 1 {
-            try? await Task.sleep(for: .seconds(8))
+        if scenario == "recipes-loading" {
+            await counter.waitForLoadingRelease()
         }
         let candidates = scenario == "recipes-empty" ? [] : (payload.mode == "cook_now" ? cookNowResults : almostThereResults)
         let matching = candidates.filter { recommendation in
@@ -245,6 +257,10 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
             excluded_unknown_quantities: 0,
             provider_enabled: false
         )
+    }
+
+    func releaseLoadingScenario() async {
+        await counter.releaseLoading()
     }
 
     func fetchRecipeSourceReference(id: Int, scope: HouseholdScope) async throws -> RecipeSourceReference {
@@ -513,6 +529,16 @@ struct CookWithPipUITestHost: View {
                     cookWithPipWorkflowService: service,
                     cookWithPipPendingStore: pendingShoppingStore
                 )
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if Self.launchArgument("-pip-ui-scenario") == "recipes-loading" {
+                Button("Release loading fixture") {
+                    Task { await service.releaseLoadingScenario() }
+                }
+                .accessibilityIdentifier("cook-with-pip-release-loading")
+                .frame(width: 44, height: 44)
+                .opacity(0.01)
             }
         }
         .preferredColorScheme(Self.launchArgument("-pip-ui-appearance") == "dark" ? .dark : nil)
