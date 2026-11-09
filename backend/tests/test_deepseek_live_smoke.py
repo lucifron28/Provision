@@ -9,6 +9,7 @@ import os
 
 import httpx
 import pytest
+from pydantic import ValidationError
 
 from app.core.config import settings
 from app.schemas.ai_recipe import AIRecipeProposal
@@ -79,6 +80,8 @@ def test_live_generation_api_with_consented_test_household(client, db, auth_user
     from app.main import app
     from app.models.recipe import Recipe
     from app.models.shopping import ShoppingListItem
+    from app.models.batch import InventoryBatch
+    from app.models.event import InventoryEvent
     from app.models.deepseek_budget import DeepSeekBudget, HouseholdDeepSeekBudget
     from app.services.deepseek_budget import PostgresDeepSeekBudget
     from sqlalchemy import func, select
@@ -87,21 +90,60 @@ def test_live_generation_api_with_consented_test_household(client, db, auth_user
     _headers()
     _consent(db, auth_user, auth_household)
     db.commit()
+    before = {
+        "recipes": db.scalar(select(func.count()).select_from(Recipe).where(Recipe.household_id == auth_household.id)),
+        "shopping_items": db.scalar(select(func.count()).select_from(ShoppingListItem).where(ShoppingListItem.household_id == auth_household.id)),
+        "inventory_batches": db.scalar(select(func.count()).select_from(InventoryBatch).where(InventoryBatch.household_id == auth_household.id)),
+        "inventory_events": db.scalar(
+            select(func.count()).select_from(InventoryEvent).join(
+                InventoryBatch, InventoryEvent.batch_id == InventoryBatch.id
+            ).where(InventoryBatch.household_id == auth_household.id)
+        ),
+    }
     config = settings.model_copy(update={"DEEPSEEK_ENABLED": True, "DEEPSEEK_TIMEOUT_SECONDS": 45})
     budget = PostgresDeepSeekBudget(config, household_id=auth_household.id)
     budget.prepare_household()
     with DeepSeekProvider(config, budget=budget) as provider:
         app.dependency_overrides[get_provider] = lambda: provider
         response = client.post("/api/v1/ai-recipes/generate", json={"dish": "Filipino garlic rice"})
-    assert response.status_code == 200, response.text
+    assert response.status_code == 200, f"Synthetic recipe request failed with HTTP {response.status_code}"
     result = response.json()
     assert result["provenance"] == "AI_ORIGINAL"
-    assert result["safety"]["decision"] in {"eligible", "blocked", "review_required"}
-    assert db.scalar(select(func.count()).select_from(Recipe)) == 0
-    assert db.scalar(select(func.count()).select_from(ShoppingListItem)) == 0
+    try:
+        proposal = AIRecipeProposal.model_validate(result["proposal"])
+    except ValidationError:
+        pytest.fail("Provider output did not match the recipe schema.", pytrace=False)
+    assert proposal.title.strip()
+    assert proposal.servings.is_finite() and proposal.servings > 0
+    assert proposal.ingredients and all(item.amount.is_finite() and item.amount > 0 for item in proposal.ingredients)
+    assert proposal.steps and all(step.strip() for step in proposal.steps)
+    safety = result["safety"]
+    assert safety["decision"] in {"eligible", "blocked", "review_required"}
+    assert isinstance(safety["reasons"], list)
+    assert len(safety["ingredients"]) == len(proposal.ingredients)
+    assert all(item["decision"] in {"eligible", "blocked", "review_required"} for item in safety["ingredients"])
+    assert len(safety["availability"]["requirements"]) == len(proposal.ingredients)
+    db.expire_all()
+    after = {
+        "recipes": db.scalar(select(func.count()).select_from(Recipe).where(Recipe.household_id == auth_household.id)),
+        "shopping_items": db.scalar(select(func.count()).select_from(ShoppingListItem).where(ShoppingListItem.household_id == auth_household.id)),
+        "inventory_batches": db.scalar(select(func.count()).select_from(InventoryBatch).where(InventoryBatch.household_id == auth_household.id)),
+        "inventory_events": db.scalar(
+            select(func.count()).select_from(InventoryEvent).join(
+                InventoryBatch, InventoryEvent.batch_id == InventoryBatch.id
+            ).where(InventoryBatch.household_id == auth_household.id)
+        ),
+    }
+    assert after == before
     assert db.scalar(select(DeepSeekBudget.used)) == 1
     assert db.scalar(select(HouseholdDeepSeekBudget.used)) == 1
-    print(f"Model: {result['model']}; token usage: {result['usage']}")
+    usage = result["usage"]
+    print(
+        "Live recipe generation passed; "
+        f"model={result['model']}; prompt_tokens={usage['prompt_tokens']}; "
+        f"completion_tokens={usage['completion_tokens']}; total_tokens={usage['total_tokens']}; "
+        f"safety={safety['decision']}; schema=valid; persisted=false"
+    )
 
 
 @pytest.mark.skipif(
