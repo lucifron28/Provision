@@ -3,6 +3,8 @@ import Foundation
 import SwiftUI
 
 private actor CookWithPipUITestScenarioCounter {
+    static let shared = CookWithPipUITestScenarioCounter()
+
     private var recommendationRequests = 0
     private var sourceRequests = 0
     private var previewRequests = 0
@@ -50,7 +52,7 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
 
     init(scenario override: String? = nil) {
         scenario = override ?? Self.launchArgument("-pip-ui-scenario") ?? "default"
-        counter = CookWithPipUITestScenarioCounter()
+        counter = .shared
         let unknown = IngredientAvailabilitySnapshot(
             ingredient_id: 901,
             canonical_name: nil,
