@@ -7,6 +7,7 @@ from app.models.shopping import ShoppingListItem
 from app.schemas.ai_recipe import AIRecipeRequest
 from app.schemas.deepseek import DeepSeekChatResponse, DeepSeekTokenUsage
 from app.services.ai_recipes import generate_recipe
+from app.services.deepseek_provider import DeepSeekRateLimitError, DeepSeekTimeoutError
 from test_food_safety import catalog, declare
 from test_privacy import _consent
 
@@ -20,6 +21,16 @@ class FakeProvider:
         self.calls.append(request)
         return DeepSeekChatResponse(model="fake", finish_reason="stop", json_object=self.proposal,
             usage=DeepSeekTokenUsage(prompt_tokens=1, completion_tokens=2, total_tokens=3))
+
+
+class FailingProvider:
+    def __init__(self, error):
+        self.error = error
+        self.calls = 0
+
+    def chat_json(self, request):
+        self.calls += 1
+        raise self.error
 
 
 def _proposal(**extra):
@@ -118,3 +129,28 @@ def test_generation_api_enforces_consent_and_returns_unpersisted_proposal(
     assert response.json()["provenance"] == "AI_ORIGINAL"
     assert len(provider.calls) == 1
     assert db.scalar(select(func.count()).select_from(Recipe)) == 0
+
+
+@pytest.mark.parametrize(("provider_error", "expected_status"), [
+    (DeepSeekRateLimitError("chat"), 429),
+    (DeepSeekTimeoutError("chat"), 504),
+])
+def test_generation_api_sanitizes_provider_errors_without_persisting(
+    client, db, auth_household, auth_user, provider_error, expected_status
+):
+    from app.api.v1.endpoints.ai_recipes import get_provider
+    from app.main import app
+
+    _consent(db, auth_user, auth_household)
+    db.commit()
+    provider = FailingProvider(provider_error)
+    app.dependency_overrides[get_provider] = lambda: provider
+
+    response = client.post("/api/v1/ai-recipes/generate", json={"dish": "rice"})
+
+    assert response.status_code == expected_status
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json()["detail"] == {"code": provider_error.code}
+    assert provider.calls == 1
+    assert db.scalar(select(func.count()).select_from(Recipe)) == 0
+    assert db.scalar(select(func.count()).select_from(ShoppingListItem)) == 0
