@@ -15,7 +15,7 @@ concurrency:
 jobs:
   live-recipe:
     if: >-
-      github.event.before == '7424e3c5480d0666db3c86b629aab9b516c625ce' &&
+      github.event.before == '153859d34366ce4e53004f4614fb46c468db9c37' &&
       github.event.head_commit.message == 'Run approved DeepSeek recipe smoke once' &&
       github.run_attempt == 1
     runs-on: ubuntu-latest
