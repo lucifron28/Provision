@@ -1,6 +1,16 @@
 # Cook with Pip — Product Roadmap and Execution Checklist
 
-Status: **Windows backend foundations and read-only iOS Cook with Pip milestone 1 implemented; provider, account-cache, and device acceptance deferred** | Last reviewed: 2026-11-09 | Evidence branch: `feat/cook-with-pip-ios-m1` at `f13af692`
+Status: **Cook with Pip iOS milestones 1–3 merged into main; physical-device and fully connected simulator acceptance remain deferred** | Last reviewed: 2026-11-10 | Evidence: [merged PR #4](https://github.com/lucifron28/Provision/pull/4), merge `d4d5105`, validated feature head `465a3a8`
+
+## Current verified delivery (2026-11-10)
+
+- Native Cook Now, Almost There, My Recipes, Recipe Detail, preferences, allergies, label review, substitutions, and explicit recipe-shopping preview/confirmation are implemented.
+- [Final push CI](https://github.com/lucifron28/Provision/actions/runs/42696338465) and [PR CI](https://github.com/lucifron28/Provision/actions/runs/42696352926) passed at `465a3a8`: **938 backend passed / 12 skipped; 38 iOS unit tests and 12 XCUITests passed**; no Swift concurrency warnings found in the iOS build log.
+- The screenshot artifact contains **38/38 named synthetic-fixture simulator captures** and a scenario manifest. Separate FastAPI/PostgreSQL integration tests cover recommendation, recipe evaluation, shopping preview, idempotent confirmation replay, and household isolation.
+- [Approved one-time live DeepSeek smoke](https://github.com/lucifron28/Provision/actions/runs/42696338381) generated one valid structured proposal with `deepseek-flash` (544 tokens); safety was `review_required`, and the recipe was **not persisted**. This was an opt-in verification, not general provider rollout.
+- Still unverified: an end-to-end connected simulator-to-server UI journey, physical-device camera/OCR and scanner acceptance, and final device accessibility/performance checks. No live provider call is made by normal PR CI.
+
+
 
 **Purpose.** Evolve Provision from pantry tracking into a Filipino-first household food assistant: discover credible recipes, identify what can be cooked from usable inventory, respect allergies and preferences, buy missing ingredients without duplicates, plan meals, track leftovers, and measure waste. This document is the actionable backlog, not evidence that features already exist.
 
