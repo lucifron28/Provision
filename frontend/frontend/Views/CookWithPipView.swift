@@ -271,6 +271,9 @@ public struct CookWithPipView: View {
                   systemImage: viewModel.isOffline ? "wifi.slash" : "exclamationmark.triangle.fill")
                 .font(.headline)
                 .foregroundStyle(viewModel.isOffline ? ProvisionTheme.amberWarning : ProvisionTheme.redAlert)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(viewModel.isOffline ? "You're offline" : "Unable to load recipes")
+                .accessibilityIdentifier("cook-with-pip-error-state")
             Text(viewModel.isOffline ? "Connect to your server and retry. No saved offline recipe evaluation is shown." : message)
                 .font(.subheadline)
                 .foregroundStyle(ProvisionTheme.textSecondary)
@@ -284,7 +287,6 @@ public struct CookWithPipView: View {
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .provisionCard()
-        .accessibilityIdentifier("cook-with-pip-error-state")
     }
 
     private func inlineErrorState(_ message: String) -> some View {

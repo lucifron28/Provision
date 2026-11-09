@@ -106,7 +106,9 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(milkAllergen.waitForExistence(timeout: 5))
         XCTAssertTrue(element("pip-allergen-cross-contact-milk", in: app).exists)
         element("pip-preferences-save", in: app).tap()
-        XCTAssertTrue(app.staticTexts["Your cooking preferences were saved."].waitForExistence(timeout: 10))
+        let savedMessage = element("pip-preferences-success", in: app)
+        for _ in 0..<6 where !savedMessage.exists { app.swipeDown() }
+        XCTAssertTrue(savedMessage.waitForExistence(timeout: 10))
         capture("Preferences_Allergy_Declared", app: app)
 
         navigateBack(app)
@@ -124,7 +126,7 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(element("pip-label-save-review", in: app), in: app)
         element("pip-label-save-review", in: app).tap()
         let currentStatus = element("pip-label-current-status", in: app)
-        scrollTo(currentStatus, in: app)
+        scrollTowardTopUntilVisible(currentStatus, in: app)
         XCTAssertTrue(currentStatus.waitForExistence(timeout: 10))
         XCTAssertTrue(currentStatus.label.contains("Current label review"))
         capture("Product_Label_Review_Current", app: app)
@@ -137,6 +139,7 @@ final class CookWithPipUITests: XCTestCase {
         element("cook-with-pip-product-labels-link", in: app).tap()
         element("pip-label-product-9903", in: app).tap()
 
+        XCTAssertTrue(element("pip-label-product-title", in: app).waitForExistence(timeout: 10))
         let status = element("pip-label-current-status", in: app)
         scrollTo(status, in: app)
         XCTAssertTrue(status.waitForExistence(timeout: 10))
@@ -239,7 +242,9 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(element("recipe-shopping-error", in: offlineApp).waitForExistence(timeout: 10))
         capture("Shopping_Offline_Error_Retry", app: offlineApp)
         element("recipe-shopping-load-preview", in: offlineApp).tap()
-        XCTAssertTrue(element("recipe-shopping-safety-status", in: offlineApp).waitForExistence(timeout: 10))
+        let offlineReady = element("recipe-shopping-safety-status", in: offlineApp)
+        XCTAssertTrue(element("recipe-shopping-servings", in: offlineApp).waitForExistence(timeout: 10))
+        scrollTo(offlineReady, in: offlineApp)
 
         offlineApp.terminate()
         let staleApp = launch(scenario: "shopping-stale")
@@ -250,7 +255,9 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(element("recipe-shopping-load-preview", in: staleApp).exists)
         capture("Shopping_Stale_Preview_Refresh", app: staleApp)
         element("recipe-shopping-load-preview", in: staleApp).tap()
-        XCTAssertTrue(element("recipe-shopping-safety-status", in: staleApp).waitForExistence(timeout: 10))
+        let staleReady = element("recipe-shopping-safety-status", in: staleApp)
+        XCTAssertTrue(element("recipe-shopping-servings", in: staleApp).waitForExistence(timeout: 10))
+        scrollTo(staleReady, in: staleApp)
     }
 
     func testAmbiguousShoppingConfirmationRetainsExactRetry() {
@@ -294,7 +301,9 @@ final class CookWithPipUITests: XCTestCase {
         darkApp.terminate()
         let largeApp = launch(dynamicType: "accessibility")
         openCookWithPip(largeApp)
-        element("cook-mode-myRecipes", in: largeApp).tap()
+        let myRecipesMode = element("cook-mode-myRecipes", in: largeApp)
+        myRecipesMode.tap()
+        XCTAssertTrue(element("recipe-card-303", in: largeApp).waitForExistence(timeout: 10))
         let longRecipe = element("recipe-card-304", in: largeApp)
         scrollTo(longRecipe, in: largeApp)
         longRecipe.tap()
@@ -352,12 +361,13 @@ final class CookWithPipUITests: XCTestCase {
         previewLink.tap()
         let ready = element("recipe-shopping-safety-status", in: app)
         let retry = element("recipe-shopping-load-preview", in: app)
-        let deadline = Date().addingTimeInterval(10)
-        while Date() < deadline && !ready.exists && !retry.exists {
-            app.swipeUp()
+        let settings = element("recipe-shopping-servings", in: app)
+        let previewLoaded = NSPredicate { _, _ in settings.exists || retry.exists }
+        let loadExpectation = XCTNSPredicateExpectation(predicate: previewLoaded, object: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [loadExpectation], timeout: 10), .completed)
+        if settings.exists {
+            scrollTo(ready, in: app)
         }
-        if ready.exists { scrollTo(ready, in: app) }
-        XCTAssertTrue(ready.exists || retry.exists)
     }
 
     private func navigateBack(_ app: XCUIApplication) {
@@ -379,6 +389,14 @@ final class CookWithPipUITests: XCTestCase {
             }
         }
         XCTAssertTrue(target.isHittable, "Expected \(target.identifier) to be visible after scrolling")
+    }
+
+    private func scrollTowardTopUntilVisible(_ target: XCUIElement, in app: XCUIApplication) {
+        for _ in 0..<12 where !target.exists || !target.isHittable {
+            app.swipeDown()
+        }
+        XCTAssertTrue(target.exists, "Expected \(target.identifier) to appear while scrolling toward the top")
+        XCTAssertTrue(target.isHittable, "Expected \(target.identifier) to be visible while scrolling toward the top")
     }
 
     private func replaceText(_ field: XCUIElement, with value: String) {

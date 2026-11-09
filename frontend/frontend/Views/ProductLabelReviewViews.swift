@@ -198,6 +198,8 @@ public struct ProductLabelReviewView: View {
                     Label(label.current_for_product ? "Current label review · v\(label.revision)" : "Review is no longer current · v\(label.revision)",
                           systemImage: label.current_for_product ? "checkmark.circle" : "exclamationmark.triangle")
                         .foregroundStyle(label.current_for_product ? ProvisionTheme.provisionGreen : ProvisionTheme.amberWarning)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(label.current_for_product ? "Current label review · v\(label.revision)" : "Review is no longer current · v\(label.revision)")
                         .accessibilityIdentifier("pip-label-current-status")
                 } else {
                     Text("No package label review is recorded.")

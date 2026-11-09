@@ -29,6 +29,9 @@ public struct CookWithPipPreferencesView: View {
                 Section {
                     Label(success, systemImage: "checkmark.circle.fill")
                         .foregroundStyle(ProvisionTheme.provisionGreen)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(success)
+                        .accessibilityIdentifier("pip-preferences-success")
                 }
             }
             if let invalidNumberMessage {

@@ -300,6 +300,9 @@ private struct RecipeDetailContents: View {
                   systemImage: isSourceOffline ? "wifi.slash" : "exclamationmark.triangle.fill")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(isSourceOffline ? ProvisionTheme.amberWarning : ProvisionTheme.redAlert)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(isSourceOffline ? "Source details unavailable offline" : "Unable to load source details")
+                .accessibilityIdentifier("recipe-source-error")
             Text(isSourceOffline ? "The recipe and current safety evaluation are available. Reconnect to retry the source lookup." : message)
                 .font(.footnote)
                 .foregroundStyle(ProvisionTheme.textSecondary)
@@ -313,7 +316,6 @@ private struct RecipeDetailContents: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .provisionCard(backgroundColor: ProvisionTheme.surfaceSecondary)
-        .accessibilityIdentifier("recipe-source-error")
     }
 
     private func ingredientSection(title: String, indices: [Int]) -> some View {

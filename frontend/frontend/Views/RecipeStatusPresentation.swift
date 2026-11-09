@@ -80,6 +80,7 @@ struct StatusPill: View {
             .padding(.vertical, 7)
             .background(presentation.tone.background)
             .clipShape(Capsule())
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel(presentation.title)
     }
 }
