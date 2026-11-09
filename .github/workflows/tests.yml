@@ -2,7 +2,7 @@ name: Provision tests
 
 on:
   push:
-    branches: [main, fix/apple-design-ux-refinement, feat/adaptive-appearance-ux-pip, feat/complete-ui-ux-refinement, feat/cook-with-pip-ios-m1]
+    branches: [main]
   pull_request:
     branches: [main]
 
