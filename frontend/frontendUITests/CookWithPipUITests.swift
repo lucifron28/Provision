@@ -182,16 +182,14 @@ final class CookWithPipUITests: XCTestCase {
 
         let includeOptional = app.switches["recipe-shopping-include-optional"]
         scrollTo(includeOptional, in: app)
-        includeOptional.tap()
-        XCTAssertEqual(includeOptional.value as? String, "1")
+        setSwitch(includeOptional, to: "1")
         app.buttons["recipe-shopping-refresh-preview"].tap()
         let optionalIngredient = app.staticTexts["kangkong (optional)"]
         scrollTo(optionalIngredient, in: app)
         XCTAssertTrue(optionalIngredient.waitForExistence(timeout: 10))
         capture("Shopping_Optional_Ingredients", app: app)
         scrollTo(includeOptional, in: app)
-        includeOptional.tap()
-        XCTAssertEqual(includeOptional.value as? String, "0")
+        setSwitch(includeOptional, to: "0")
         app.buttons["recipe-shopping-refresh-preview"].tap()
 
         let target = element("recipe-shopping-target-901", in: app)
@@ -205,8 +203,7 @@ final class CookWithPipUITests: XCTestCase {
 
         let consolidate = app.switches["recipe-shopping-consolidate-914"]
         scrollTo(consolidate, in: app)
-        consolidate.tap()
-        XCTAssertEqual(consolidate.value as? String, "1")
+        setSwitch(consolidate, to: "1")
         capture("Shopping_Duplicate_Consolidation_Opt_In", app: app)
 
         element("recipe-shopping-confirm", in: app).tap()
@@ -231,8 +228,7 @@ final class CookWithPipUITests: XCTestCase {
         capture("Shopping_Preview_Review_Required", app: reviewApp)
         let acknowledgement = reviewApp.switches["recipe-shopping-safety-acknowledgement"]
         scrollTo(acknowledgement, in: reviewApp)
-        acknowledgement.tap()
-        XCTAssertEqual(acknowledgement.value as? String, "1")
+        setSwitch(acknowledgement, to: "1")
         XCTAssertTrue(reviewConfirm.isEnabled)
 
         reviewApp.terminate()
@@ -334,6 +330,7 @@ final class CookWithPipUITests: XCTestCase {
         largeApp.terminate()
         let searchApp = launch()
         openCookWithPip(searchApp)
+        element("cook-mode-myRecipes", in: searchApp).tap()
         let search = searchApp.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 10))
         search.tap()
@@ -406,13 +403,13 @@ final class CookWithPipUITests: XCTestCase {
             if scrollView.exists { scrollView.swipeDown() } else { app.swipeDown() }
         }
         XCTAssertTrue(target.exists, "Expected \(target.identifier) to appear after scrolling")
-        let safeTop = app.frame.minY + 170
-        let safeBottom = app.frame.maxY - 130
+        let safeTop = app.frame.minY + 120
+        let safeBottom = app.frame.maxY - 40
         for _ in 0..<8 {
             let frame = target.frame
             guard !frame.isNull, !frame.isInfinite, !frame.isEmpty,
                   frame.minY.isFinite, frame.maxY.isFinite else { break }
-            if frame.minY >= safeTop && frame.maxY <= safeBottom { return }
+            if frame.midY >= safeTop && frame.midY <= safeBottom { return }
             if frame.midY < safeTop {
                 if scrollView.exists { scrollView.swipeDown() } else { app.swipeDown() }
             } else {
@@ -420,8 +417,19 @@ final class CookWithPipUITests: XCTestCase {
             }
         }
         let frame = target.frame
-        XCTAssertTrue(frame.minY < safeBottom && frame.maxY > safeTop,
+        XCTAssertTrue(frame.midY >= safeTop && frame.midY <= safeBottom,
                       "Expected \(target.identifier) to be visible after scrolling")
+    }
+
+    private func setSwitch(_ toggle: XCUIElement, to value: String) {
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        if toggle.value as? String != value {
+            toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        }
+        let expectedValue = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", value), object: toggle
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [expectedValue], timeout: 5), .completed)
     }
 
     private func scrollTowardTopUntilVisible(_ target: XCUIElement, in app: XCUIApplication) {
