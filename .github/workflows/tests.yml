@@ -19,6 +19,7 @@ jobs:
       - name: Prepare iOS test artifact folder
         run: mkdir -p artifacts/raw-cook-with-pip-screenshots artifacts/cook-with-pip-screenshots
       - name: Run iOS XCTest and UI screenshot suite
+        id: ios-tests
         run: >-
           xcodebuild test
           -project frontend/frontend.xcodeproj
@@ -44,6 +45,8 @@ jobs:
           --input artifacts/raw-cook-with-pip-screenshots
           --output artifacts/cook-with-pip-screenshots
           --required .github/scripts/required_ios_screenshots.json
+          --commit-sha "$GITHUB_SHA"
+          --test-outcome "${{ steps.ios-tests.outcome }}"
       - name: Upload organized iOS screenshots and scenario manifest
         if: always()
         uses: actions/upload-artifact@v4

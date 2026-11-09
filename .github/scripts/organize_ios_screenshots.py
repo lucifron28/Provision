@@ -19,6 +19,13 @@ def main() -> int:
     parser.add_argument("--input", required=True, type=Path, help="xcresulttool attachment export directory")
     parser.add_argument("--output", required=True, type=Path, help="organized screenshot directory")
     parser.add_argument("--required", required=True, type=Path, help="JSON file listing required screenshot names")
+    parser.add_argument("--commit-sha", default="unknown", help="commit that produced the test run")
+    parser.add_argument(
+        "--test-outcome",
+        choices=("success", "failure", "cancelled", "skipped", "unknown"),
+        default="unknown",
+        help="outcome reported by the Xcode test step",
+    )
     args = parser.parse_args()
 
     source_manifest = args.input / "manifest.json"
@@ -38,6 +45,17 @@ def main() -> int:
     shutil.copy2(source_manifest, args.output / "xcresult-attachments.json")
     scenarios: list[dict[str, object]] = []
     names: set[str] = set()
+
+    def assertion_status(associated_with_failure: bool) -> str:
+        if associated_with_failure:
+            return "failed"
+        if args.test_outcome == "success":
+            return "passed"
+        if args.test_outcome == "failure":
+            return "not_verified"
+        if args.test_outcome == "cancelled":
+            return "incomplete"
+        return "not_run"
 
     for test in exported if isinstance(exported, list) else []:
         test_id = test.get("testIdentifier", "unknown-test")
@@ -59,19 +77,29 @@ def main() -> int:
             destination_name = f"{scenario}.png"
             shutil.copy2(source, args.output / destination_name)
             names.add(scenario)
+            associated_with_failure = attachment.get("isAssociatedWithFailure", False)
             scenarios.append(
                 {
                     "scenario": scenario,
                     "file": destination_name,
+                    "commitSHA": args.commit_sha,
                     "testIdentifier": test_id,
                     "deviceName": attachment.get("deviceName"),
                     "configurationName": attachment.get("configurationName"),
-                    "associatedWithFailure": attachment.get("isAssociatedWithFailure", False),
+                    "fixtureStatus": "synthetic_fixture",
+                    "liveDataUsed": False,
+                    "associatedWithFailure": associated_with_failure,
+                    "assertionStatus": assertion_status(associated_with_failure),
                 }
             )
 
     missing = sorted(set(required) - names)
     manifest = {
+        "commitSHA": args.commit_sha,
+        "testOutcome": args.test_outcome,
+        "fixtureStatus": "synthetic_fixture",
+        "liveDataUsed": False,
+        "assertionStatus": "passed" if args.test_outcome == "success" else assertion_status(False),
         "requiredScreenshots": required,
         "capturedScreenshots": sorted(scenarios, key=lambda item: str(item["scenario"])),
         "missingScreenshots": missing,
