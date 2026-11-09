@@ -228,7 +228,7 @@ struct CookWithPipUITestService: CookWithPipService, CookWithPipWorkflowService 
             throw APIError.networkError(URLError(.notConnectedToInternet))
         }
         if scenario == "recipes-loading", requestNumber == 1 {
-            try? await Task.sleep(for: .seconds(3))
+            try? await Task.sleep(for: .seconds(8))
         }
         let candidates = scenario == "recipes-empty" ? [] : (payload.mode == "cook_now" ? cookNowResults : almostThereResults)
         let matching = candidates.filter { recommendation in
@@ -441,12 +441,14 @@ struct CookWithPipUITestHost: View {
     private let service = CookWithPipUITestService()
     @State private var showingShoppingList = false
     @StateObject private var shoppingViewModel: ShoppingViewModel
+    @State private var pendingShoppingStore: CookWithPipUITestPendingShoppingStore
 
     init() {
         let fixtureID = Int(Self.launchArgument("-pip-ui-fixture-id") ?? "0") ?? 0
         let scope = HouseholdScope(userID: 9901 + fixtureID, householdID: 9902 + fixtureID,
                                    serverID: "ui-test-fixtures")
         _shoppingViewModel = StateObject(wrappedValue: ShoppingViewModel(isPreview: true, scope: scope))
+        _pendingShoppingStore = State(initialValue: CookWithPipUITestPendingShoppingStore())
     }
 
     private static func launchArgument(_ name: String) -> String? {
@@ -481,7 +483,8 @@ struct CookWithPipUITestHost: View {
                     },
                     cookWithPipScope: scope,
                     cookWithPipService: service,
-                    cookWithPipWorkflowService: service
+                    cookWithPipWorkflowService: service,
+                    cookWithPipPendingStore: pendingShoppingStore
                 )
             }
         }
@@ -618,6 +621,30 @@ private extension CookWithPipUITestService {
 
     static func quantity(_ value: String) -> ExactQuantity {
         ExactQuantity(Decimal(string: value, locale: Locale(identifier: "en_US_POSIX"))!)
+    }
+}
+
+private final class CookWithPipUITestPendingShoppingStore: PendingRecipeShoppingStore {
+    private let lock = NSLock()
+    private var records: [String: PendingRecipeShoppingRecord] = [:]
+
+    func readPendingRecipeShopping(scope: HouseholdScope) -> PendingRecipeShoppingRecord? {
+        lock.lock()
+        defer { lock.unlock() }
+        return records[scope.storageKey]
+    }
+
+    func savePendingRecipeShopping(_ record: PendingRecipeShoppingRecord, scope: HouseholdScope) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        records[scope.storageKey] = record
+        return true
+    }
+
+    func deletePendingRecipeShopping(scope: HouseholdScope) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return records.removeValue(forKey: scope.storageKey) != nil
     }
 }
 #endif

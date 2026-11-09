@@ -5,17 +5,20 @@ public struct RecipeDetailView: View {
     private let scope: HouseholdScope
     private let service: any CookWithPipService
     private let workflowService: any CookWithPipWorkflowService
+    private let pendingStore: any PendingRecipeShoppingStore
     private let onShoppingConfirmed: () async -> Void
     private let onNavigateToShopping: () -> Void
     @State private var showingSubstitutionEditor = false
 
     public init(recipeID: Int, scope: HouseholdScope, service: any CookWithPipService = APIClient.shared,
                 workflowService: any CookWithPipWorkflowService = APIClient.shared,
+                pendingStore: any PendingRecipeShoppingStore = KeychainStore.shared,
                 onShoppingConfirmed: @escaping () async -> Void = {},
                 onNavigateToShopping: @escaping () -> Void = {}) {
         self.scope = scope
         self.service = service
         self.workflowService = workflowService
+        self.pendingStore = pendingStore
         self.onShoppingConfirmed = onShoppingConfirmed
         self.onNavigateToShopping = onNavigateToShopping
         _viewModel = StateObject(wrappedValue: RecipeDetailViewModel(recipeID: recipeID, scope: scope, service: service))
@@ -61,6 +64,7 @@ public struct RecipeDetailView: View {
                         isLoadingSourceReference: viewModel.isLoadingSourceReference,
                         retrySourceReference: { Task { await viewModel.retrySourceReference() } },
                         workflowService: workflowService,
+                        pendingStore: pendingStore,
                         onCustomizeSubstitutions: { showingSubstitutionEditor = true },
                         onShoppingConfirmed: onShoppingConfirmed,
                         onNavigateToShopping: onNavigateToShopping,
@@ -101,6 +105,7 @@ private struct RecipeDetailContents: View {
     let isLoadingSourceReference: Bool
     let retrySourceReference: () -> Void
     let workflowService: any CookWithPipWorkflowService
+    let pendingStore: any PendingRecipeShoppingStore
     let onCustomizeSubstitutions: () -> Void
     let onShoppingConfirmed: () async -> Void
     let onNavigateToShopping: () -> Void
@@ -184,6 +189,7 @@ private struct RecipeDetailContents: View {
             .accessibilityIdentifier("recipe-review-product-labels")
             NavigationLink {
                 RecipeShoppingReviewView(recipe: recipe, scope: scope, service: workflowService,
+                                         pendingStore: pendingStore,
                                          onShoppingConfirmed: onShoppingConfirmed,
                                          onNavigateToShopping: onNavigateToShopping,
                                          hasAppliedSubstitutions: !appliedSubstitutions.isEmpty)

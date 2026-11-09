@@ -223,16 +223,19 @@ final class CookWithPipUITests: XCTestCase {
         let reviewApp = launch(scenario: "shopping-review-required")
         openShoppingPreview(reviewApp)
         XCTAssertEqual(element("recipe-shopping-safety-status", in: reviewApp).label, "Review required")
-        XCTAssertFalse(element("recipe-shopping-confirm", in: reviewApp).isEnabled)
+        let reviewConfirm = reviewApp.buttons["recipe-shopping-confirm"]
+        XCTAssertFalse(reviewConfirm.isEnabled)
         capture("Shopping_Preview_Review_Required", app: reviewApp)
-        element("recipe-shopping-safety-acknowledgement", in: reviewApp).tap()
-        XCTAssertTrue(element("recipe-shopping-confirm", in: reviewApp).isEnabled)
+        let acknowledgement = element("recipe-shopping-safety-acknowledgement", in: reviewApp)
+        scrollTo(acknowledgement, in: reviewApp)
+        acknowledgement.tap()
+        XCTAssertTrue(reviewConfirm.isEnabled)
 
         reviewApp.terminate()
         let blockedApp = launch(scenario: "shopping-blocked")
         openShoppingPreview(blockedApp)
         XCTAssertEqual(element("recipe-shopping-safety-status", in: blockedApp).label, "Blocked")
-        XCTAssertFalse(element("recipe-shopping-confirm", in: blockedApp).isEnabled)
+        XCTAssertFalse(blockedApp.buttons["recipe-shopping-confirm"].isEnabled)
         capture("Shopping_Preview_Blocked", app: blockedApp)
     }
 
@@ -251,10 +254,14 @@ final class CookWithPipUITests: XCTestCase {
         openShoppingPreview(staleApp)
         element("recipe-shopping-confirm", in: staleApp).tap()
         element("recipe-shopping-confirm-action", in: staleApp).tap()
-        XCTAssertTrue(appText("Inventory or shopping data changed", in: staleApp).waitForExistence(timeout: 10))
-        XCTAssertTrue(element("recipe-shopping-load-preview", in: staleApp).exists)
+        let staleMessage = appText("Inventory or shopping data changed", in: staleApp)
+        scrollTowardTopUntilVisible(staleMessage, in: staleApp)
+        XCTAssertTrue(staleMessage.waitForExistence(timeout: 10))
+        let refresh = element("recipe-shopping-load-preview", in: staleApp)
+        scrollTowardTopUntilVisible(refresh, in: staleApp)
+        XCTAssertTrue(refresh.exists)
         capture("Shopping_Stale_Preview_Refresh", app: staleApp)
-        element("recipe-shopping-load-preview", in: staleApp).tap()
+        refresh.tap()
         let staleReady = element("recipe-shopping-safety-status", in: staleApp)
         XCTAssertTrue(element("recipe-shopping-servings", in: staleApp).waitForExistence(timeout: 10))
         scrollTo(staleReady, in: staleApp)
@@ -301,8 +308,15 @@ final class CookWithPipUITests: XCTestCase {
         darkApp.terminate()
         let largeApp = launch(dynamicType: "accessibility")
         openCookWithPip(largeApp)
+        XCTAssertTrue(element("recipe-card-301", in: largeApp).waitForExistence(timeout: 10))
         let myRecipesMode = element("cook-mode-myRecipes", in: largeApp)
+        XCTAssertTrue(myRecipesMode.waitForExistence(timeout: 10))
+        XCTAssertTrue(myRecipesMode.isHittable)
         myRecipesMode.tap()
+        let selectedMode = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "Selected"), object: myRecipesMode
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [selectedMode], timeout: 5), .completed)
         XCTAssertTrue(element("recipe-card-303", in: largeApp).waitForExistence(timeout: 10))
         let longRecipe = element("recipe-card-304", in: largeApp)
         scrollTo(longRecipe, in: largeApp)
@@ -379,6 +393,9 @@ final class CookWithPipUITests: XCTestCase {
     private func scrollTo(_ target: XCUIElement, in app: XCUIApplication) {
         for _ in 0..<12 where !target.exists {
             app.swipeUp()
+        }
+        for _ in 0..<12 where !target.exists {
+            app.swipeDown()
         }
         XCTAssertTrue(target.exists, "Expected \(target.identifier) to appear after scrolling")
         for _ in 0..<12 where !target.isHittable {

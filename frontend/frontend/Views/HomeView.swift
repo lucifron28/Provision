@@ -15,6 +15,7 @@ public struct HomeView: View {
     private let cookWithPipScope: HouseholdScope?
     private let cookWithPipService: any CookWithPipService
     private let cookWithPipWorkflowService: any CookWithPipWorkflowService
+    private let cookWithPipPendingStore: any PendingRecipeShoppingStore
 
     public init(
         viewModel: HomeViewModel,
@@ -24,7 +25,8 @@ public struct HomeView: View {
         onShoppingConfirmed: @escaping () async -> Void = {},
         cookWithPipScope: HouseholdScope? = nil,
         cookWithPipService: any CookWithPipService = APIClient.shared,
-        cookWithPipWorkflowService: any CookWithPipWorkflowService = APIClient.shared
+        cookWithPipWorkflowService: any CookWithPipWorkflowService = APIClient.shared,
+        cookWithPipPendingStore: any PendingRecipeShoppingStore = KeychainStore.shared
     ) {
         self.viewModel = viewModel
         self.authVM = authVM
@@ -34,6 +36,7 @@ public struct HomeView: View {
         self.cookWithPipScope = cookWithPipScope
         self.cookWithPipService = cookWithPipService
         self.cookWithPipWorkflowService = cookWithPipWorkflowService
+        self.cookWithPipPendingStore = cookWithPipPendingStore
     }
 
     public init(
@@ -44,7 +47,8 @@ public struct HomeView: View {
         onShoppingConfirmed: @escaping () async -> Void = {},
         cookWithPipScope: HouseholdScope? = nil,
         cookWithPipService: any CookWithPipService = APIClient.shared,
-        cookWithPipWorkflowService: any CookWithPipWorkflowService = APIClient.shared
+        cookWithPipWorkflowService: any CookWithPipWorkflowService = APIClient.shared,
+        cookWithPipPendingStore: any PendingRecipeShoppingStore = KeychainStore.shared
     ) {
         self.init(
             viewModel: viewModel,
@@ -54,7 +58,8 @@ public struct HomeView: View {
             onShoppingConfirmed: onShoppingConfirmed,
             cookWithPipScope: cookWithPipScope,
             cookWithPipService: cookWithPipService,
-            cookWithPipWorkflowService: cookWithPipWorkflowService
+            cookWithPipWorkflowService: cookWithPipWorkflowService,
+            cookWithPipPendingStore: cookWithPipPendingStore
         )
     }
 
@@ -180,6 +185,7 @@ public struct HomeView: View {
             NavigationLink {
                 CookWithPipView(scope: scope, service: cookWithPipService,
                                 workflowService: cookWithPipWorkflowService,
+                                pendingStore: cookWithPipPendingStore,
                                 onShoppingConfirmed: onShoppingConfirmed,
                                 onNavigateToShopping: onNavigateToShopping)
             } label: {

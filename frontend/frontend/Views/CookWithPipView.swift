@@ -5,16 +5,19 @@ public struct CookWithPipView: View {
     private let scope: HouseholdScope
     private let service: any CookWithPipService
     private let workflowService: any CookWithPipWorkflowService
+    private let pendingStore: any PendingRecipeShoppingStore
     private let onShoppingConfirmed: () async -> Void
     private let onNavigateToShopping: () -> Void
 
     public init(scope: HouseholdScope, service: any CookWithPipService = APIClient.shared,
                 workflowService: any CookWithPipWorkflowService = APIClient.shared,
+                pendingStore: any PendingRecipeShoppingStore = KeychainStore.shared,
                 onShoppingConfirmed: @escaping () async -> Void = {},
                 onNavigateToShopping: @escaping () -> Void = {}) {
         self.scope = scope
         self.service = service
         self.workflowService = workflowService
+        self.pendingStore = pendingStore
         self.onShoppingConfirmed = onShoppingConfirmed
         self.onNavigateToShopping = onNavigateToShopping
         _viewModel = StateObject(wrappedValue: CookWithPipViewModel(scope: scope, service: service))
@@ -170,6 +173,7 @@ public struct CookWithPipView: View {
                     NavigationLink {
                         RecipeDetailView(recipeID: recipe.id, scope: scope, service: service,
                                          workflowService: workflowService,
+                                         pendingStore: pendingStore,
                                          onShoppingConfirmed: onShoppingConfirmed,
                                          onNavigateToShopping: onNavigateToShopping)
                     } label: {
@@ -183,6 +187,7 @@ public struct CookWithPipView: View {
                     NavigationLink {
                         RecipeDetailView(recipeID: recommendation.recipe.id, scope: scope, service: service,
                                          workflowService: workflowService,
+                                         pendingStore: pendingStore,
                                          onShoppingConfirmed: onShoppingConfirmed,
                                          onNavigateToShopping: onNavigateToShopping)
                     } label: {
