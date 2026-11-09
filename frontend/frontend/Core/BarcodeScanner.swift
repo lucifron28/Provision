@@ -7,7 +7,7 @@ import UIKit
 // MARK: - Scanner Diagnostics Logger
 
 public enum DiagnosticLogger {
-    private static let lock = NSLock()
+    nonisolated private static let lock = NSLock()
     nonisolated(unsafe) private static var lastLogTimes: [String: Date] = [:]
 
     nonisolated public static func log(_ message: String) {
@@ -89,7 +89,7 @@ public final class ScannerAcceptanceGate: @unchecked Sendable {
 
 // MARK: - Scanner State Machine
 
-public enum ScannerState: Equatable, Sendable {
+nonisolated public enum ScannerState: Equatable, Sendable {
     case ready
     case processing(String)
     case detected(barcode: String, productName: String)
@@ -122,7 +122,7 @@ public enum ScannerState: Equatable, Sendable {
 
 // MARK: - Camera Permission States
 
-public enum CameraPermission: Sendable {
+nonisolated public enum CameraPermission: Sendable {
     case notDetermined
     case authorized
     case denied
@@ -594,7 +594,9 @@ public struct BarcodeScannerView: View {
         .onAppear {
             // Only override manager callback if caller supplied an explicit custom handler
             if let customCallback = onBarcodeDetected {
-                manager.onBarcodeDetected = customCallback
+                manager.onBarcodeDetected = { barcode, generation in
+                    customCallback(barcode, generation)
+                }
             }
             if manager.isCameraAvailable && manager.permission == .notDetermined {
                 Task {

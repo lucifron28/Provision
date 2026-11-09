@@ -30,7 +30,15 @@ struct ProvisionApp: App {
 
     var body: some Scene {
         WindowGroup {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-cook-with-pip-ui-tests") {
+                CookWithPipUITestHost()
+            } else {
+                ContentView()
+            }
+            #else
             ContentView()
+            #endif
         }
     }
 }

@@ -1,6 +1,6 @@
 import Foundation
 
-public struct IngredientRequirement: Codable, Sendable {
+nonisolated public struct IngredientRequirement: Codable, Sendable {
     public let ingredient_id: Int?
     public let display_name: String?
     public let amount: ExactQuantity
@@ -16,7 +16,7 @@ public struct IngredientRequirement: Codable, Sendable {
     }
 }
 
-public struct RecipeIngredient: Decodable, Sendable {
+nonisolated public struct RecipeIngredient: Decodable, Sendable {
     public let ingredient_id: Int?
     public let display_name: String
     public let amount: ExactQuantity
@@ -26,7 +26,7 @@ public struct RecipeIngredient: Decodable, Sendable {
     public let substitution_options: [IngredientRequirement]
 }
 
-public struct HouseholdRecipe: Decodable, Identifiable, Sendable {
+nonisolated public struct HouseholdRecipe: Decodable, Identifiable, Sendable {
     public let id: Int
     public let revision: Int
     public let is_active: Bool
@@ -50,7 +50,7 @@ public struct HouseholdRecipe: Decodable, Identifiable, Sendable {
     public let ingredients: [RecipeIngredient]
 }
 
-public struct RecipeSubstitution: Encodable, Sendable {
+nonisolated public struct RecipeSubstitution: Encodable, Sendable {
     public let requirement_index: Int
     public let replacement: IngredientRequirement
     public init(requirementIndex: Int, replacement: IngredientRequirement) {
@@ -59,7 +59,7 @@ public struct RecipeSubstitution: Encodable, Sendable {
     }
 }
 
-public struct RecipeEvaluationRequest: Encodable, Sendable {
+nonisolated public struct RecipeEvaluationRequest: Encodable, Sendable {
     public let expected_recipe_revision: Int
     public let servings: ExactQuantity
     public let include_optional: Bool
@@ -76,35 +76,38 @@ public struct RecipeEvaluationRequest: Encodable, Sendable {
     }
 }
 
-public struct RecipeEvaluation: Decodable, Sendable {
+nonisolated public struct RecipeEvaluation: Decodable, Sendable {
     public let recipe_id: Int
     public let recipe_revision: Int
     public let included_requirement_indexes: [Int]
     public let result: FoodSafetySnapshot
 }
 
-public struct RecipeRecommendationRequest: Encodable, Sendable {
+nonisolated public struct RecipeRecommendationRequest: Encodable, Sendable {
     public let servings: ExactQuantity?
     public let diner_user_ids: [Int]?
     public let mode: String
     public let query: String?
     public let max_missing_ingredients: Int
     public let limit: Int
+    public let candidate_limit: Int
     public let candidate_offset: Int
 
     public init(servings: ExactQuantity? = nil, dinerUserIDs: [Int]? = nil, mode: String = "all",
-                query: String? = nil, maxMissingIngredients: Int = 3, limit: Int = 20, candidateOffset: Int = 0) {
+                query: String? = nil, maxMissingIngredients: Int = 3, limit: Int = 20,
+                candidateLimit: Int = 100, candidateOffset: Int = 0) {
         self.servings = servings
         diner_user_ids = dinerUserIDs
         self.mode = mode
         self.query = query
         max_missing_ingredients = maxMissingIngredients
         self.limit = limit
+        candidate_limit = candidateLimit
         candidate_offset = candidateOffset
     }
 }
 
-public struct RecipeSourceReference: Decodable, Sendable {
+nonisolated public struct RecipeSourceReference: Decodable, Sendable {
     public let recipe_id: Int
     public let revision: Int
     public let is_active: Bool
@@ -118,7 +121,7 @@ public struct RecipeSourceReference: Decodable, Sendable {
     public let linked_at: String
 }
 
-public struct RecipeRecommendation: Decodable, Sendable {
+nonisolated public struct RecipeRecommendation: Decodable, Sendable {
     public let recipe: HouseholdRecipe
     public let evaluation: FoodSafetySnapshot
     public let coverage: ExactQuantity
@@ -128,7 +131,7 @@ public struct RecipeRecommendation: Decodable, Sendable {
     public let source_reference: RecipeSourceReference?
 }
 
-public struct RecipeRecommendations: Decodable, Sendable {
+nonisolated public struct RecipeRecommendations: Decodable, Sendable {
     public let items: [RecipeRecommendation]
     public let candidates_evaluated: Int
     public let has_more_candidates: Bool

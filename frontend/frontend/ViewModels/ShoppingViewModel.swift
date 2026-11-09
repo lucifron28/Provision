@@ -75,6 +75,22 @@ public class ShoppingViewModel: ObservableObject {
         self.isLoading = false
     }
 
+    public func refreshFromServer() async {
+        guard !isPreview else { return }
+        guard let scope else {
+            await loadItems()
+            return
+        }
+        isLoading = true
+        errorMessage = nil
+        do {
+            items = try await client.fetchShoppingListFromServer(scope: scope)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isLoading = false
+    }
+
     public func addItem() async {
         let name = newItemName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }

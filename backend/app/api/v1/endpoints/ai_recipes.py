@@ -45,4 +45,8 @@ def generate(request: AIRecipeRequest, response: Response,
             status = 504
         else:
             status = 502
-        raise HTTPException(status_code=status, detail={"code": exc.code}) from None
+        raise HTTPException(
+            status_code=status,
+            detail={"code": exc.code},
+            headers={"Cache-Control": "no-store"},
+        ) from None

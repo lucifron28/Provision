@@ -24,9 +24,9 @@ public class AuthViewModel: ObservableObject {
     private var sessionEpoch: UInt64 = 0
     public var isPreview: Bool
     
-    public init(client: APIClient = .shared, keychain: any CredentialStore = KeychainStore.shared, isPreview: Bool = false) {
-        self.client = client
-        self.keychain = keychain
+    public init(client: APIClient? = nil, keychain: (any CredentialStore)? = nil, isPreview: Bool = false) {
+        self.client = client ?? .shared
+        self.keychain = keychain ?? KeychainStore.shared
         self.isPreview = isPreview
     }
 

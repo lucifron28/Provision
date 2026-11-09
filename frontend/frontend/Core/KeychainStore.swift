@@ -1,6 +1,13 @@
 import Foundation
 import Security
 
+nonisolated public enum PendingRecipeShoppingReadResult: Equatable, Sendable {
+    case missing
+    case record(PendingRecipeShoppingRecord)
+    case corrupt
+    case unavailable
+}
+
 // MARK: - Native iOS Keychain Store
 // Manages secure, hardware-encrypted storage for JWT access tokens
 // using Apple's Security framework (SecItemAdd, SecItemCopyMatching, SecItemDelete).
@@ -20,6 +27,7 @@ public final class KeychainStore: CredentialStore {
     private let service = "mseuf.edu.ph.provision.auth"
     private let tokenAccount = "accessToken"
     private let verifiedSessionAccount = "verifiedHouseholdSession"
+    private let pendingShoppingPrefix = "pendingRecipeShopping-"
     
     private init() {}
     
@@ -109,5 +117,45 @@ public final class KeychainStore: CredentialStore {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service, kSecAttrAccount as String: verifiedSessionAccount]
         SecItemDelete(query as CFDictionary)
+    }
+
+    @discardableResult
+    public func savePendingRecipeShopping(_ record: PendingRecipeShoppingRecord, scope: HouseholdScope) -> Bool {
+        guard record.scopeStorageKey == scope.storageKey,
+              let data = try? JSONEncoder().encode(record) else { return false }
+        let account = pendingShoppingPrefix + scope.storageKey
+        var item: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service, kSecAttrAccount as String: account]
+        item[kSecValueData as String] = data
+        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
+    }
+
+    public func readPendingRecipeShopping(scope: HouseholdScope) -> PendingRecipeShoppingReadResult {
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: pendingShoppingPrefix + scope.storageKey,
+            kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        return Self.pendingRecipeShoppingReadResult(status: status, data: result as? Data, scope: scope)
+    }
+
+    static func pendingRecipeShoppingReadResult(status: OSStatus, data: Data?,
+                                                scope: HouseholdScope) -> PendingRecipeShoppingReadResult {
+        if status == errSecItemNotFound { return .missing }
+        guard status == errSecSuccess, let data else { return .unavailable }
+        guard let record = try? JSONDecoder().decode(PendingRecipeShoppingRecord.self, from: data),
+              record.scopeStorageKey == scope.storageKey else { return .corrupt }
+        return .record(record)
+    }
+
+    @discardableResult
+    public func deletePendingRecipeShopping(scope: HouseholdScope) -> Bool {
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: pendingShoppingPrefix + scope.storageKey]
+        let status = SecItemDelete(query as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
     }
 }

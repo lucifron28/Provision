@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Grocery Session Models
 // Conforms to FastAPI app.schemas.session
 
-public struct GrocerySession: Codable, Identifiable, Hashable, Sendable {
+nonisolated public struct GrocerySession: Codable, Identifiable, Hashable, Sendable {
     public let id: Int
     public var store_name: String
     public var purchase_date: String
@@ -37,7 +37,7 @@ public struct GrocerySession: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
-public struct GrocerySessionCreate: Codable, Sendable {
+nonisolated public struct GrocerySessionCreate: Codable, Sendable {
     public var store_name: String
     public var purchase_date: String?
     public var total_amount: Double?
@@ -59,7 +59,7 @@ public struct GrocerySessionCreate: Codable, Sendable {
     }
 }
 
-public struct SessionItemCreate: Codable, Sendable {
+nonisolated public struct SessionItemCreate: Codable, Sendable {
     public var product_id: Int
     public var storage_location_id: Int?
     public var quantity: Double
@@ -81,7 +81,7 @@ public struct SessionItemCreate: Codable, Sendable {
     }
 }
 
-public struct CommitSessionRequest: Codable, Sendable {
+nonisolated public struct CommitSessionRequest: Codable, Sendable {
     public var items: [SessionItemCreate]
     
     public init(items: [SessionItemCreate]) {

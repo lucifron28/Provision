@@ -1,7 +1,7 @@
 import Foundation
 
 /// Decimal values remain decimal strings when sent to the server.
-public struct ExactQuantity: Codable, Sendable, Equatable {
+nonisolated public struct ExactQuantity: Codable, Sendable, Equatable {
     public let value: Decimal
 
     public init(_ value: Decimal) { self.value = value }
@@ -22,7 +22,7 @@ public struct ExactQuantity: Codable, Sendable, Equatable {
     }
 }
 
-public struct RecipeShoppingPreviewRequest: Encodable, Sendable {
+nonisolated public struct RecipeShoppingPreviewRequest: Encodable, Sendable {
     public let recipe_id: Int
     public let expected_recipe_revision: Int
     public let servings: ExactQuantity
@@ -38,7 +38,7 @@ public struct RecipeShoppingPreviewRequest: Encodable, Sendable {
     }
 }
 
-public struct IngredientAvailabilitySnapshot: Decodable, Sendable {
+nonisolated public struct IngredientAvailabilitySnapshot: Decodable, Sendable {
     public let ingredient_id: Int?
     public let canonical_name: String?
     public let display_names: [String]
@@ -53,21 +53,21 @@ public struct IngredientAvailabilitySnapshot: Decodable, Sendable {
     public let unknown_reasons: [String]
 }
 
-public struct RecipeAvailabilitySnapshot: Decodable, Sendable {
+nonisolated public struct RecipeAvailabilitySnapshot: Decodable, Sendable {
     public let recipe_servings: ExactQuantity
     public let servings: ExactQuantity
     public let overall_status: String
     public let requirements: [IngredientAvailabilitySnapshot]
 }
 
-public struct IngredientSafetySnapshot: Decodable, Sendable {
+nonisolated public struct IngredientSafetySnapshot: Decodable, Sendable {
     public let requirement_index: Int
     public let ingredient_id: Int?
     public let decision: String
     public let reasons: [String]
 }
 
-public struct FoodSafetySnapshot: Decodable, Sendable {
+nonisolated public struct FoodSafetySnapshot: Decodable, Sendable {
     public let decision: String
     public let reasons: [String]
     public let ingredients: [IngredientSafetySnapshot]
@@ -75,7 +75,7 @@ public struct FoodSafetySnapshot: Decodable, Sendable {
     public let notice: String
 }
 
-public struct RecipeShoppingLine: Decodable, Sendable {
+nonisolated public struct RecipeShoppingLine: Decodable, Sendable {
     public let ingredient_id: Int?
     public let canonical_name: String?
     public let display_name: String
@@ -92,7 +92,7 @@ public struct RecipeShoppingLine: Decodable, Sendable {
     public let review_reasons: [String]
 }
 
-public struct UnlinkedShoppingReview: Decodable, Sendable {
+nonisolated public struct UnlinkedShoppingReview: Decodable, Sendable {
     public let item_id: Int
     public let name: String
     public let quantity: ExactQuantity
@@ -101,7 +101,7 @@ public struct UnlinkedShoppingReview: Decodable, Sendable {
     public let reason: String
 }
 
-public struct RecipeShoppingPreview: Decodable, Sendable {
+nonisolated public struct RecipeShoppingPreview: Decodable, Sendable {
     public let preview_id: String
     /// Preserve the server timestamp, including fractional seconds and timezone.
     public let expires_at: String
@@ -117,7 +117,7 @@ public struct RecipeShoppingPreview: Decodable, Sendable {
     public let unlinked_manual_items: [UnlinkedShoppingReview]
 }
 
-public struct RecipeShoppingAcceptedLine: Codable, Sendable {
+nonisolated public struct RecipeShoppingAcceptedLine: Codable, Equatable, Sendable {
     public let ingredient_id: Int
     public let target_quantity: ExactQuantity
     public let consolidate_existing: Bool
@@ -130,7 +130,7 @@ public struct RecipeShoppingAcceptedLine: Codable, Sendable {
 }
 
 /// Persist this exact value for retries; edits require a new idempotency key.
-public struct RecipeShoppingConfirmation: Codable, Sendable {
+nonisolated public struct RecipeShoppingConfirmation: Codable, Equatable, Sendable {
     public let preview_id: String
     public let idempotency_key: String
     public let expected_revision: Int
@@ -144,7 +144,34 @@ public struct RecipeShoppingConfirmation: Codable, Sendable {
     }
 }
 
-public struct RecipeShoppingChange: Decodable, Sendable {
+nonisolated public struct PendingRecipeShoppingLine: Codable, Equatable, Sendable {
+    public let name: String
+    public let targetQuantity: ExactQuantity
+    public let unit: String?
+
+    public init(name: String, targetQuantity: ExactQuantity, unit: String?) {
+        self.name = name
+        self.targetQuantity = targetQuantity
+        self.unit = unit
+    }
+}
+
+nonisolated public struct PendingRecipeShoppingRecord: Codable, Equatable, Sendable {
+    public let scopeStorageKey: String
+    public let recipeTitle: String
+    public let lines: [PendingRecipeShoppingLine]
+    public let confirmation: RecipeShoppingConfirmation
+
+    public init(scopeStorageKey: String, recipeTitle: String, lines: [PendingRecipeShoppingLine],
+                confirmation: RecipeShoppingConfirmation) {
+        self.scopeStorageKey = scopeStorageKey
+        self.recipeTitle = recipeTitle
+        self.lines = lines
+        self.confirmation = confirmation
+    }
+}
+
+nonisolated public struct RecipeShoppingChange: Decodable, Sendable {
     public let id: Int
     public let name: String
     public let quantity: ExactQuantity
@@ -161,12 +188,12 @@ public struct RecipeShoppingChange: Decodable, Sendable {
     public let updated_at: String?
 }
 
-public struct ConsolidatedShoppingItems: Decodable, Sendable {
+nonisolated public struct ConsolidatedShoppingItems: Decodable, Sendable {
     public let kept_item_id: Int
     public let removed_items: [RecipeShoppingChange]
 }
 
-public struct RecipeShoppingConfirmationResult: Decodable, Sendable {
+nonisolated public struct RecipeShoppingConfirmationResult: Decodable, Sendable {
     public let preview_id: String
     public let shopping_revision: Int
     public let created: [RecipeShoppingChange]

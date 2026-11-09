@@ -5,36 +5,61 @@ public struct HomeView: View {
     @ObservedObject var authVM: AuthViewModel
     var onNavigateToInventory: (InventoryQuickFilter?) -> Void
     var onNavigateToShopping: () -> Void
+    var onShoppingConfirmed: () async -> Void
 
     @State private var showingProfileSheet: Bool = false
     @State private var notificationsEnabled: Bool = NotificationService.shared.isAlertsEnabled
     @State private var devBackendHost: String = APIEnvironment.localDeviceHost
     @State private var hostUpdateMessage: String? = nil
     @State private var itemToConsume: ExpiringSoonItem? = nil
+    private let cookWithPipScope: HouseholdScope?
+    private let cookWithPipService: any CookWithPipService
+    private let cookWithPipWorkflowService: any CookWithPipWorkflowService
+    private let cookWithPipPendingStore: any PendingRecipeShoppingStore
 
     public init(
         viewModel: HomeViewModel,
         authVM: AuthViewModel,
         onNavigateToInventory: @escaping (InventoryQuickFilter?) -> Void = { _ in },
-        onNavigateToShopping: @escaping () -> Void = {}
+        onNavigateToShopping: @escaping () -> Void = {},
+        onShoppingConfirmed: @escaping () async -> Void = {},
+        cookWithPipScope: HouseholdScope? = nil,
+        cookWithPipService: any CookWithPipService = APIClient.shared,
+        cookWithPipWorkflowService: any CookWithPipWorkflowService = APIClient.shared,
+        cookWithPipPendingStore: any PendingRecipeShoppingStore = KeychainStore.shared
     ) {
         self.viewModel = viewModel
         self.authVM = authVM
         self.onNavigateToInventory = onNavigateToInventory
         self.onNavigateToShopping = onNavigateToShopping
+        self.onShoppingConfirmed = onShoppingConfirmed
+        self.cookWithPipScope = cookWithPipScope
+        self.cookWithPipService = cookWithPipService
+        self.cookWithPipWorkflowService = cookWithPipWorkflowService
+        self.cookWithPipPendingStore = cookWithPipPendingStore
     }
 
     public init(
         viewModel: HomeViewModel,
         authVM: AuthViewModel,
         onNavigateToInventory: @escaping () -> Void,
-        onNavigateToShopping: @escaping () -> Void = {}
+        onNavigateToShopping: @escaping () -> Void = {},
+        onShoppingConfirmed: @escaping () async -> Void = {},
+        cookWithPipScope: HouseholdScope? = nil,
+        cookWithPipService: any CookWithPipService = APIClient.shared,
+        cookWithPipWorkflowService: any CookWithPipWorkflowService = APIClient.shared,
+        cookWithPipPendingStore: any PendingRecipeShoppingStore = KeychainStore.shared
     ) {
         self.init(
             viewModel: viewModel,
             authVM: authVM,
             onNavigateToInventory: { _ in onNavigateToInventory() },
-            onNavigateToShopping: onNavigateToShopping
+            onNavigateToShopping: onNavigateToShopping,
+            onShoppingConfirmed: onShoppingConfirmed,
+            cookWithPipScope: cookWithPipScope,
+            cookWithPipService: cookWithPipService,
+            cookWithPipWorkflowService: cookWithPipWorkflowService,
+            cookWithPipPendingStore: cookWithPipPendingStore
         )
     }
 
@@ -44,6 +69,7 @@ public struct HomeView: View {
                 VStack(spacing: 20) {
                     // Header Bar
                     headerBar
+                    cookWithPipEntryCard
                     if viewModel.isLoading && !viewModel.hasLoadedOnce {
                         VStack(spacing: 12) {
                             ProgressView()
@@ -152,6 +178,62 @@ public struct HomeView: View {
     }
 
     // MARK: - Subviews
+
+    @ViewBuilder
+    private var cookWithPipEntryCard: some View {
+        if let scope = activeCookWithPipScope {
+            NavigationLink {
+                CookWithPipView(scope: scope, service: cookWithPipService,
+                                workflowService: cookWithPipWorkflowService,
+                                pendingStore: cookWithPipPendingStore,
+                                onShoppingConfirmed: onShoppingConfirmed,
+                                onNavigateToShopping: onNavigateToShopping)
+            } label: {
+                HStack(spacing: 14) {
+                    Image("pip_chef")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 60, height: 60)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Cook with Pip")
+                            .font(ProvisionTypography.sectionSerif)
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+                        Text("Explore household recipes checked against current stock")
+                            .font(.subheadline)
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("No live internet search")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                    }
+                    Spacer(minLength: 4)
+                    Image(systemName: "arrow.up.right")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(ProvisionTheme.onAccent)
+                        .frame(width: 44, height: 44)
+                        .background(ProvisionTheme.provisionGreen)
+                        .clipShape(Circle())
+                        .accessibilityHidden(true)
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(ProvisionTheme.heroCard)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(ProvisionTheme.border, lineWidth: 1))
+                .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Cook with Pip. Browse household recipes checked against current stock.")
+            .accessibilityHint("Opens Cook Now, Almost There, and My Recipes.")
+            .accessibilityIdentifier("cook-with-pip-entry")
+        }
+    }
+
+    private var activeCookWithPipScope: HouseholdScope? {
+        if let cookWithPipScope { return cookWithPipScope }
+        return authVM.selectedScope
+    }
 
     private var headerBar: some View {
         HStack(spacing: 12) {
@@ -813,9 +895,12 @@ public struct HomeView: View {
     }
 }
 
+#if DEBUG
 #Preview("Home - Philippine Pantry") {
     HomeView(
         viewModel: PreviewData.makeHomeViewModel(),
-        authVM: PreviewData.makeAuthViewModel()
+        authVM: PreviewData.makeAuthViewModel(),
+        cookWithPipScope: HouseholdScope(userID: 1, householdID: 1)
     )
 }
+#endif

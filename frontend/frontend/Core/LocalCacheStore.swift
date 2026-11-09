@@ -2,7 +2,7 @@ import Foundation
 import CryptoKit
 
 /// The server-verified account and household that own persisted client data.
-public struct HouseholdScope: Codable, Hashable, Sendable {
+nonisolated public struct HouseholdScope: Codable, Hashable, Sendable {
     public let userID: Int
     public let householdID: Int
     public let serverID: String

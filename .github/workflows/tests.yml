@@ -2,7 +2,7 @@ name: Provision tests
 
 on:
   push:
-    branches: [main, fix/apple-design-ux-refinement, feat/adaptive-appearance-ux-pip, feat/complete-ui-ux-refinement]
+    branches: [main, fix/apple-design-ux-refinement, feat/adaptive-appearance-ux-pip, feat/complete-ui-ux-refinement, feat/cook-with-pip-ios-m1]
   pull_request:
     branches: [main]
 
@@ -13,13 +13,55 @@ jobs:
       - uses: actions/checkout@v4
       - name: Show Xcode and simulator runtimes
         run: xcodebuild -version && xcrun simctl list devices available
-      - name: Run scanner XCTest suite
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Prepare iOS test artifact folder
+        run: mkdir -p artifacts/raw-cook-with-pip-screenshots artifacts/cook-with-pip-screenshots
+      - name: Run iOS XCTest and UI screenshot suite
+        id: ios-tests
         run: >-
           xcodebuild test
           -project frontend/frontend.xcodeproj
           -scheme frontend
           -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
-          CODE_SIGNING_ALLOWED=NO
+          -resultBundlePath artifacts/frontend.xcresult
+          CODE_SIGNING_ALLOWED=YES
+          CODE_SIGN_IDENTITY=-
+      - name: Export simulator screenshots
+        if: always()
+        run: |
+          if [ -d artifacts/frontend.xcresult ]; then
+            xcrun xcresulttool export attachments \
+              --path artifacts/frontend.xcresult \
+              --output-path artifacts/raw-cook-with-pip-screenshots
+          else
+            echo "No xcresult bundle was produced." >&2
+            exit 1
+          fi
+      - name: Organize and verify required screenshot scenarios
+        if: always()
+        run: >-
+          python .github/scripts/organize_ios_screenshots.py
+          --input artifacts/raw-cook-with-pip-screenshots
+          --output artifacts/cook-with-pip-screenshots
+          --required .github/scripts/required_ios_screenshots.json
+          --commit-sha "$GITHUB_SHA"
+          --test-outcome "${{ steps.ios-tests.outcome }}"
+      - name: Upload organized iOS screenshots and scenario manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cook-with-pip-ios-screenshots
+          path: artifacts/cook-with-pip-screenshots
+          if-no-files-found: error
+      - name: Upload iOS test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cook-with-pip-xcresult
+          path: artifacts/frontend.xcresult
+          if-no-files-found: warn
 
   backend:
     runs-on: ubuntu-latest
@@ -60,6 +102,15 @@ jobs:
           uv run alembic downgrade base
           uv run alembic upgrade head
           uv run alembic check
+      - name: Prepare backend test artifact folder
+        run: mkdir -p artifacts
       - name: Run backend tests
         working-directory: backend
-        run: uv run pytest
+        run: uv run pytest --junitxml=../artifacts/backend-junit.xml
+      - name: Upload backend test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: artifacts/backend-junit.xml
+          if-no-files-found: warn

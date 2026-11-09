@@ -1,8 +1,34 @@
 # Mac-dependent Cook with Pip work
 
-Status: pending implementation and acceptance. Backend work on Windows does not
-prove that these client flows work. Preserve the existing scanner and five-tab
-navigation while implementing them.
+Status: the read-only Cook with Pip iOS milestone 1 is implemented and passed
+hosted simulator CI on 2026-11-09. Mac and physical-device acceptance remains
+pending for the broader client work below. Preserve the existing scanner and
+five-tab navigation while implementing it.
+
+## Verified read-only iOS milestone 1
+
+- Branch `feat/cook-with-pip-ios-m1`, commit
+  `f13af69229b837233484fd4b40336c83a4e27b86`, in [draft PR #4](https://github.com/lucifron28/Provision/pull/4).
+- Added the Home entry, Cook with Pip discovery, Cook Now, Almost There,
+  My Recipes, and Recipe Detail screens. The client uses the existing
+  authenticated household-scoped recipe APIs, shows the current server safety
+  and availability evaluation, preserves exact decimal quantities, and
+  presents required and optional ingredients separately.
+- Recipe browsing and detail are read-only. The five-tab shell and existing
+  heuristic Pip hints remain intact; live web search and DeepSeek calls remain
+  disabled. Synthetic fixtures are available only to the debug UI-test launch.
+- [GitHub Actions run 42550293924](https://github.com/lucifron28/Provision/actions/runs/42550293924)
+  passed on `macos-26` with the iPhone 17 simulator. XCTest recorded 28 unit
+  tests and one UI journey passing. The backend job recorded 935 passed and
+  12 skipped.
+- The [CI artifact](https://github.com/lucifron28/Provision/actions/runs/42550293924)
+  `cook-with-pip-ios-test-results` contains the `.xcresult` bundle and six
+  screenshots: Home, Cook with Pip, Cook Now, Almost There, My Recipes, and
+  Recipe Detail.
+- This Windows-first run used hosted macOS CI; local Xcode and physical-device
+  testing were not performed. Account/household cache binding, scanner
+  acceptance, shopping writes, meal plans, cooking, leftovers, provider calls,
+  and the remaining accessibility/device checks are still deferred.
 
 ## Household and account boundaries
 

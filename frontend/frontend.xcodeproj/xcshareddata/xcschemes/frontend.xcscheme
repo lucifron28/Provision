@@ -8,6 +8,9 @@
          <BuildActionEntry buildForTesting="YES" buildForRunning="NO" buildForProfiling="NO" buildForArchiving="NO" buildForAnalyzing="YES">
             <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="A1B2C3D4E5F60718293A4B03" BuildableName="frontendTests.xctest" BlueprintName="frontendTests" ReferencedContainer="container:frontend.xcodeproj"/>
          </BuildActionEntry>
+         <BuildActionEntry buildForTesting="YES" buildForRunning="NO" buildForProfiling="NO" buildForArchiving="NO" buildForAnalyzing="YES">
+            <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="D4E5F607A1B2C3D4E5F60709" BuildableName="frontendUITests.xctest" BlueprintName="frontendUITests" ReferencedContainer="container:frontend.xcodeproj"/>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.DebuggerFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="YES">
@@ -15,7 +18,13 @@
          <TestableReference skipped="NO" parallelizable="NO">
             <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="A1B2C3D4E5F60718293A4B03" BuildableName="frontendTests.xctest" BlueprintName="frontendTests" ReferencedContainer="container:frontend.xcodeproj"/>
          </TestableReference>
+         <TestableReference skipped="NO" parallelizable="NO">
+            <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="D4E5F607A1B2C3D4E5F60709" BuildableName="frontendUITests.xctest" BlueprintName="frontendUITests" ReferencedContainer="container:frontend.xcodeproj"/>
+         </TestableReference>
       </Testables>
+      <MacroExpansion>
+         <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="83B0782B304FC56F00A90FE3" BuildableName="frontend.app" BlueprintName="frontend" ReferencedContainer="container:frontend.xcodeproj"/>
+      </MacroExpansion>
    </TestAction>
    <LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.DebuggerFoundation.Launcher.LLDB" launchStyle="0" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" debugServiceExtension="internal" allowLocationSimulation="YES">
       <BuildableProductRunnable runnableDebuggingMode="0">
