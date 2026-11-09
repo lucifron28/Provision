@@ -1,34 +1,15 @@
 # Mac-dependent Cook with Pip work
 
-Status: the read-only Cook with Pip iOS milestone 1 is implemented and passed
-hosted simulator CI on 2026-11-09. Mac and physical-device acceptance remains
-pending for the broader client work below. Preserve the existing scanner and
-five-tab navigation while implementing it.
+Status: Cook with Pip iOS milestones 1–3 were merged to `main` on 2026-11-10 via [PR #4](https://github.com/lucifron28/Provision/pull/4) (merge `d4d5105`). This document separates verified hosted CI from **remaining** Mac and physical-device acceptance. Preserve scanner behavior, the five-tab navigation, consent and publisher policies.
 
-## Verified read-only iOS milestone 1
+## Verified hosted CI and existing iOS workflows
 
-- Branch `feat/cook-with-pip-ios-m1`, commit
-  `f13af69229b837233484fd4b40336c83a4e27b86`, in [draft PR #4](https://github.com/lucifron28/Provision/pull/4).
-- Added the Home entry, Cook with Pip discovery, Cook Now, Almost There,
-  My Recipes, and Recipe Detail screens. The client uses the existing
-  authenticated household-scoped recipe APIs, shows the current server safety
-  and availability evaluation, preserves exact decimal quantities, and
-  presents required and optional ingredients separately.
-- Recipe browsing and detail are read-only. The five-tab shell and existing
-  heuristic Pip hints remain intact; live web search and DeepSeek calls remain
-  disabled. Synthetic fixtures are available only to the debug UI-test launch.
-- [GitHub Actions run 42550293924](https://github.com/lucifron28/Provision/actions/runs/42550293924)
-  passed on `macos-26` with the iPhone 17 simulator. XCTest recorded 28 unit
-  tests and one UI journey passing. The backend job recorded 935 passed and
-  12 skipped.
-- The [CI artifact](https://github.com/lucifron28/Provision/actions/runs/42550293924)
-  `cook-with-pip-ios-test-results` contains the `.xcresult` bundle and six
-  screenshots: Home, Cook with Pip, Cook Now, Almost There, My Recipes, and
-  Recipe Detail.
-- This Windows-first run used hosted macOS CI; local Xcode and physical-device
-  testing were not performed. Account/household cache binding, scanner
-  acceptance, shopping writes, meal plans, cooking, leftovers, provider calls,
-  and the remaining accessibility/device checks are still deferred.
+- Tested feature head `465a3a8`: [push workflow](https://github.com/lucifron28/Provision/actions/runs/42696338465) and [PR workflow](https://github.com/lucifron28/Provision/actions/runs/42696352926) passed on GitHub-hosted macOS/iPhone 17 simulator; **38 iOS unit tests + 12 UI tests** and **938 backend tests passed, 12 skipped**.
+- Home entry, Cook Now, Almost There, My Recipes, recipe details, preferences, allergy declarations, substitutions and product-label review are implemented with household-scoped API calls.
+- Shopping preview requires explicit selection and confirmation, exact decimals, server revisions and Keychain-backed pending idempotent retries; test coverage includes relaunch recovery and corrupt/unavailable Keychain records.
+- `cook-with-pip-ios-screenshots` contains 38 named **synthetic-fixture** simulator screenshots plus metadata; `cook-with-pip-xcresult` captures full test evidence. UI screenshots do **not** prove a connected simulator-to-FastAPI flow. Separately, FastAPI/PostgreSQL integration tests verify shopping operations and no inventory consumption during preview.
+- [One approved live DeepSeek smoke run](https://github.com/lucifron28/Provision/actions/runs/42696338381) passed with `deepseek-flash` (544 tokens); the safety result was `review_required`, and no recipe was saved. Production provider access remains subject to existing authorization, consent and budgets; standard CI never makes billable calls.
+- Scanner/OCR and camera acceptance, membership switching with actual device data, VoiceOver, smaller devices and on-device performance still require Mac lab validation.
 
 ## Household and account boundaries
 
