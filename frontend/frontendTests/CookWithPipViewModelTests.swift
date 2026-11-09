@@ -8,6 +8,7 @@ private enum CookServiceBehavior: Sendable, Equatable {
     case paged
     case offline
     case serverError
+    case sourceFailsOnce
 }
 
 private actor CookWithPipServiceSpy: CookWithPipService {
@@ -16,6 +17,7 @@ private actor CookWithPipServiceSpy: CookWithPipService {
     private var recommendationRequests: [(RecipeRecommendationRequest, HouseholdScope)] = []
     private var recipePageRequests: [(String?, Int, Int, HouseholdScope)] = []
     private var evaluationRequests: [(Int, RecipeEvaluationRequest, HouseholdScope)] = []
+    private var sourceReferenceRequests = 0
 
     init(behavior: CookServiceBehavior = .fixture) {
         self.behavior = behavior
@@ -77,7 +79,11 @@ private actor CookWithPipServiceSpy: CookWithPipService {
     }
 
     func fetchRecipeSourceReference(id: Int, scope: HouseholdScope) async throws -> RecipeSourceReference {
-        try await fixture.fetchRecipeSourceReference(id: id, scope: scope)
+        sourceReferenceRequests += 1
+        if behavior == .sourceFailsOnce && sourceReferenceRequests == 1 {
+            throw APIError.http(status: 503, detail: nil, retryAfter: nil)
+        }
+        return try await fixture.fetchRecipeSourceReference(id: id, scope: scope)
     }
 
     func recordedRecommendationRequests() -> [(RecipeRecommendationRequest, HouseholdScope)] {
@@ -189,6 +195,24 @@ final class CookWithPipViewModelTests: XCTestCase {
         XCTAssertEqual(request.1.servings, ExactQuantity(Decimal(string: "4.000000")!))
         XCTAssertTrue(request.1.include_optional)
         XCTAssertNil(request.1.diner_user_ids)
+    }
+
+    func testSourceLookupFailureKeepsEvaluationAndRetryRecovers() async throws {
+        let service = CookWithPipServiceSpy(behavior: .sourceFailsOnce)
+        let viewModel = RecipeDetailViewModel(recipeID: 303, scope: scope, service: service)
+
+        await viewModel.load()
+
+        XCTAssertNotNil(viewModel.recipe)
+        XCTAssertNotNil(viewModel.evaluation)
+        XCTAssertTrue(viewModel.sourceReferenceErrorMessage?.contains("temporarily unavailable") == true)
+        XCTAssertFalse(viewModel.isSourceOffline)
+
+        await viewModel.retrySourceReference()
+
+        XCTAssertNil(viewModel.sourceReferenceErrorMessage)
+        XCTAssertNil(viewModel.sourceReference)
+        XCTAssertFalse(viewModel.isLoadingSourceReference)
     }
 
     func testSafetyAndAvailabilityLabelsPreserveDistinctStates() throws {

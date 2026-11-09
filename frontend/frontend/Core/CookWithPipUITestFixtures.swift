@@ -193,9 +193,12 @@ struct CookWithPipUITestHost: View {
         VStack(spacing: 0) {
             Text("UI TEST FIXTURES")
                 .font(.caption.weight(.bold))
-                .foregroundStyle(ProvisionTheme.onAccent)
-                .frame(maxWidth: .infinity, minHeight: 26)
-                .background(ProvisionTheme.provisionGreen)
+                .foregroundStyle(ProvisionTheme.textPrimary)
+                .frame(maxWidth: .infinity, minHeight: 30)
+                .background(ProvisionTheme.provisionGreenLight)
+                .overlay(alignment: .bottom) {
+                    Rectangle().fill(ProvisionTheme.border).frame(height: 1)
+                }
                 .accessibilityIdentifier("ui-test-fixture-banner")
 
             HomeView(

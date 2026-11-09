@@ -6,6 +6,9 @@ public final class RecipeDetailViewModel: ObservableObject {
     @Published public private(set) var recipe: HouseholdRecipe?
     @Published public private(set) var evaluation: RecipeEvaluation?
     @Published public private(set) var sourceReference: RecipeSourceReference?
+    @Published public private(set) var sourceReferenceErrorMessage: String?
+    @Published public private(set) var isSourceOffline = false
+    @Published public private(set) var isLoadingSourceReference = false
     @Published public private(set) var isLoading = false
     @Published public private(set) var hasLoadedOnce = false
     @Published public private(set) var isOffline = false
@@ -28,6 +31,9 @@ public final class RecipeDetailViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         isOffline = false
+        sourceReference = nil
+        sourceReferenceErrorMessage = nil
+        isSourceOffline = false
 
         do {
             let recipe = try await service.fetchRecipe(id: recipeID, scope: scope)
@@ -40,12 +46,7 @@ public final class RecipeDetailViewModel: ObservableObject {
             guard activeRequestID == requestID else { return }
             self.recipe = recipe
             self.evaluation = evaluation
-            if let source = try? await service.fetchRecipeSourceReference(id: recipeID, scope: scope) {
-                guard activeRequestID == requestID else { return }
-                sourceReference = source
-            } else {
-                sourceReference = nil
-            }
+            await loadSourceReference(requestID: requestID)
             hasLoadedOnce = true
         } catch {
             guard activeRequestID == requestID else { return }
@@ -56,5 +57,36 @@ public final class RecipeDetailViewModel: ObservableObject {
 
         guard activeRequestID == requestID else { return }
         isLoading = false
+    }
+
+    public func retrySourceReference() async {
+        await loadSourceReference(requestID: activeRequestID)
+    }
+
+    private func loadSourceReference(requestID: UUID) async {
+        isLoadingSourceReference = true
+        sourceReferenceErrorMessage = nil
+        isSourceOffline = false
+        defer {
+            if activeRequestID == requestID {
+                isLoadingSourceReference = false
+            }
+        }
+
+        do {
+            let source = try await service.fetchRecipeSourceReference(id: recipeID, scope: scope)
+            guard activeRequestID == requestID else { return }
+            sourceReference = source
+        } catch {
+            guard activeRequestID == requestID else { return }
+            if let apiError = error as? APIError,
+               case .http(status: 404, _, _) = apiError {
+                sourceReference = nil
+                return
+            }
+            sourceReference = nil
+            sourceReferenceErrorMessage = error.localizedDescription
+            isSourceOffline = CookWithPipViewModel.isNetworkError(error)
+        }
     }
 }

@@ -36,7 +36,15 @@ public struct RecipeDetailView: View {
                     .padding(18)
                     .provisionCard()
                 } else if let recipe = viewModel.recipe, let evaluation = viewModel.evaluation {
-                    RecipeDetailContents(recipe: recipe, evaluation: evaluation, sourceReference: viewModel.sourceReference)
+                    RecipeDetailContents(
+                        recipe: recipe,
+                        evaluation: evaluation,
+                        sourceReference: viewModel.sourceReference,
+                        sourceReferenceErrorMessage: viewModel.sourceReferenceErrorMessage,
+                        isSourceOffline: viewModel.isSourceOffline,
+                        isLoadingSourceReference: viewModel.isLoadingSourceReference,
+                        retrySourceReference: { Task { await viewModel.retrySourceReference() } }
+                    )
                 }
             }
             .padding(.horizontal, 16)
@@ -57,6 +65,10 @@ private struct RecipeDetailContents: View {
     let recipe: HouseholdRecipe
     let evaluation: RecipeEvaluation
     let sourceReference: RecipeSourceReference?
+    let sourceReferenceErrorMessage: String?
+    let isSourceOffline: Bool
+    let isLoadingSourceReference: Bool
+    let retrySourceReference: () -> Void
 
     private var availabilityByRecipeIndex: [Int: IngredientAvailabilitySnapshot] {
         var result: [Int: IngredientAvailabilitySnapshot] = [:]
@@ -90,6 +102,15 @@ private struct RecipeDetailContents: View {
             evaluationSection
             if let sourceReference {
                 sourceSection(sourceReference)
+            } else if let sourceReferenceErrorMessage {
+                sourceErrorSection(sourceReferenceErrorMessage)
+            } else if isLoadingSourceReference {
+                ProgressView("Loading source details")
+                    .font(.footnote)
+                    .tint(ProvisionTheme.provisionGreen)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+                    .provisionCard(backgroundColor: ProvisionTheme.surfaceSecondary)
             }
             ingredientSection(title: "Required ingredients", indices: requiredIngredients)
             if !optionalIngredients.isEmpty {
@@ -192,6 +213,28 @@ private struct RecipeDetailContents: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .provisionCard()
         .accessibilityIdentifier("recipe-source-reference")
+    }
+
+    private func sourceErrorSection(_ message: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(isSourceOffline ? "Source details unavailable offline" : "Unable to load source details",
+                  systemImage: isSourceOffline ? "wifi.slash" : "exclamationmark.triangle.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(isSourceOffline ? ProvisionTheme.amberWarning : ProvisionTheme.redAlert)
+            Text(isSourceOffline ? "The recipe and current safety evaluation are available. Reconnect to retry the source lookup." : message)
+                .font(.footnote)
+                .foregroundStyle(ProvisionTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Retry source lookup", action: retrySourceReference)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(ProvisionTheme.provisionGreen)
+                .frame(minHeight: 44, alignment: .leading)
+                .accessibilityIdentifier("recipe-source-retry")
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .provisionCard(backgroundColor: ProvisionTheme.surfaceSecondary)
+        .accessibilityIdentifier("recipe-source-error")
     }
 
     private func ingredientSection(title: String, indices: [Int]) -> some View {
