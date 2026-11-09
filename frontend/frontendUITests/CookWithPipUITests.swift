@@ -188,9 +188,6 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(optionalIngredient, in: app)
         XCTAssertTrue(optionalIngredient.waitForExistence(timeout: 10))
         capture("Shopping_Optional_Ingredients", app: app)
-        scrollTo(includeOptional, in: app)
-        setSwitch(includeOptional, to: "0")
-        app.buttons["recipe-shopping-refresh-preview"].tap()
 
         let target = element("recipe-shopping-target-901", in: app)
         scrollTo(target, in: app)
