@@ -190,19 +190,20 @@ struct CookWithPipUITestHost: View {
     private let service = CookWithPipUITestService()
 
     var body: some View {
-        HomeView(
-            viewModel: HomeViewModel(isPreview: true),
-            authVM: PreviewData.makeAuthViewModel(),
-            cookWithPipScope: scope,
-            cookWithPipService: service
-        )
-        .safeAreaInset(edge: .top, spacing: 0) {
+        VStack(spacing: 0) {
             Text("UI TEST FIXTURES")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(ProvisionTheme.onAccent)
                 .frame(maxWidth: .infinity, minHeight: 26)
                 .background(ProvisionTheme.provisionGreen)
                 .accessibilityIdentifier("ui-test-fixture-banner")
+
+            HomeView(
+                viewModel: HomeViewModel(isPreview: true),
+                authVM: PreviewData.makeAuthViewModel(),
+                cookWithPipScope: scope,
+                cookWithPipService: service
+            )
         }
     }
 }
