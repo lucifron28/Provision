@@ -69,6 +69,21 @@ public struct RecipeStatusPresentation: Sendable {
     }
 }
 
+struct StatusPill: View {
+    let presentation: RecipeStatusPresentation
+
+    var body: some View {
+        Label(presentation.title, systemImage: presentation.systemImage)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(presentation.tone.foreground)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(presentation.tone.background)
+            .clipShape(Capsule())
+            .accessibilityLabel(presentation.title)
+    }
+}
+
 enum QuantityText {
     static func string(_ quantity: ExactQuantity) -> String {
         NSDecimalNumber(decimal: quantity.value).stringValue
