@@ -26,7 +26,8 @@ jobs:
           -scheme frontend
           -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
           -resultBundlePath artifacts/frontend.xcresult
-          CODE_SIGNING_ALLOWED=NO
+          CODE_SIGNING_ALLOWED=YES
+          CODE_SIGN_IDENTITY=-
       - name: Export simulator screenshots
         if: always()
         run: |
