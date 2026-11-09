@@ -163,7 +163,6 @@ private struct RecipeDetailContents: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .provisionCard()
-        .accessibilityIdentifier("recipe-safety-evaluation")
     }
 
     private func sourceSection(_ source: RecipeSourceReference) -> some View {
