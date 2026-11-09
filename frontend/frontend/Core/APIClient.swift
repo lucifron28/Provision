@@ -482,6 +482,20 @@ public actor APIClient {
         return try await fetchAllPages(components, generation: sessionGeneration, expectedScope: scope, offsetName: "offset")
     }
 
+    public func fetchRecipePage(query: String?, limit: Int, offset: Int,
+                                scope: HouseholdScope) async throws -> [HouseholdRecipe] {
+        guard scope == householdScope else { throw APIError.sessionChanged }
+        var components = URLComponents(url: baseURL.appendingPathComponent("recipes/"), resolvingAgainstBaseURL: true)
+        var queryItems = [URLQueryItem(name: "limit", value: String(min(max(limit, 1), 100))),
+                          URLQueryItem(name: "offset", value: String(min(max(offset, 0), 100_000)))]
+        if let query, !query.isEmpty {
+            queryItems.append(URLQueryItem(name: "query", value: String(query.prefix(180))))
+        }
+        components?.queryItems = queryItems
+        guard let url = components?.url else { throw APIError.invalidURL }
+        return try await execute(URLRequest(url: url), expectedScope: scope)
+    }
+
     public func fetchRecipe(id: Int, scope: HouseholdScope) async throws -> HouseholdRecipe {
         let url = baseURL.appendingPathComponent("recipes/\(id)")
         return try await execute(URLRequest(url: url), expectedScope: scope)
@@ -503,6 +517,11 @@ public actor APIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try encoder.encode(payload)
         return try await execute(request, expectedScope: scope)
+    }
+
+    public func fetchRecipeSourceReference(id: Int, scope: HouseholdScope) async throws -> RecipeSourceReference {
+        let url = baseURL.appendingPathComponent("recipe-sources/recipes/\(id)/reference")
+        return try await execute(URLRequest(url: url), expectedScope: scope)
     }
 
     public func previewRecipeShopping(_ payload: RecipeShoppingPreviewRequest, scope: HouseholdScope) async throws -> RecipeShoppingPreview {

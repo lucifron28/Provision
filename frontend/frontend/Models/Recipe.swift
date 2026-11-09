@@ -90,16 +90,19 @@ public struct RecipeRecommendationRequest: Encodable, Sendable {
     public let query: String?
     public let max_missing_ingredients: Int
     public let limit: Int
+    public let candidate_limit: Int
     public let candidate_offset: Int
 
     public init(servings: ExactQuantity? = nil, dinerUserIDs: [Int]? = nil, mode: String = "all",
-                query: String? = nil, maxMissingIngredients: Int = 3, limit: Int = 20, candidateOffset: Int = 0) {
+                query: String? = nil, maxMissingIngredients: Int = 3, limit: Int = 20,
+                candidateLimit: Int = 100, candidateOffset: Int = 0) {
         self.servings = servings
         diner_user_ids = dinerUserIDs
         self.mode = mode
         self.query = query
         max_missing_ingredients = maxMissingIngredients
         self.limit = limit
+        candidate_limit = candidateLimit
         candidate_offset = candidateOffset
     }
 }
