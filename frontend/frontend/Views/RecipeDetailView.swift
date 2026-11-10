@@ -81,6 +81,7 @@ public struct RecipeDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(ProvisionTheme.background, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
+        .scrollEdgeEffectStyle(.hard, for: .top)
         .refreshable { await viewModel.load() }
         .accessibilityIdentifier("recipe-detail-scroll")
         .task {
