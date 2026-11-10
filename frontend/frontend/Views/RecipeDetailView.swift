@@ -460,6 +460,7 @@ private struct RecipeIngredientRow: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .provisionCard(backgroundColor: ProvisionTheme.surfaceSecondary)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("recipe-ingredient-\(index)")
     }
 

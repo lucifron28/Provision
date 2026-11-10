@@ -116,7 +116,7 @@ final class CookWithPipUITests: XCTestCase {
         let milkAllergen = app.switches["pip-allergen-milk"]
         let milkSeverity = element("pip-allergen-severity-milk", in: app)
         let milkCrossContact = app.switches["pip-allergen-cross-contact-milk"]
-        scrollTargetIntoView(milkSeverity, inside: app.scrollViews.firstMatch)
+        scrollTo(milkSeverity, in: app)
         XCTAssertTrue(milkAllergen.waitForExistence(timeout: 5))
         XCTAssertTrue(milkSeverity.isHittable)
         XCTAssertTrue(milkCrossContact.isHittable)
@@ -127,7 +127,7 @@ final class CookWithPipUITests: XCTestCase {
         let savedMessage = element("pip-preferences-success", in: app)
         for _ in 0..<6 where !savedMessage.exists { app.swipeDown() }
         XCTAssertTrue(savedMessage.waitForExistence(timeout: 10))
-        scrollTargetIntoView(milkAllergen, inside: app.scrollViews.firstMatch)
+        scrollTo(milkAllergen, in: app)
         XCTAssertTrue(milkAllergen.isHittable)
         XCTAssertEqual(milkAllergen.value as? String, "1")
         XCTAssertEqual(milkCrossContact.value as? String, "1")
@@ -142,7 +142,7 @@ final class CookWithPipUITests: XCTestCase {
         capture("Product_Label_Review", app: app)
 
         let milkDeclaration = element("pip-label-allergen-milk", in: app)
-        scrollTargetIntoView(milkDeclaration, inside: app.scrollViews.firstMatch)
+        scrollTo(milkDeclaration, in: app)
         milkDeclaration.tap()
         let declaredOption = element("pip-label-disposition-declared", in: app)
         XCTAssertTrue(declaredOption.waitForExistence(timeout: 5))
@@ -156,7 +156,7 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(element("pip-label-save-review", in: app), in: app)
         element("pip-label-save-review", in: app).tap()
         let currentStatus = element("pip-label-current-status", in: app)
-        scrollTargetIntoView(currentStatus, inside: app.scrollViews.firstMatch)
+        scrollTo(currentStatus, in: app)
         XCTAssertTrue(currentStatus.waitForExistence(timeout: 10))
         XCTAssertTrue(currentStatus.label.contains("Current label review"))
         XCTAssertEqual(milkDeclaration.value as? String, "Declared on label")
@@ -176,7 +176,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(savePreferences.isHittable)
         let milkSeverity = element("pip-allergen-severity-milk", in: darkPreferences)
         let milkCrossContact = darkPreferences.switches["pip-allergen-cross-contact-milk"]
-        scrollTargetIntoView(milkCrossContact, inside: darkPreferences.scrollViews.firstMatch)
+        scrollTo(milkCrossContact, in: darkPreferences)
         XCTAssertTrue(milkSeverity.isHittable)
         XCTAssertTrue(milkCrossContact.isHittable)
         XCTAssertTrue(milkCrossContact.label.contains("Milk"))
@@ -203,11 +203,12 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(productTitle.waitForExistence(timeout: 10))
         XCTAssertTrue(productTitle.isHittable)
         let sourceField = element("pip-label-source-reference", in: largeLabel)
-        XCTAssertEqual(sourceField.label, "Source reference: package label, URL, or label section")
+        XCTAssertEqual(sourceField.label, "Source reference")
+        XCTAssertEqual(sourceField.placeholderValue, "Package label, URL, or label section")
         capture("Product_Label_Review_Large_Text", app: largeLabel)
 
         let milkDeclaration = element("pip-label-allergen-milk", in: largeLabel)
-        scrollTargetIntoView(milkDeclaration, inside: largeLabel.scrollViews.firstMatch)
+        scrollTo(milkDeclaration, in: largeLabel)
         XCTAssertTrue(milkDeclaration.isHittable)
         assertBelowNavigationBar(milkDeclaration, in: largeLabel)
         capture("Product_Label_Review_Scrolled", app: largeLabel)
@@ -224,7 +225,7 @@ final class CookWithPipUITests: XCTestCase {
         let milkDeclaration = element("pip-label-allergen-milk", in: app)
         XCTAssertEqual(milkDeclaration.value as? String, "Declared on label")
         let status = element("pip-label-current-status", in: app)
-        scrollTargetIntoView(status, inside: app.scrollViews.firstMatch)
+        scrollTo(status, in: app)
         XCTAssertTrue(status.waitForExistence(timeout: 10))
         XCTAssertTrue(status.label.contains("no longer current"))
         assertBelowNavigationBar(status, in: app)
@@ -268,10 +269,11 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(includeOptional, in: app)
         setSwitch(includeOptional, to: "1")
         let stalePreview = element("recipe-shopping-stale-preview", in: app)
-        XCTAssertTrue(stalePreview.exists)
+        XCTAssertTrue(stalePreview.waitForExistence(timeout: 5))
         let refreshPreview = app.buttons["recipe-shopping-refresh-preview"]
         scrollTo(refreshPreview, in: app)
         XCTAssertTrue(refreshPreview.exists)
+        XCTAssertTrue(refreshPreview.isHittable)
         refreshPreview.tap()
         let optionalIngredient = element("recipe-shopping-row-913", in: app)
         scrollTo(optionalIngredient, in: app)
@@ -319,7 +321,7 @@ final class CookWithPipUITests: XCTestCase {
         let largeApp = launch(dynamicType: "accessibility")
         openShoppingPreview(largeApp)
         let servings = element("recipe-shopping-servings", in: largeApp)
-        scrollTargetIntoView(servings, inside: largeApp.scrollViews.firstMatch)
+        scrollTo(servings, in: largeApp)
         XCTAssertTrue(servings.isHittable)
         assertBelowNavigationBar(servings, in: largeApp)
         let confirm = largeApp.buttons["recipe-shopping-confirm"]
@@ -327,7 +329,7 @@ final class CookWithPipUITests: XCTestCase {
         capture("Shopping_Preview_Large_Text", app: largeApp)
 
         let revisionDetails = element("recipe-shopping-revision-details", in: largeApp)
-        scrollTargetIntoView(revisionDetails, inside: largeApp.scrollViews.firstMatch)
+        scrollTo(revisionDetails, in: largeApp)
         XCTAssertTrue(revisionDetails.isHittable)
         revisionDetails.tap()
         XCTAssertTrue(element("recipe-shopping-list-revision", in: largeApp).waitForExistence(timeout: 5))
@@ -577,6 +579,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [myRecipesSelected], timeout: 5), .completed)
 
         let recipe = app.buttons["recipe-card-305"]
+        scrollTo(recipe, in: app)
         XCTAssertTrue(recipe.waitForExistence(timeout: 10))
         XCTAssertTrue(recipe.label.contains("Test Recipe: Ginataang Kangkong"))
         let recipeList = app.scrollViews["cook-with-pip-recipe-list-scroll"]
@@ -685,7 +688,8 @@ final class CookWithPipUITests: XCTestCase {
     private func setSwitch(_ toggle: XCUIElement, to value: String) {
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         if toggle.value as? String != value {
-            toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+            XCTAssertTrue(toggle.isHittable)
+            toggle.tap()
         }
         let expectedValue = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "value == %@", value), object: toggle

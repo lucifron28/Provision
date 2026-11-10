@@ -170,7 +170,6 @@ public struct ProductLabelReviewView: View {
                     LabeledContent("Search ingredients") {
                         TextField("Canonical or Filipino name", text: $viewModel.searchText)
                             .focused($focusedField, equals: .ingredientSearch)
-                            .accessibilityLabel("Search canonical or Filipino ingredient names")
                             .accessibilityIdentifier("pip-label-ingredient-search")
                     }
                     Button {
@@ -227,7 +226,6 @@ public struct ProductLabelReviewView: View {
                 LabeledContent("Custom allergens") {
                     TextField("Comma-separated", text: $viewModel.customAllergenText)
                         .focused($focusedField, equals: .customAllergens)
-                        .accessibilityLabel("Custom allergens")
                         .accessibilityIdentifier("pip-label-custom-allergens")
                 }
                 Toggle("Package composition is known", isOn: $viewModel.labelCompositionKnown)
@@ -235,7 +233,6 @@ public struct ProductLabelReviewView: View {
                     TextField("Package label, URL, or label section", text: $viewModel.sourceReference, axis: .vertical)
                         .lineLimit(2...4)
                         .focused($focusedField, equals: .sourceReference)
-                        .accessibilityLabel("Source reference: package label, URL, or label section")
                         .accessibilityIdentifier("pip-label-source-reference")
                 }
                 Text("This records what a household member read. It is not a certification that a product or recipe is safe.")
@@ -297,16 +294,19 @@ public struct ProductLabelReviewView: View {
             ? ProvisionTheme.provisionGreen
             : (disposition == "possible" ? ProvisionTheme.amberWarning : ProvisionTheme.textSecondary)
 
-        return Menu {
-            dispositionOption("Not listed", value: "none", selected: disposition == "none") {
-                viewModel.setAllergen(code, disposition: "none")
-            }
-            dispositionOption("Declared on label", value: "declared", selected: disposition == "declared") {
-                viewModel.setAllergen(code, disposition: "declared")
-            }
-            dispositionOption("May contain", value: "possible", selected: disposition == "possible") {
-                viewModel.setAllergen(code, disposition: "possible")
-            }
+        return Picker(selection: Binding(
+            get: { currentDisposition(for: code) },
+            set: { viewModel.setAllergen(code, disposition: $0) }
+        )) {
+            Text("Not listed")
+                .tag("none")
+                .accessibilityIdentifier("pip-label-disposition-none")
+            Text("Declared on label")
+                .tag("declared")
+                .accessibilityIdentifier("pip-label-disposition-declared")
+            Text("May contain")
+                .tag("possible")
+                .accessibilityIdentifier("pip-label-disposition-possible")
         } label: {
             LabeledContent {
                 HStack(spacing: 8) {
@@ -323,22 +323,10 @@ public struct ProductLabelReviewView: View {
             }
             .contentShape(Rectangle())
         }
-        .accessibilityElement(children: .ignore)
+        .pickerStyle(.menu)
         .accessibilityLabel("\(code.title) label declaration")
         .accessibilityValue(label)
         .accessibilityIdentifier("pip-label-allergen-\(code.rawValue)")
-    }
-
-    private func dispositionOption(_ title: String, value: String, selected: Bool,
-                                   action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            if selected {
-                Label(title, systemImage: "checkmark")
-            } else {
-                Text(title)
-            }
-        }
-        .accessibilityIdentifier("pip-label-disposition-\(value)")
     }
 
     private func dispositionTitle(_ value: String) -> String {

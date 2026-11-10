@@ -57,25 +57,21 @@ public struct CookWithPipPreferencesView: View {
                 LabeledContent("Preferred cuisines") {
                     TextField("Comma-separated", text: listBinding(\.preferred_cuisines))
                         .focused($focusedField, equals: .cuisines)
-                        .accessibilityLabel("Preferred cuisines")
                         .accessibilityIdentifier("pip-preferred-cuisines")
                 }
                 LabeledContent("Filipino regions") {
                     TextField("Comma-separated", text: listBinding(\.preferred_regions))
                         .focused($focusedField, equals: .regions)
-                        .accessibilityLabel("Filipino regions")
                         .accessibilityIdentifier("pip-preferred-regions")
                 }
                 LabeledContent("Dislikes") {
                     TextField("Comma-separated", text: listBinding(\.dislikes))
                         .focused($focusedField, equals: .dislikes)
-                        .accessibilityLabel("Dislikes")
                         .accessibilityIdentifier("pip-dislikes")
                 }
                 LabeledContent("Kitchen equipment") {
                     TextField("Comma-separated", text: listBinding(\.equipment))
                         .focused($focusedField, equals: .equipment)
-                        .accessibilityLabel("Kitchen equipment")
                         .accessibilityIdentifier("pip-equipment")
                 }
                 ForEach(dietPatterns, id: \.value) { item in
@@ -93,7 +89,6 @@ public struct CookWithPipPreferencesView: View {
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
                         .focused($focusedField, equals: .servings)
-                        .accessibilityLabel("Servings per meal, people")
                         .accessibilityIdentifier("pip-preferred-servings")
                         .onChange(of: servingsText) { _, value in
                             if let amount = decimal(value), amount > 0 { viewModel.preferences.servings = amount }
@@ -103,7 +98,6 @@ public struct CookWithPipPreferencesView: View {
                     TextField("Minutes", text: $cookMinutesText)
                         .keyboardType(.numberPad)
                         .focused($focusedField, equals: .cookMinutes)
-                        .accessibilityLabel("Maximum cooking time, minutes")
                         .accessibilityIdentifier("pip-max-cook-minutes")
                         .onChange(of: cookMinutesText) { _, value in
                             viewModel.preferences.max_cook_minutes = Int(value)
@@ -113,7 +107,6 @@ public struct CookWithPipPreferencesView: View {
                     TextField("PHP", text: $budgetText)
                         .keyboardType(.decimalPad)
                         .focused($focusedField, equals: .budget)
-                        .accessibilityLabel("Meal budget per person, Philippine pesos")
                         .accessibilityIdentifier("pip-meal-budget")
                         .onChange(of: budgetText) { _, value in
                             viewModel.preferences.meal_budget_php = value.isEmpty ? nil : decimal(value)
@@ -151,7 +144,6 @@ public struct CookWithPipPreferencesView: View {
                 LabeledContent("Custom allergies") {
                     TextField("Comma-separated", text: $customAllergyText)
                         .focused($focusedField, equals: .customAllergies)
-                        .accessibilityLabel("Custom allergies")
                         .accessibilityIdentifier("pip-custom-allergies")
                         .onChange(of: customAllergyText) { _, value in updateCustomAllergies(value) }
                 }
@@ -285,35 +277,12 @@ public struct CookWithPipPreferencesView: View {
     }
 
     private func severityMenu(title: String, selection: Binding<String>, identifier: String) -> some View {
-        Menu {
+        Picker(title, selection: selection) {
             ForEach(severityOptions, id: \.value) { option in
-                Button {
-                    selection.wrappedValue = option.value
-                } label: {
-                    if selection.wrappedValue == option.value {
-                        Label(option.title, systemImage: "checkmark")
-                    } else {
-                        Text(option.title)
-                    }
-                }
+                Text(option.title).tag(option.value)
             }
-        } label: {
-            LabeledContent {
-                HStack(spacing: 8) {
-                    Text(severityTitle(selection.wrappedValue))
-                        .fontWeight(.semibold)
-                        .foregroundStyle(selection.wrappedValue.isEmpty ? ProvisionTheme.textSecondary : ProvisionTheme.provisionGreen)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(ProvisionTheme.textSecondary)
-                }
-            } label: {
-                Text(title)
-                    .foregroundStyle(ProvisionTheme.textPrimary)
-            }
-            .contentShape(Rectangle())
         }
-        .accessibilityElement(children: .ignore)
+        .pickerStyle(.menu)
         .accessibilityLabel(title)
         .accessibilityValue(severityTitle(selection.wrappedValue))
         .accessibilityIdentifier(identifier)
