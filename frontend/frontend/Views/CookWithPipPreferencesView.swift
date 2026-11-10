@@ -54,24 +54,28 @@ public struct CookWithPipPreferencesView: View {
             }
 
             Section("Cooking preferences") {
-                LabeledContent("Preferred cuisines") {
+                labeledField("Preferred cuisines") {
                     TextField("Comma-separated", text: listBinding(\.preferred_cuisines))
                         .focused($focusedField, equals: .cuisines)
+                        .accessibilityLabel("Preferred cuisines")
                         .accessibilityIdentifier("pip-preferred-cuisines")
                 }
-                LabeledContent("Filipino regions") {
+                labeledField("Filipino regions") {
                     TextField("Comma-separated", text: listBinding(\.preferred_regions))
                         .focused($focusedField, equals: .regions)
+                        .accessibilityLabel("Filipino regions")
                         .accessibilityIdentifier("pip-preferred-regions")
                 }
-                LabeledContent("Dislikes") {
+                labeledField("Dislikes") {
                     TextField("Comma-separated", text: listBinding(\.dislikes))
                         .focused($focusedField, equals: .dislikes)
+                        .accessibilityLabel("Dislikes")
                         .accessibilityIdentifier("pip-dislikes")
                 }
-                LabeledContent("Kitchen equipment") {
+                labeledField("Kitchen equipment") {
                     TextField("Comma-separated", text: listBinding(\.equipment))
                         .focused($focusedField, equals: .equipment)
+                        .accessibilityLabel("Kitchen equipment")
                         .accessibilityIdentifier("pip-equipment")
                 }
                 ForEach(dietPatterns, id: \.value) { item in
@@ -84,29 +88,31 @@ public struct CookWithPipPreferencesView: View {
                     Text("Medium").tag("medium")
                     Text("Hot").tag("hot")
                 }
-                LabeledContent("Servings per meal (people)") {
+                labeledField("Servings per meal (people)") {
                     TextField("People", text: $servingsText)
                         .keyboardType(.decimalPad)
-                        .multilineTextAlignment(.trailing)
                         .focused($focusedField, equals: .servings)
+                        .accessibilityLabel("Servings per meal (people)")
                         .accessibilityIdentifier("pip-preferred-servings")
                         .onChange(of: servingsText) { _, value in
                             if let amount = decimal(value), amount > 0 { viewModel.preferences.servings = amount }
                         }
                 }
-                LabeledContent("Maximum cooking time (minutes)") {
+                labeledField("Maximum cooking time (minutes)") {
                     TextField("Minutes", text: $cookMinutesText)
                         .keyboardType(.numberPad)
                         .focused($focusedField, equals: .cookMinutes)
+                        .accessibilityLabel("Maximum cooking time (minutes)")
                         .accessibilityIdentifier("pip-max-cook-minutes")
                         .onChange(of: cookMinutesText) { _, value in
                             viewModel.preferences.max_cook_minutes = Int(value)
                         }
                 }
-                LabeledContent("Meal budget per person (PHP)") {
+                labeledField("Meal budget per person (PHP)") {
                     TextField("PHP", text: $budgetText)
                         .keyboardType(.decimalPad)
                         .focused($focusedField, equals: .budget)
+                        .accessibilityLabel("Meal budget per person (PHP)")
                         .accessibilityIdentifier("pip-meal-budget")
                         .onChange(of: budgetText) { _, value in
                             viewModel.preferences.meal_budget_php = value.isEmpty ? nil : decimal(value)
@@ -141,9 +147,10 @@ public struct CookWithPipPreferencesView: View {
                         }
                     }
                 }
-                LabeledContent("Custom allergies") {
+                labeledField("Custom allergies") {
                     TextField("Comma-separated", text: $customAllergyText)
                         .focused($focusedField, equals: .customAllergies)
+                        .accessibilityLabel("Custom allergies")
                         .accessibilityIdentifier("pip-custom-allergies")
                         .onChange(of: customAllergyText) { _, value in updateCustomAllergies(value) }
                 }
@@ -199,6 +206,22 @@ public struct CookWithPipPreferencesView: View {
         }
         .task { await reload() }
         .refreshable { await reload() }
+    }
+
+    private func labeledField<Field: View>(
+        _ title: String,
+        @ViewBuilder field: () -> Field
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(ProvisionTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            field()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 4)
     }
 
     private var dietPatterns: [(value: String, title: String)] {

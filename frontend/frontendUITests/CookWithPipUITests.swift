@@ -251,7 +251,8 @@ final class CookWithPipUITests: XCTestCase {
         let ingredient = element("recipe-ingredient-1", in: app)
         scrollTo(ingredient, in: app)
         XCTAssertTrue(ingredient.waitForExistence(timeout: 10))
-        XCTAssertTrue(ingredient.label.contains("calamansi"))
+        let ingredientName = element("recipe-ingredient-name-1", in: app)
+        XCTAssertTrue(ingredientName.label.contains("calamansi"))
         capture("Recipe_Detail_Substitution_Applied", app: app)
     }
 
@@ -572,17 +573,20 @@ final class CookWithPipUITests: XCTestCase {
         openCookWithPip(app)
         let myRecipes = app.buttons["cook-mode-myRecipes"]
         XCTAssertTrue(myRecipes.waitForExistence(timeout: 10))
+        scrollTo(myRecipes, in: app)
+        XCTAssertTrue(myRecipes.isHittable)
         myRecipes.tap()
         let myRecipesSelected = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "value == %@", "Selected"), object: myRecipes
         )
-        XCTAssertEqual(XCTWaiter.wait(for: [myRecipesSelected], timeout: 5), .completed)
+        XCTAssertEqual(XCTWaiter.wait(for: [myRecipesSelected], timeout: 10), .completed)
 
         let recipe = app.buttons["recipe-card-305"]
-        scrollTo(recipe, in: app)
+        let recipeList = app.scrollViews["cook-with-pip-recipe-list-scroll"]
+        XCTAssertTrue(recipeList.waitForExistence(timeout: 5))
+        for _ in 0..<12 where !recipe.exists { recipeList.swipeUp() }
         XCTAssertTrue(recipe.waitForExistence(timeout: 10))
         XCTAssertTrue(recipe.label.contains("Test Recipe: Ginataang Kangkong"))
-        let recipeList = app.scrollViews["cook-with-pip-recipe-list-scroll"]
         scrollTargetIntoView(recipe, inside: recipeList)
         recipe.tap()
         let recipeTitle = app.staticTexts["recipe-detail-title"]
@@ -667,12 +671,16 @@ final class CookWithPipUITests: XCTestCase {
             if scrollView.exists { scrollView.swipeDown() } else { app.swipeDown() }
         }
         XCTAssertTrue(target.exists, "Expected \(target.identifier) to appear after scrolling")
-        let safeTop = app.frame.minY + 120
-        let safeBottom = app.frame.maxY - 40
         for _ in 0..<8 {
             let frame = target.frame
             guard !frame.isNull, !frame.isInfinite, !frame.isEmpty,
                   frame.minY.isFinite, frame.maxY.isFinite else { break }
+            let navigationBar = app.navigationBars.firstMatch
+            let safeTop = navigationBar.exists ? navigationBar.frame.maxY + 44 : app.frame.minY + 120
+            let keyboard = app.keyboards.firstMatch
+            let tabBar = app.tabBars.firstMatch
+            let safeBottom = keyboard.exists ? keyboard.frame.minY - 8
+                : (tabBar.exists ? tabBar.frame.minY - 8 : app.frame.maxY - 40)
             if frame.midY >= safeTop && frame.midY <= safeBottom { return }
             if frame.midY < safeTop {
                 if scrollView.exists { scrollView.swipeDown() } else { app.swipeDown() }
@@ -681,6 +689,12 @@ final class CookWithPipUITests: XCTestCase {
             }
         }
         let frame = target.frame
+        let navigationBar = app.navigationBars.firstMatch
+        let safeTop = navigationBar.exists ? navigationBar.frame.maxY + 44 : app.frame.minY + 120
+        let keyboard = app.keyboards.firstMatch
+        let tabBar = app.tabBars.firstMatch
+        let safeBottom = keyboard.exists ? keyboard.frame.minY - 8
+            : (tabBar.exists ? tabBar.frame.minY - 8 : app.frame.maxY - 40)
         XCTAssertTrue(frame.midY >= safeTop && frame.midY <= safeBottom,
                       "Expected \(target.identifier) to be visible after scrolling")
     }
@@ -694,7 +708,8 @@ final class CookWithPipUITests: XCTestCase {
         let expectedValue = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "value == %@", value), object: toggle
         )
-        XCTAssertEqual(XCTWaiter.wait(for: [expectedValue], timeout: 5), .completed)
+        XCTAssertEqual(XCTWaiter.wait(for: [expectedValue], timeout: 5), .completed,
+                        "Expected \(toggle.identifier) to have value \(value); found \(String(describing: toggle.value))")
     }
 
     private func scrollTowardTopUntilVisible(_ target: XCUIElement, in app: XCUIApplication) {

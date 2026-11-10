@@ -229,12 +229,17 @@ public struct ProductLabelReviewView: View {
                         .accessibilityIdentifier("pip-label-custom-allergens")
                 }
                 Toggle("Package composition is known", isOn: $viewModel.labelCompositionKnown)
-                LabeledContent("Source reference") {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Source reference")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(ProvisionTheme.textPrimary)
                     TextField("Package label, URL, or label section", text: $viewModel.sourceReference, axis: .vertical)
                         .lineLimit(2...4)
                         .focused($focusedField, equals: .sourceReference)
+                        .accessibilityLabel("Source reference")
                         .accessibilityIdentifier("pip-label-source-reference")
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 Text("This records what a household member read. It is not a certification that a product or recipe is safe.")
                     .font(.footnote)
                     .foregroundStyle(ProvisionTheme.textSecondary)
@@ -308,22 +313,12 @@ public struct ProductLabelReviewView: View {
                 .tag("possible")
                 .accessibilityIdentifier("pip-label-disposition-possible")
         } label: {
-            LabeledContent {
-                HStack(spacing: 8) {
-                    Text(label)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(color)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(ProvisionTheme.textSecondary)
-                }
-            } label: {
-                Text(code.title)
-                    .foregroundStyle(ProvisionTheme.textPrimary)
-            }
-            .contentShape(Rectangle())
+            Text(code.title)
+                .foregroundStyle(ProvisionTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .pickerStyle(.menu)
+        .tint(color)
         .accessibilityLabel("\(code.title) label declaration")
         .accessibilityValue(label)
         .accessibilityIdentifier("pip-label-allergen-\(code.rawValue)")
