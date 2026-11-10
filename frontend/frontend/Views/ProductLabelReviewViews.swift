@@ -116,16 +116,6 @@ public struct ProductLabelReviewView: View {
                         .accessibilityIdentifier("pip-label-retry")
                 }
             }
-            if let status = viewModel.statusMessage {
-                Section {
-                    Text(status)
-                        .font(.subheadline)
-                        .foregroundStyle(ProvisionTheme.provisionGreen)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("pip-label-status-message")
-                }
-            }
-
             if let product = viewModel.product {
                 Section("Product") {
                     Text(product.name)
@@ -203,6 +193,9 @@ public struct ProductLabelReviewView: View {
                 }
                     .disabled(!viewModel.canSaveMapping || viewModel.isSaving || viewModel.isLoading)
                     .accessibilityIdentifier("pip-label-save-mapping")
+                if viewModel.statusContext == .ingredientMapping, let status = viewModel.statusMessage {
+                    statusMessageView(status)
+                }
             } header: {
                 Text("Ingredient mapping")
             } footer: {
@@ -256,6 +249,9 @@ public struct ProductLabelReviewView: View {
                 }
                     .disabled(!viewModel.canReviewLabel || viewModel.isSaving || viewModel.isLoading)
                     .accessibilityIdentifier("pip-label-save-review")
+                if viewModel.statusContext == .packageLabel, let status = viewModel.statusMessage {
+                    statusMessageView(status)
+                }
             } header: {
                 Text("Package label declaration")
             } footer: {
@@ -293,6 +289,14 @@ public struct ProductLabelReviewView: View {
                 else { viewModel.selectedIngredientIDs.remove(ingredientID) }
             }
         )
+    }
+
+    private func statusMessageView(_ message: String) -> some View {
+        Text(message)
+            .font(.subheadline)
+            .foregroundStyle(ProvisionTheme.provisionGreen)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("pip-label-status-message")
     }
 
     private func currentDisposition(for code: FoodAllergenCode) -> String {
