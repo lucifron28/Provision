@@ -146,6 +146,7 @@ public struct RecipeShoppingReviewView: View {
             } label: {
                 Text("Revision details")
             }
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("recipe-shopping-revision-details")
             .accessibilityValue(showingRevisionDetails ? "Expanded" : "Collapsed")
             .accessibilityHint(showingRevisionDetails ? "Hide revision details" : "Show revision details")
