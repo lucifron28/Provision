@@ -73,8 +73,9 @@ final class CookWithPipUITests: XCTestCase {
         element("recipe-card-302", in: app).tap()
         XCTAssertTrue(element("recipe-safety-status", in: app).waitForExistence(timeout: 10))
         XCTAssertEqual(element("recipe-availability-status", in: app).label, "Partial")
-        app.swipeUp()
-        XCTAssertTrue(element("recipe-ingredient-1", in: app).exists)
+        let partialIngredient = element("recipe-ingredient-1", in: app)
+        scrollTargetIntoView(partialIngredient, inside: app.scrollViews["recipe-detail-scroll"])
+        XCTAssertTrue(partialIngredient.isHittable)
         capture("Recipe_Detail_Partial_Missing", app: app)
 
         navigateBack(app)
@@ -82,7 +83,9 @@ final class CookWithPipUITests: XCTestCase {
         element("recipe-card-303", in: app).tap()
         XCTAssertEqual(element("recipe-safety-status", in: app).label, "Review required")
         XCTAssertEqual(element("recipe-availability-status", in: app).label, "Unknown")
-        app.swipeUp()
+        let unknownIngredient = element("recipe-ingredient-name-0", in: app)
+        scrollTargetIntoView(unknownIngredient, inside: app.scrollViews["recipe-detail-scroll"])
+        XCTAssertTrue(unknownIngredient.isHittable)
         capture("Recipe_Detail_Review_Unknown", app: app)
 
         navigateBack(app)
@@ -92,9 +95,12 @@ final class CookWithPipUITests: XCTestCase {
         longRecipe.tap()
         XCTAssertEqual(element("recipe-safety-status", in: app).label, "Blocked")
         XCTAssertEqual(element("recipe-availability-status", in: app).label, "Missing")
-        app.swipeUp()
+        let longIngredient = element("recipe-ingredient-name-0", in: app)
+        scrollTargetIntoView(longIngredient, inside: app.scrollViews["recipe-detail-scroll"])
+        XCTAssertTrue(longIngredient.label.contains("talong na hiniwa nang pahaba"))
         capture("Recipe_Detail_Blocked_Long_Filipino", app: app)
-        app.swipeUp()
+        let instructions = element("recipe-instructions", in: app)
+        scrollTargetIntoView(instructions, inside: app.scrollViews["recipe-detail-scroll"])
         capture("Recipe_Detail_Scrolled", app: app)
     }
 
@@ -105,19 +111,23 @@ final class CookWithPipUITests: XCTestCase {
         element("cook-with-pip-preferences-link", in: app).tap()
 
         XCTAssertTrue(element("pip-preferences-save", in: app).waitForExistence(timeout: 10))
+        let cuisines = element("pip-preferred-cuisines", in: app)
+        XCTAssertEqual(cuisines.label, "Preferred cuisines")
         let milkAllergen = app.switches["pip-allergen-milk"]
-        scrollTo(milkAllergen, in: app)
-        XCTAssertTrue(milkAllergen.waitForExistence(timeout: 5))
-        XCTAssertTrue(milkAllergen.isHittable)
-        XCTAssertEqual(milkAllergen.value as? String, "1")
+        let milkSeverity = element("pip-allergen-severity-milk", in: app)
         let milkCrossContact = app.switches["pip-allergen-cross-contact-milk"]
-        XCTAssertTrue(milkCrossContact.exists)
+        scrollTargetIntoView(milkSeverity, inside: app.scrollViews.firstMatch)
+        XCTAssertTrue(milkAllergen.waitForExistence(timeout: 5))
+        XCTAssertTrue(milkSeverity.isHittable)
+        XCTAssertTrue(milkCrossContact.isHittable)
+        XCTAssertEqual(milkAllergen.value as? String, "1")
+        XCTAssertEqual(milkSeverity.value as? String, "Severe")
         XCTAssertEqual(milkCrossContact.value as? String, "1")
         element("pip-preferences-save", in: app).tap()
         let savedMessage = element("pip-preferences-success", in: app)
         for _ in 0..<6 where !savedMessage.exists { app.swipeDown() }
         XCTAssertTrue(savedMessage.waitForExistence(timeout: 10))
-        scrollTo(milkAllergen, in: app)
+        scrollTargetIntoView(milkAllergen, inside: app.scrollViews.firstMatch)
         XCTAssertTrue(milkAllergen.isHittable)
         XCTAssertEqual(milkAllergen.value as? String, "1")
         XCTAssertEqual(milkCrossContact.value as? String, "1")
@@ -131,6 +141,14 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(element("pip-label-product-title", in: app).waitForExistence(timeout: 10))
         capture("Product_Label_Review", app: app)
 
+        let milkDeclaration = element("pip-label-allergen-milk", in: app)
+        scrollTargetIntoView(milkDeclaration, inside: app.scrollViews.firstMatch)
+        milkDeclaration.tap()
+        let declaredOption = element("pip-label-disposition-declared", in: app)
+        XCTAssertTrue(declaredOption.waitForExistence(timeout: 5))
+        declaredOption.tap()
+        XCTAssertEqual(milkDeclaration.value as? String, "Declared on label")
+
         let source = element("pip-label-source-reference", in: app)
         scrollTo(source, in: app)
         source.tap()
@@ -138,10 +156,61 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(element("pip-label-save-review", in: app), in: app)
         element("pip-label-save-review", in: app).tap()
         let currentStatus = element("pip-label-current-status", in: app)
-        scrollTowardTopUntilVisible(currentStatus, in: app)
+        scrollTargetIntoView(currentStatus, inside: app.scrollViews.firstMatch)
         XCTAssertTrue(currentStatus.waitForExistence(timeout: 10))
         XCTAssertTrue(currentStatus.label.contains("Current label review"))
+        XCTAssertEqual(milkDeclaration.value as? String, "Declared on label")
+        XCTAssertFalse(app.keyboards.firstMatch.isHittable, "Saving a label review dismisses the keyboard")
+        assertBelowNavigationBar(currentStatus, in: app)
+        capture("Product_Label_Saved_Keyboard_Dismissed", app: app)
         capture("Product_Label_Review_Current", app: app)
+    }
+
+    func testFormsStayReadableInDarkModeAndLargeText() {
+        let darkPreferences = launch(appearance: "dark")
+        openCookWithPip(darkPreferences)
+        element("cook-with-pip-management", in: darkPreferences).tap()
+        element("cook-with-pip-preferences-link", in: darkPreferences).tap()
+        let savePreferences = element("pip-preferences-save", in: darkPreferences)
+        XCTAssertTrue(savePreferences.waitForExistence(timeout: 10))
+        XCTAssertTrue(savePreferences.isHittable)
+        let milkSeverity = element("pip-allergen-severity-milk", in: darkPreferences)
+        let milkCrossContact = darkPreferences.switches["pip-allergen-cross-contact-milk"]
+        scrollTargetIntoView(milkCrossContact, inside: darkPreferences.scrollViews.firstMatch)
+        XCTAssertTrue(milkSeverity.isHittable)
+        XCTAssertTrue(milkCrossContact.isHittable)
+        XCTAssertTrue(milkCrossContact.label.contains("Milk"))
+        capture("Preferences_Allergy_Dark_Mode", app: darkPreferences)
+
+        darkPreferences.terminate()
+        let darkLabel = launch(appearance: "dark")
+        openCookWithPip(darkLabel)
+        element("cook-with-pip-management", in: darkLabel).tap()
+        element("cook-with-pip-product-labels-link", in: darkLabel).tap()
+        element("pip-label-product-9903", in: darkLabel).tap()
+        let darkProductTitle = element("pip-label-product-title", in: darkLabel)
+        XCTAssertTrue(darkProductTitle.waitForExistence(timeout: 10))
+        XCTAssertTrue(darkProductTitle.isHittable)
+        capture("Product_Label_Review_Dark_Mode", app: darkLabel)
+
+        darkLabel.terminate()
+        let largeLabel = launch(dynamicType: "accessibility")
+        openCookWithPip(largeLabel)
+        element("cook-with-pip-management", in: largeLabel).tap()
+        element("cook-with-pip-product-labels-link", in: largeLabel).tap()
+        element("pip-label-product-9903", in: largeLabel).tap()
+        let productTitle = element("pip-label-product-title", in: largeLabel)
+        XCTAssertTrue(productTitle.waitForExistence(timeout: 10))
+        XCTAssertTrue(productTitle.isHittable)
+        let sourceField = element("pip-label-source-reference", in: largeLabel)
+        XCTAssertEqual(sourceField.label, "Source reference: package label, URL, or label section")
+        capture("Product_Label_Review_Large_Text", app: largeLabel)
+
+        let milkDeclaration = element("pip-label-allergen-milk", in: largeLabel)
+        scrollTargetIntoView(milkDeclaration, inside: largeLabel.scrollViews.firstMatch)
+        XCTAssertTrue(milkDeclaration.isHittable)
+        assertBelowNavigationBar(milkDeclaration, in: largeLabel)
+        capture("Product_Label_Review_Scrolled", app: largeLabel)
     }
 
     func testStaleProductLabelReviewIsShownAsStale() {
@@ -152,10 +221,13 @@ final class CookWithPipUITests: XCTestCase {
         element("pip-label-product-9903", in: app).tap()
 
         XCTAssertTrue(element("pip-label-product-title", in: app).waitForExistence(timeout: 10))
+        let milkDeclaration = element("pip-label-allergen-milk", in: app)
+        XCTAssertEqual(milkDeclaration.value as? String, "Declared on label")
         let status = element("pip-label-current-status", in: app)
-        scrollTo(status, in: app)
+        scrollTargetIntoView(status, inside: app.scrollViews.firstMatch)
         XCTAssertTrue(status.waitForExistence(timeout: 10))
         XCTAssertTrue(status.label.contains("no longer current"))
+        assertBelowNavigationBar(status, in: app)
         capture("Product_Label_Review_Stale", app: app)
     }
 
@@ -232,6 +304,34 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["kangkong"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["gata"].exists)
         capture("Shopping_List_Updated", app: app)
+    }
+
+    func testShoppingPreviewDarkAndLargeTextStates() {
+        let darkApp = launch(appearance: "dark")
+        openShoppingPreview(darkApp)
+        let darkStatus = element("recipe-shopping-safety-status", in: darkApp)
+        let darkConfirm = darkApp.buttons["recipe-shopping-confirm"]
+        XCTAssertTrue(darkStatus.isHittable)
+        XCTAssertTrue(darkConfirm.isHittable)
+        capture("Shopping_Preview_Dark_Mode", app: darkApp)
+
+        darkApp.terminate()
+        let largeApp = launch(dynamicType: "accessibility")
+        openShoppingPreview(largeApp)
+        let servings = element("recipe-shopping-servings", in: largeApp)
+        scrollTargetIntoView(servings, inside: largeApp.scrollViews.firstMatch)
+        XCTAssertTrue(servings.isHittable)
+        assertBelowNavigationBar(servings, in: largeApp)
+        let confirm = largeApp.buttons["recipe-shopping-confirm"]
+        XCTAssertTrue(confirm.isHittable, "The confirmation action stays reachable at accessibility text sizes")
+        capture("Shopping_Preview_Large_Text", app: largeApp)
+
+        let revisionDetails = element("recipe-shopping-revision-details", in: largeApp)
+        scrollTargetIntoView(revisionDetails, inside: largeApp.scrollViews.firstMatch)
+        XCTAssertTrue(revisionDetails.isHittable)
+        revisionDetails.tap()
+        XCTAssertTrue(element("recipe-shopping-list-revision", in: largeApp).waitForExistence(timeout: 5))
+        XCTAssertTrue(element("recipe-shopping-pantry-revision", in: largeApp).exists)
     }
 
     func testShoppingReviewRequiredAndBlockedStates() {
@@ -376,6 +476,12 @@ final class CookWithPipUITests: XCTestCase {
         longRecipe.tap()
         XCTAssertTrue(element("recipe-detail-title", in: largeApp).exists)
         capture("Recipe_Detail_Large_Text_Filipino", app: largeApp)
+        let longIngredient = element("recipe-ingredient-name-0", in: largeApp)
+        scrollTargetIntoView(longIngredient, inside: largeApp.scrollViews["recipe-detail-scroll"])
+        XCTAssertTrue(longIngredient.isHittable)
+        XCTAssertTrue(longIngredient.label.contains("talong na hiniwa nang pahaba"))
+        assertBelowNavigationBar(longIngredient, in: largeApp)
+        capture("Recipe_Ingredient_Long_Filipino", app: largeApp)
 
         largeApp.terminate()
         let searchApp = launch()
@@ -387,6 +493,9 @@ final class CookWithPipUITests: XCTestCase {
         let keyboard = searchApp.keyboards.firstMatch
         XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
         XCTAssertLessThan(search.frame.maxY, keyboard.frame.minY)
+        let keyboardDone = element("cook-with-pip-search-keyboard-done", in: searchApp)
+        XCTAssertTrue(keyboardDone.waitForExistence(timeout: 5))
+        XCTAssertTrue(keyboardDone.isHittable)
         capture("Cook_with_Pip_Search_Keyboard", app: searchApp)
         search.typeText("Laing")
         let matchingRecipe = element("recipe-card-302", in: searchApp)
@@ -394,7 +503,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(matchingRecipe.frame.minY, search.frame.maxY)
         let recipeScrollView = searchApp.scrollViews.firstMatch
         XCTAssertTrue(recipeScrollView.exists)
-        search.typeText("\n")
+        keyboardDone.tap()
         let keyboardDismissed = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "isHittable == false"),
             object: keyboard
@@ -536,6 +645,14 @@ final class CookWithPipUITests: XCTestCase {
         let back = app.navigationBars.buttons.firstMatch
         XCTAssertTrue(back.waitForExistence(timeout: 5))
         back.tap()
+    }
+
+    private func assertBelowNavigationBar(_ target: XCUIElement, in app: XCUIApplication) {
+        let navigationBar = app.navigationBars.firstMatch
+        XCTAssertTrue(navigationBar.waitForExistence(timeout: 5))
+        XCTAssertTrue(target.isHittable, "Expected \(target.identifier) to be visible and interactable")
+        XCTAssertGreaterThanOrEqual(target.frame.minY, navigationBar.frame.maxY - 1,
+                                    "Expected \(target.identifier) to clear the navigation bar")
     }
 
     private func scrollTo(_ target: XCUIElement, in app: XCUIApplication) {

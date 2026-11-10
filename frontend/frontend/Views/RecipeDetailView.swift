@@ -77,7 +77,7 @@ public struct RecipeDetailView: View {
             .padding(.bottom, 28)
         }
         .background(ProvisionTheme.background.ignoresSafeArea())
-        .navigationTitle(viewModel.recipe?.title ?? "Recipe")
+        .navigationTitle("Recipe")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(ProvisionTheme.background, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
@@ -98,6 +98,8 @@ public struct RecipeDetailView: View {
 }
 
 private struct RecipeDetailContents: View {
+    @ScaledMetric(relativeTo: .subheadline) private var instructionNumberSize: CGFloat = 28
+
     let recipe: HouseholdRecipe
     let scope: HouseholdScope
     let evaluation: RecipeEvaluation
@@ -211,7 +213,7 @@ private struct RecipeDetailContents: View {
     private var titleSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(recipe.title)
-                .font(ProvisionTypography.heroSerif)
+                .font(ProvisionTypography.titleSerif)
                 .foregroundStyle(ProvisionTheme.provisionGreen)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("recipe-detail-title")
@@ -224,9 +226,15 @@ private struct RecipeDetailContents: View {
             Text("\(recipe.cuisine) · \(regionText)")
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(ProvisionTheme.textSecondary)
-            HStack(spacing: 12) {
-                metadataLabel("Prep \(recipe.prep_minutes) min", symbol: "clock")
-                metadataLabel("Cook \(recipe.cook_minutes) min", symbol: "flame")
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    metadataLabel("Prep \(recipe.prep_minutes) min", symbol: "clock")
+                    metadataLabel("Cook \(recipe.cook_minutes) min", symbol: "flame")
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    metadataLabel("Prep \(recipe.prep_minutes) min", symbol: "clock")
+                    metadataLabel("Cook \(recipe.cook_minutes) min", symbol: "flame")
+                }
             }
             .font(.footnote)
             .foregroundStyle(ProvisionTheme.textSecondary)
@@ -366,7 +374,7 @@ private struct RecipeDetailContents: View {
                     Text("\(step.offset + 1)")
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(ProvisionTheme.onAccent)
-                        .frame(width: 28, height: 28)
+                        .frame(width: instructionNumberSize, height: instructionNumberSize)
                         .background(ProvisionTheme.provisionGreen)
                         .clipShape(Circle())
                         .accessibilityHidden(true)
@@ -391,8 +399,7 @@ private struct RecipeDetailContents: View {
 
     private func metadataLabel(_ title: String, symbol: String) -> some View {
         Label(title, systemImage: symbol)
-            .lineLimit(1)
-            .minimumScaleFactor(0.8)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -409,6 +416,7 @@ private struct RecipeIngredientRow: View {
                 .font(.headline)
                 .foregroundStyle(ProvisionTheme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("recipe-ingredient-name-\(index)")
             Text(substitution.map { "Selected amount: \(QuantityText.string($0.amount)) \($0.unit)" }
                  ?? "Recipe amount: \(QuantityText.string(ingredient.amount)) \(ingredient.unit)")
                 .font(.subheadline)

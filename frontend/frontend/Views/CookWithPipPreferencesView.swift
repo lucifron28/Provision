@@ -1,12 +1,24 @@
 import SwiftUI
 
 public struct CookWithPipPreferencesView: View {
+    private enum InputField: Hashable {
+        case cuisines
+        case regions
+        case dislikes
+        case equipment
+        case servings
+        case cookMinutes
+        case budget
+        case customAllergies
+    }
+
     @StateObject private var viewModel: CookWithPipPreferencesViewModel
     private let onProfileUpdated: () async -> Void
     @State private var servingsText = "2"
     @State private var cookMinutesText = ""
     @State private var budgetText = ""
     @State private var customAllergyText = ""
+    @FocusState private var focusedField: InputField?
 
     public init(scope: HouseholdScope, service: any CookWithPipWorkflowService = APIClient.shared,
                 onProfileUpdated: @escaping () async -> Void = {}) {
@@ -42,14 +54,30 @@ public struct CookWithPipPreferencesView: View {
             }
 
             Section("Cooking preferences") {
-                TextField("Cuisines, separated by commas", text: listBinding(\.preferred_cuisines))
-                    .accessibilityIdentifier("pip-preferred-cuisines")
-                TextField("Filipino regions, separated by commas", text: listBinding(\.preferred_regions))
-                    .accessibilityIdentifier("pip-preferred-regions")
-                TextField("Dislikes, separated by commas", text: listBinding(\.dislikes))
-                    .accessibilityIdentifier("pip-dislikes")
-                TextField("Kitchen equipment, separated by commas", text: listBinding(\.equipment))
-                    .accessibilityIdentifier("pip-equipment")
+                LabeledContent("Preferred cuisines") {
+                    TextField("Comma-separated", text: listBinding(\.preferred_cuisines))
+                        .focused($focusedField, equals: .cuisines)
+                        .accessibilityLabel("Preferred cuisines")
+                        .accessibilityIdentifier("pip-preferred-cuisines")
+                }
+                LabeledContent("Filipino regions") {
+                    TextField("Comma-separated", text: listBinding(\.preferred_regions))
+                        .focused($focusedField, equals: .regions)
+                        .accessibilityLabel("Filipino regions")
+                        .accessibilityIdentifier("pip-preferred-regions")
+                }
+                LabeledContent("Dislikes") {
+                    TextField("Comma-separated", text: listBinding(\.dislikes))
+                        .focused($focusedField, equals: .dislikes)
+                        .accessibilityLabel("Dislikes")
+                        .accessibilityIdentifier("pip-dislikes")
+                }
+                LabeledContent("Kitchen equipment") {
+                    TextField("Comma-separated", text: listBinding(\.equipment))
+                        .focused($focusedField, equals: .equipment)
+                        .accessibilityLabel("Kitchen equipment")
+                        .accessibilityIdentifier("pip-equipment")
+                }
                 ForEach(dietPatterns, id: \.value) { item in
                     Toggle(item.title, isOn: dietBinding(item.value))
                         .accessibilityIdentifier("pip-diet-\(item.value)")
@@ -61,26 +89,36 @@ public struct CookWithPipPreferencesView: View {
                     Text("Hot").tag("hot")
                 }
                 LabeledContent("Servings per meal (people)") {
-                    TextField("Number of people", text: $servingsText)
+                    TextField("People", text: $servingsText)
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
+                        .focused($focusedField, equals: .servings)
+                        .accessibilityLabel("Servings per meal, people")
                         .accessibilityIdentifier("pip-preferred-servings")
                         .onChange(of: servingsText) { _, value in
                             if let amount = decimal(value), amount > 0 { viewModel.preferences.servings = amount }
                         }
                 }
-                TextField("Maximum cooking minutes", text: $cookMinutesText)
-                    .keyboardType(.numberPad)
-                    .accessibilityIdentifier("pip-max-cook-minutes")
-                    .onChange(of: cookMinutesText) { _, value in
-                        viewModel.preferences.max_cook_minutes = Int(value)
-                    }
-                TextField("Meal budget per person (PHP)", text: $budgetText)
-                    .keyboardType(.decimalPad)
-                    .accessibilityIdentifier("pip-meal-budget")
-                    .onChange(of: budgetText) { _, value in
-                        viewModel.preferences.meal_budget_php = value.isEmpty ? nil : decimal(value)
-                    }
+                LabeledContent("Maximum cooking time (minutes)") {
+                    TextField("Minutes", text: $cookMinutesText)
+                        .keyboardType(.numberPad)
+                        .focused($focusedField, equals: .cookMinutes)
+                        .accessibilityLabel("Maximum cooking time, minutes")
+                        .accessibilityIdentifier("pip-max-cook-minutes")
+                        .onChange(of: cookMinutesText) { _, value in
+                            viewModel.preferences.max_cook_minutes = Int(value)
+                        }
+                }
+                LabeledContent("Meal budget per person (PHP)") {
+                    TextField("PHP", text: $budgetText)
+                        .keyboardType(.decimalPad)
+                        .focused($focusedField, equals: .budget)
+                        .accessibilityLabel("Meal budget per person, Philippine pesos")
+                        .accessibilityIdentifier("pip-meal-budget")
+                        .onChange(of: budgetText) { _, value in
+                            viewModel.preferences.meal_budget_php = value.isEmpty ? nil : decimal(value)
+                        }
+                }
                 Picker("Recipe language", selection: $viewModel.preferences.preferred_language) {
                     Text("English").tag("en")
                     Text("Filipino").tag("fil")
@@ -95,35 +133,39 @@ public struct CookWithPipPreferencesView: View {
                 }
                 .accessibilityIdentifier("pip-allergy-status")
                 ForEach(FoodAllergenCode.allCases) { code in
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 12) {
                         Toggle(code.title, isOn: allergyBinding(code))
                             .accessibilityIdentifier("pip-allergen-\(code.rawValue)")
                         if hasAllergy(code) {
-                            Picker("\(code.title) severity", selection: allergySeverityBinding(code)) {
-                                Text("Not specified").tag("")
-                                Text("Mild").tag("mild")
-                                Text("Moderate").tag("moderate")
-                                Text("Severe").tag("severe")
-                            }
-                            .accessibilityIdentifier("pip-allergen-severity-\(code.rawValue)")
-                            Toggle("Cross-contact concern for \(code.title)", isOn: allergyCrossContactBinding(code))
+                            severityMenu(
+                                title: "\(code.title) severity",
+                                selection: allergySeverityBinding(code),
+                                identifier: "pip-allergen-severity-\(code.rawValue)"
+                            )
+                            Toggle("Cross-contact concern", isOn: allergyCrossContactBinding(code))
+                                .accessibilityLabel("Cross-contact concern for \(code.title)")
                                 .accessibilityIdentifier("pip-allergen-cross-contact-\(code.rawValue)")
                         }
                     }
                 }
-                TextField("Custom allergens, separated by commas", text: $customAllergyText)
-                    .accessibilityIdentifier("pip-custom-allergies")
-                    .onChange(of: customAllergyText) { _, value in updateCustomAllergies(value) }
+                LabeledContent("Custom allergies") {
+                    TextField("Comma-separated", text: $customAllergyText)
+                        .focused($focusedField, equals: .customAllergies)
+                        .accessibilityLabel("Custom allergies")
+                        .accessibilityIdentifier("pip-custom-allergies")
+                        .onChange(of: customAllergyText) { _, value in updateCustomAllergies(value) }
+                }
                 ForEach(viewModel.allergies.compactMap(\.custom_text), id: \.self) { custom in
-                    Picker("\(custom) severity", selection: customSeverityBinding(custom)) {
-                        Text("Not specified").tag("")
-                        Text("Mild").tag("mild")
-                        Text("Moderate").tag("moderate")
-                        Text("Severe").tag("severe")
+                    VStack(alignment: .leading, spacing: 12) {
+                        severityMenu(
+                            title: "\(custom) severity",
+                            selection: customSeverityBinding(custom),
+                            identifier: "pip-custom-allergen-severity"
+                        )
+                        Toggle("Cross-contact concern", isOn: customCrossContactBinding(custom))
+                            .accessibilityLabel("Cross-contact concern for \(custom)")
+                            .accessibilityIdentifier("pip-custom-allergen-cross-contact")
                     }
-                    .accessibilityIdentifier("pip-custom-allergen-severity")
-                    Toggle("Cross-contact concern for \(custom)", isOn: customCrossContactBinding(custom))
-                        .accessibilityIdentifier("pip-custom-allergen-cross-contact")
                 }
             } header: {
                 Text("Allergies")
@@ -143,6 +185,7 @@ public struct CookWithPipPreferencesView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(ProvisionTheme.background, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
+        .scrollDismissesKeyboard(.interactively)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -153,6 +196,13 @@ public struct CookWithPipPreferencesView: View {
                 }
                 .disabled(viewModel.isSaving || viewModel.isLoading || !viewModel.hasLoaded || !viewModel.canSave || !numericFieldsAreValid)
                 .accessibilityIdentifier("pip-preferences-save")
+            }
+            ToolbarItemGroup(placement: .keyboard) {
+                if focusedField != nil {
+                    Spacer()
+                    Button("Done") { focusedField = nil }
+                        .accessibilityIdentifier("pip-preferences-keyboard-done")
+                }
             }
         }
         .task { await reload() }
@@ -234,6 +284,49 @@ public struct CookWithPipPreferencesView: View {
         )
     }
 
+    private func severityMenu(title: String, selection: Binding<String>, identifier: String) -> some View {
+        Menu {
+            ForEach(severityOptions, id: \.value) { option in
+                Button {
+                    selection.wrappedValue = option.value
+                } label: {
+                    if selection.wrappedValue == option.value {
+                        Label(option.title, systemImage: "checkmark")
+                    } else {
+                        Text(option.title)
+                    }
+                }
+            }
+        } label: {
+            LabeledContent {
+                HStack(spacing: 8) {
+                    Text(severityTitle(selection.wrappedValue))
+                        .fontWeight(.semibold)
+                        .foregroundStyle(selection.wrappedValue.isEmpty ? ProvisionTheme.textSecondary : ProvisionTheme.provisionGreen)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                }
+            } label: {
+                Text(title)
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+            }
+            .contentShape(Rectangle())
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(severityTitle(selection.wrappedValue))
+        .accessibilityIdentifier(identifier)
+    }
+
+    private var severityOptions: [(title: String, value: String)] {
+        [("Not specified", ""), ("Mild", "mild"), ("Moderate", "moderate"), ("Severe", "severe")]
+    }
+
+    private func severityTitle(_ value: String) -> String {
+        severityOptions.first(where: { $0.value == value })?.title ?? "Not specified"
+    }
+
     private func customCrossContactBinding(_ custom: String) -> Binding<Bool> {
         Binding(
             get: { viewModel.allergies.first(where: { $0.custom_text == custom })?.cross_contact_concern ?? false },
@@ -266,8 +359,11 @@ public struct CookWithPipPreferencesView: View {
     private func saveProfile() async {
         let previousRevision = viewModel.profile?.revision
         await viewModel.save()
-        if viewModel.successMessage != nil, viewModel.profile?.revision != previousRevision {
-            await onProfileUpdated()
+        if viewModel.successMessage != nil {
+            focusedField = nil
+            if viewModel.profile?.revision != previousRevision {
+                await onProfileUpdated()
+            }
         }
     }
 

@@ -130,8 +130,13 @@ public struct RecipeShoppingReviewView: View {
                     .foregroundStyle(ProvisionTheme.amberWarning)
                     .accessibilityIdentifier("recipe-shopping-stale-preview")
             }
-            LabeledContent("Shopping-list revision", value: String(preview.shopping_revision))
-            LabeledContent("Pantry revision", value: String(preview.inventory_revision))
+            DisclosureGroup("Revision details") {
+                LabeledContent("Shopping list", value: String(preview.shopping_revision))
+                    .accessibilityIdentifier("recipe-shopping-list-revision")
+                LabeledContent("Pantry", value: String(preview.inventory_revision))
+                    .accessibilityIdentifier("recipe-shopping-pantry-revision")
+            }
+            .accessibilityIdentifier("recipe-shopping-revision-details")
             if let expirationDate = viewModel.expirationDate {
                 LabeledContent("Preview expires", value: expirationDate.formatted(date: .abbreviated, time: .shortened))
                     .accessibilityIdentifier("recipe-shopping-expiration-value")
@@ -257,21 +262,50 @@ public struct RecipeShoppingReviewView: View {
     @ViewBuilder
     private func quantitySummary(_ line: RecipeShoppingLine) -> some View {
         let unit = line.unit ?? "unit not specified"
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Quantity breakdown")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(ProvisionTheme.textPrimary)
             quantityLine("Required", line.required_quantity, unit)
             quantityLine("Counted on hand", line.pantry_quantity, unit)
             quantityLine("Short", line.shortage, unit)
             quantityLine("Already on shopping list", line.pending_quantity, unit)
             quantityLine("Additional needed", line.additional_quantity, unit)
         }
-        .font(.footnote)
-        .foregroundStyle(ProvisionTheme.textSecondary)
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(ProvisionTheme.surfaceSecondary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     @ViewBuilder
     private func quantityLine(_ label: String, _ quantity: ExactQuantity?, _ unit: String) -> some View {
         if let quantity {
-            Text("\(label): \(NSDecimalNumber(decimal: quantity.value).stringValue) \(unit)")
+            let value = "\(NSDecimalNumber(decimal: quantity.value).stringValue) \(unit)"
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(label)
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Text(value)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(ProvisionTheme.textPrimary)
+                        .multilineTextAlignment(.trailing)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(label)
+                        .font(.subheadline)
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                    Text(value)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(ProvisionTheme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .font(.subheadline)
+            .padding(.vertical, 3)
+            .accessibilityElement(children: .combine)
         }
     }
 
@@ -304,7 +338,7 @@ public struct RecipeShoppingReviewView: View {
                 Text("\(entry.element.name): \(NSDecimalNumber(decimal: entry.element.targetQuantity.value).stringValue) \(entry.element.unit ?? "unit not specified")")
                     .accessibilityIdentifier("recipe-shopping-pending-line-\(entry.offset)")
             }
-            Text("Retry sends the exact saved request and idempotency key. Do not edit it while the outcome is unknown.")
+            Text("Retry reuses this exact request and key. Keep it unchanged while the result is unknown.")
                 .font(.footnote)
                 .foregroundStyle(ProvisionTheme.textSecondary)
             Button {
