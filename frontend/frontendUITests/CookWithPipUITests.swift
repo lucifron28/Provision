@@ -186,6 +186,10 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(currentStatus.label.contains("Current label review"))
         XCTAssertEqual(milkDeclaration.value as? String, "Declared on label")
         XCTAssertFalse(app.keyboards.firstMatch.isHittable, "Saving a label review dismisses the keyboard")
+        dragScrollContentDown(app.scrollViews.firstMatch, by: 0.045)
+        let mappingHeader = element("pip-label-mapping-header", in: app)
+        XCTAssertTrue(mappingHeader.isHittable, "The saved-state capture must not cut off the section heading")
+        assertBelowNavigationBar(mappingHeader, in: app)
         assertBelowNavigationBar(currentStatus, in: app)
         capture("Product_Label_Saved_Keyboard_Dismissed", app: app)
         capture("Product_Label_Review_Current", app: app)
@@ -710,6 +714,16 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(target.isHittable, "Expected \(target.identifier) to be visible and interactable")
         XCTAssertGreaterThanOrEqual(target.frame.minY, navigationBar.frame.maxY - 1,
                                     "Expected \(target.identifier) to clear the navigation bar")
+    }
+
+    private func dragScrollContentDown(_ scrollView: XCUIElement, by fraction: CGFloat) {
+        guard scrollView.exists else {
+            XCTFail("Expected a scroll view for the product label form")
+            return
+        }
+        let start = scrollView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25))
+        let end = scrollView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25 + fraction))
+        start.press(forDuration: 0.1, thenDragTo: end)
     }
 
     private func scrollTo(_ target: XCUIElement, in app: XCUIApplication) {

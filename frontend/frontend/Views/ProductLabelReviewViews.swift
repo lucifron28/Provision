@@ -198,6 +198,7 @@ public struct ProductLabelReviewView: View {
                 }
             } header: {
                 Text("Ingredient mapping")
+                    .accessibilityIdentifier("pip-label-mapping-header")
             } footer: {
                 Text("A verified, complete mapping is required before a package label review can be recorded.")
             }
