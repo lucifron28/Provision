@@ -548,9 +548,9 @@ final class CookWithPipUITests: XCTestCase {
         let keyboardDone = element("cook-with-pip-search-keyboard-done", in: searchApp)
         XCTAssertTrue(keyboardDone.waitForExistence(timeout: 5))
         XCTAssertTrue(keyboardDone.isHittable)
-        let myRecipesMode = searchApp.buttons["cook-mode-myRecipes"]
-        XCTAssertTrue(myRecipesMode.waitForExistence(timeout: 5))
-        XCTAssertFalse(keyboardDone.frame.intersects(myRecipesMode.frame),
+        let searchMyRecipesMode = searchApp.buttons["cook-mode-myRecipes"]
+        XCTAssertTrue(searchMyRecipesMode.waitForExistence(timeout: 5))
+        XCTAssertFalse(keyboardDone.frame.intersects(searchMyRecipesMode.frame),
                        "The search Done action must not cover the My Recipes filter")
         capture("Cook_with_Pip_Search_Keyboard", app: searchApp)
         search.typeText("Laing")
