@@ -292,7 +292,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(confirm.waitForExistence(timeout: 10))
         XCTAssertTrue(confirm.isHittable, "The shopping confirmation action stays in the navigation toolbar")
         confirm.tap()
-        let confirmAction = app.buttons["recipe-shopping-confirm-action"]
+        let confirmAction = element("recipe-shopping-confirm-action", in: app)
         XCTAssertTrue(confirmAction.waitForExistence(timeout: 10))
         confirmAction.tap()
 
