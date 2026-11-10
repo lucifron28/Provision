@@ -49,7 +49,7 @@ nonisolated public enum APIError: LocalizedError, Sendable {
         case .sessionChanged:
             return "The account or household changed. Please try again."
         case .networkError(let error):
-            return "Network connection failed: \(error.localizedDescription)"
+            return "Network connection failed: \(Self.networkFailureDescription(error))"
         case .unauthorized:
             return "Authentication required or token expired."
         case .http(let status, _, let retryAfter):
@@ -67,6 +67,22 @@ nonisolated public enum APIError: LocalizedError, Sendable {
             return "Failed to parse server response: \(error.localizedDescription)"
         case .serverMessage(let msg):
             return msg
+        }
+    }
+
+    private static func networkFailureDescription(_ error: Error) -> String {
+        guard let urlError = error as? URLError else {
+            return "Please check your connection and try again."
+        }
+        switch urlError.code {
+        case .notConnectedToInternet:
+            return "You appear to be offline. Check your internet connection and try again."
+        case .timedOut:
+            return "The request timed out. Please try again."
+        case .cannotFindHost, .cannotConnectToHost, .networkConnectionLost, .dnsLookupFailed:
+            return "The server could not be reached. Check your connection and try again."
+        default:
+            return "Please check your connection and try again."
         }
     }
 }
