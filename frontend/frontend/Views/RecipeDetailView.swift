@@ -79,6 +79,8 @@ public struct RecipeDetailView: View {
         .background(ProvisionTheme.background.ignoresSafeArea())
         .navigationTitle(viewModel.recipe?.title ?? "Recipe")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(ProvisionTheme.background, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .refreshable { await viewModel.load() }
         .task {
             if !viewModel.hasLoadedOnce { await viewModel.load() }
@@ -224,10 +226,12 @@ private struct RecipeDetailContents: View {
             HStack(spacing: 12) {
                 metadataLabel("Prep \(recipe.prep_minutes) min", symbol: "clock")
                 metadataLabel("Cook \(recipe.cook_minutes) min", symbol: "flame")
-                metadataLabel("Serves \(QuantityText.string(recipe.servings))", symbol: "person.2")
             }
             .font(.footnote)
             .foregroundStyle(ProvisionTheme.textSecondary)
+            Label("Servings: \(QuantityText.string(recipe.servings)) people", systemImage: "person.2")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(ProvisionTheme.textSecondary)
             Text("Stored household recipe")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(ProvisionTheme.provisionGreen)
@@ -242,11 +246,21 @@ private struct RecipeDetailContents: View {
             Text("Current server evaluation")
                 .font(ProvisionTypography.sectionSerif)
                 .foregroundStyle(ProvisionTheme.textPrimary)
-            HStack(spacing: 10) {
-                StatusPill(presentation: .safety(evaluation.result.decision))
-                    .accessibilityIdentifier("recipe-safety-status")
-                StatusPill(presentation: .availability(evaluation.result.availability.overall_status))
-                    .accessibilityIdentifier("recipe-availability-status")
+            VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Food safety")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                    StatusPill(presentation: .safety(evaluation.result.decision))
+                        .accessibilityIdentifier("recipe-safety-status")
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Pantry availability")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                    StatusPill(presentation: .availability(evaluation.result.availability.overall_status))
+                        .accessibilityIdentifier("recipe-availability-status")
+                }
             }
             Text(evaluation.result.notice)
                 .font(.subheadline)
@@ -403,25 +417,35 @@ private struct RecipeIngredientRow: View {
                     .font(.footnote)
                     .foregroundStyle(ProvisionTheme.textSecondary)
             }
-            if let availability {
-                StatusPill(presentation: .availability(availability.status))
-                availabilityQuantities(availability)
-                if !availability.unknown_reasons.isEmpty {
-                    reasonList(availability.unknown_reasons, title: "Quantity uncertainty")
-                }
-            } else {
-                StatusPill(presentation: .availability("unknown"))
-                Text("The server did not return an availability line for this ingredient.")
-                    .font(.footnote)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Pantry availability")
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(ProvisionTheme.textSecondary)
-            }
-            if let safety {
-                StatusPill(presentation: .safety(safety.decision))
-                if !safety.reasons.isEmpty {
-                    reasonList(safety.reasons, title: "Safety review")
+                if let availability {
+                    StatusPill(presentation: .availability(availability.status))
+                    availabilityQuantities(availability)
+                    if !availability.unknown_reasons.isEmpty {
+                        reasonList(availability.unknown_reasons, title: "Quantity uncertainty")
+                    }
+                } else {
+                    StatusPill(presentation: .availability("unknown"))
+                    Text("The server did not return an availability line for this ingredient.")
+                        .font(.footnote)
+                        .foregroundStyle(ProvisionTheme.textSecondary)
                 }
-            } else {
-                StatusPill(presentation: .safety("unknown"))
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Food safety")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(ProvisionTheme.textSecondary)
+                if let safety {
+                    StatusPill(presentation: .safety(safety.decision))
+                    if !safety.reasons.isEmpty {
+                        reasonList(safety.reasons, title: "Safety review")
+                    }
+                } else {
+                    StatusPill(presentation: .safety("unknown"))
+                }
             }
         }
         .padding(14)

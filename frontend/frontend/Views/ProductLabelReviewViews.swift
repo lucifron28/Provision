@@ -80,6 +80,8 @@ public struct ProductLabelReviewListView: View {
         .background(ProvisionTheme.background)
         .navigationTitle("Product Label Reviews")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(ProvisionTheme.background, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .searchable(text: $searchText, prompt: "Search household products")
         .task { if viewModel.products.isEmpty { await viewModel.load() } }
     }
@@ -239,6 +241,8 @@ public struct ProductLabelReviewView: View {
         .background(ProvisionTheme.background)
         .navigationTitle("Review Package Label")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(ProvisionTheme.background, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .task { if !viewModel.hasLoaded { await reload() } }
         .refreshable { await reload() }
     }

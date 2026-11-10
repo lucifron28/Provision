@@ -49,13 +49,27 @@ public struct RecipeSubstitutionEditorView: View {
                             .accessibilityIdentifier("recipe-substitution-error")
                     }
                 }
-                Section("Evaluation settings") {
-                    TextField("Servings", text: $servingsText)
-                        .keyboardType(.decimalPad)
-                        .accessibilityIdentifier("recipe-substitution-servings")
+                Section {
+                    LabeledContent("Servings (people)") {
+                        TextField("Number of people", text: $servingsText)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .accessibilityIdentifier("recipe-substitution-servings")
+                    }
+                    Text("Servings are people; ingredient quantities scale to this amount.")
+                        .font(.footnote)
+                        .foregroundStyle(ProvisionTheme.textSecondary)
                     Toggle("Include optional ingredients", isOn: $includeOptional)
+                } header: {
+                    Text("Evaluation settings")
                 }
-                Section("Server-listed alternatives") {
+                Section {
+                    Text("Server-listed alternatives")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                    Text(recipe.title)
+                        .font(.headline)
+                        .fixedSize(horizontal: false, vertical: true)
                     if availableOptions.isEmpty {
                         Text("This recipe has no stored substitution options.")
                             .foregroundStyle(ProvisionTheme.textSecondary)
@@ -77,8 +91,10 @@ public struct RecipeSubstitutionEditorView: View {
             }
             .scrollContentBackground(.hidden)
             .background(ProvisionTheme.background)
-            .navigationTitle("Review Substitutions")
+            .navigationTitle("Substitutions")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(ProvisionTheme.background, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }
@@ -95,7 +111,7 @@ public struct RecipeSubstitutionEditorView: View {
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.large])
     }
 
     private func selectionBinding(for index: Int) -> Binding<Int> {
