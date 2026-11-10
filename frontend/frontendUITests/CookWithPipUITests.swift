@@ -493,7 +493,7 @@ final class CookWithPipUITests: XCTestCase {
         let largeTitle = element("recipe-detail-title", in: largeApp)
         XCTAssertTrue(largeTitle.waitForExistence(timeout: 10))
         XCTAssertTrue(largeTitle.isHittable)
-        XCTAssertTrue(largeTitle.label.contains("mahabhabang pangalan ng sangkap"))
+        XCTAssertTrue(largeTitle.label.contains("mahahabang pangalan ng sangkap"))
         let largeSummary = element("recipe-detail-summary", in: largeApp)
         XCTAssertTrue(largeSummary.waitForExistence(timeout: 10))
         XCTAssertTrue(largeSummary.label.contains("long Filipino ingredient names"))

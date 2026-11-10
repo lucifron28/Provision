@@ -149,6 +149,7 @@ private struct RecipeDetailContents: View {
             titleSection
             if dynamicTypeSize.isAccessibilitySize {
                 summarySection
+                metadataSection
             }
             evaluationSection
             workflowActions
@@ -232,6 +233,17 @@ private struct RecipeDetailContents: View {
             Text("\(recipe.cuisine) · \(regionText)")
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(ProvisionTheme.textSecondary)
+            if !dynamicTypeSize.isAccessibilitySize {
+                recipeMetadata
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .provisionCard(backgroundColor: ProvisionTheme.heroCard)
+    }
+
+    private var recipeMetadata: some View {
+        VStack(alignment: .leading, spacing: 8) {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 12) {
                     metadataLabel("Prep \(recipe.prep_minutes) min", symbol: "clock")
@@ -251,9 +263,13 @@ private struct RecipeDetailContents: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(ProvisionTheme.provisionGreen)
         }
-        .padding(18)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .provisionCard(backgroundColor: ProvisionTheme.heroCard)
+    }
+
+    private var metadataSection: some View {
+        recipeMetadata
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .provisionCard(backgroundColor: ProvisionTheme.surfaceSecondary)
     }
 
     @ViewBuilder
