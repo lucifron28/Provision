@@ -203,6 +203,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(productTitle.waitForExistence(timeout: 10))
         XCTAssertTrue(productTitle.isHittable)
         let sourceField = element("pip-label-source-reference", in: largeLabel)
+        scrollTo(sourceField, in: largeLabel)
         XCTAssertEqual(sourceField.label, "Source reference")
         XCTAssertEqual(sourceField.placeholderValue, "Package label, URL, or label section")
         capture("Product_Label_Review_Large_Text", app: largeLabel)
@@ -223,6 +224,7 @@ final class CookWithPipUITests: XCTestCase {
 
         XCTAssertTrue(element("pip-label-product-title", in: app).waitForExistence(timeout: 10))
         let milkDeclaration = element("pip-label-allergen-milk", in: app)
+        scrollTo(milkDeclaration, in: app)
         XCTAssertEqual(milkDeclaration.value as? String, "Declared on label")
         let status = element("pip-label-current-status", in: app)
         scrollTo(status, in: app)
@@ -613,10 +615,11 @@ final class CookWithPipUITests: XCTestCase {
 
     private func scrollTargetIntoView(_ target: XCUIElement, inside container: XCUIElement) {
         XCTAssertTrue(container.waitForExistence(timeout: 5), "Expected the identified scroll container")
+        for _ in 0..<16 where !target.exists { container.swipeUp() }
         XCTAssertTrue(target.waitForExistence(timeout: 10), "Expected \(target.identifier) before scrolling")
 
-        let inset: CGFloat = 52
-        for _ in 0..<8 {
+        let inset: CGFloat = 20
+        for _ in 0..<12 {
             let containerFrame = container.frame
             let targetFrame = target.frame
             guard !containerFrame.isNull, !targetFrame.isNull,
@@ -629,14 +632,10 @@ final class CookWithPipUITests: XCTestCase {
                 && targetFrame.maxY <= containerFrame.maxY - inset
             if target.isHittable && fullyVisible { return }
 
-            if targetFrame.maxY > containerFrame.maxY - inset {
-                container.swipeUp()
-            } else if targetFrame.minY < containerFrame.minY + inset {
+            if targetFrame.minY < containerFrame.minY + inset {
                 container.swipeDown()
-            } else if !target.isHittable {
-                container.swipeUp()
             } else {
-                break
+                container.swipeUp()
             }
         }
 
@@ -664,14 +663,14 @@ final class CookWithPipUITests: XCTestCase {
 
     private func scrollTo(_ target: XCUIElement, in app: XCUIApplication) {
         let scrollView = app.scrollViews.firstMatch
-        for _ in 0..<12 where !target.exists || !target.isHittable {
+        for _ in 0..<16 where !target.exists {
             if scrollView.exists { scrollView.swipeUp() } else { app.swipeUp() }
         }
-        for _ in 0..<12 where !target.exists {
+        for _ in 0..<16 where !target.exists {
             if scrollView.exists { scrollView.swipeDown() } else { app.swipeDown() }
         }
-        XCTAssertTrue(target.exists, "Expected \(target.identifier) to appear after scrolling")
-        for _ in 0..<8 {
+        for _ in 0..<24 {
+            guard target.exists else { break }
             let frame = target.frame
             guard !frame.isNull, !frame.isInfinite, !frame.isEmpty,
                   frame.minY.isFinite, frame.maxY.isFinite else { break }
@@ -681,13 +680,14 @@ final class CookWithPipUITests: XCTestCase {
             let tabBar = app.tabBars.firstMatch
             let safeBottom = keyboard.exists ? keyboard.frame.minY - 8
                 : (tabBar.exists ? tabBar.frame.minY - 8 : app.frame.maxY - 40)
-            if frame.midY >= safeTop && frame.midY <= safeBottom { return }
+            if frame.midY >= safeTop && frame.midY <= safeBottom && target.isHittable { return }
             if frame.midY < safeTop {
                 if scrollView.exists { scrollView.swipeDown() } else { app.swipeDown() }
             } else {
                 if scrollView.exists { scrollView.swipeUp() } else { app.swipeUp() }
             }
         }
+        XCTAssertTrue(target.exists, "Expected \(target.identifier) to appear after scrolling")
         let frame = target.frame
         let navigationBar = app.navigationBars.firstMatch
         let safeTop = navigationBar.exists ? navigationBar.frame.maxY + 44 : app.frame.minY + 120
@@ -695,7 +695,7 @@ final class CookWithPipUITests: XCTestCase {
         let tabBar = app.tabBars.firstMatch
         let safeBottom = keyboard.exists ? keyboard.frame.minY - 8
             : (tabBar.exists ? tabBar.frame.minY - 8 : app.frame.maxY - 40)
-        XCTAssertTrue(frame.midY >= safeTop && frame.midY <= safeBottom,
+        XCTAssertTrue(target.isHittable && frame.midY >= safeTop && frame.midY <= safeBottom,
                       "Expected \(target.identifier) to be visible after scrolling")
     }
 
@@ -703,7 +703,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         if toggle.value as? String != value {
             XCTAssertTrue(toggle.isHittable)
-            toggle.tap()
+            toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
         }
         let expectedValue = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "value == %@", value), object: toggle

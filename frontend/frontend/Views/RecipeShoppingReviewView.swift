@@ -116,12 +116,19 @@ public struct RecipeShoppingReviewView: View {
     @ViewBuilder
     private func previewControls(_ preview: RecipeShoppingPreview) -> some View {
         Section("Preview settings") {
-            LabeledContent("Servings (people)") {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Servings (people)")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
                 TextField("Number of people", text: $viewModel.servingsText)
                     .keyboardType(.decimalPad)
                     .focused($focusedField, equals: .servings)
+                    .accessibilityLabel("Servings (people)")
                     .accessibilityIdentifier("recipe-shopping-servings")
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 4)
             Toggle("Include optional ingredients", isOn: $viewModel.includeOptional)
                 .accessibilityIdentifier("recipe-shopping-include-optional")
             if !viewModel.isPreviewCurrent {
@@ -231,12 +238,19 @@ public struct RecipeShoppingReviewView: View {
                     quantitySummary(line)
                     if let id = line.ingredient_id,
                        viewModel.selectedIngredientIDs.contains(id), line.target_quantity != nil {
-                        LabeledContent("Target quantity (\(line.unit ?? "server unit"))") {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Target quantity (\(line.unit ?? "server unit"))")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(ProvisionTheme.textPrimary)
+                                .fixedSize(horizontal: false, vertical: true)
                             TextField("Quantity", text: targetBinding(id))
                                 .keyboardType(.decimalPad)
                                 .focused($focusedField, equals: .target(id))
+                                .accessibilityLabel("Target quantity (\(line.unit ?? "server unit"))")
                                 .accessibilityIdentifier("recipe-shopping-target-\(id)")
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 4)
                         if line.pending_item_ids.count > 1 {
                             Toggle("Consolidate \(line.pending_item_ids.count) linked pending items", isOn: consolidationBinding(id))
                                 .accessibilityIdentifier("recipe-shopping-consolidate-\(id)")

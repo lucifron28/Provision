@@ -223,11 +223,18 @@ public struct ProductLabelReviewView: View {
                 ForEach(FoodAllergenCode.allCases) { code in
                     allergenDeclarationMenu(code)
                 }
-                LabeledContent("Custom allergens") {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Custom allergens")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(ProvisionTheme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
                     TextField("Comma-separated", text: $viewModel.customAllergenText)
                         .focused($focusedField, equals: .customAllergens)
+                        .accessibilityLabel("Custom allergens")
                         .accessibilityIdentifier("pip-label-custom-allergens")
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 4)
                 Toggle("Package composition is known", isOn: $viewModel.labelCompositionKnown)
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Source reference")
