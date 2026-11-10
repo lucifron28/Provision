@@ -75,6 +75,8 @@ final class CookWithPipWorkflowTests: XCTestCase {
         XCTAssertEqual(store.readPendingRecipeShopping(scope: scope), .missing)
         let requests = await service.recordedConfirmations()
         XCTAssertEqual(requests.count, 2)
+        XCTAssertEqual(requests[0].idempotency_key, requests[1].idempotency_key)
+        XCTAssertEqual(requests[0].preview_id, requests[1].preview_id)
         XCTAssertEqual(requests[0], requests[1])
     }
 

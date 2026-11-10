@@ -207,6 +207,7 @@ public struct ShoppingListView: View {
                             .font(.system(size: 16, weight: .medium))
                             .strikethrough(item.is_bought, color: ProvisionTheme.textTertiary)
                             .foregroundStyle(item.is_bought ? ProvisionTheme.textTertiary : ProvisionTheme.textPrimary)
+                            .accessibilityIdentifier("shopping-list-item-name-\(item.id)")
                         
                         if let notes = item.notes, !notes.isEmpty {
                             Text(notes)

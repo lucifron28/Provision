@@ -286,29 +286,51 @@ final class CookWithPipUITests: XCTestCase {
         let fixtureID = Int.random(in: 10_000...90_000)
         let app = launch(scenario: "shopping-restart", fixtureID: fixtureID, useKeychain: true)
         openShoppingPreview(app)
-        element("recipe-shopping-confirm", in: app).tap()
-        element("recipe-shopping-confirm-action", in: app).tap()
+        let reviewForm = app.descendants(matching: .any)
+            .matching(identifier: "recipe-shopping-review-form").firstMatch
+        let confirm = app.buttons["recipe-shopping-confirm"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 10))
+        XCTAssertTrue(confirm.isHittable, "The shopping confirmation action stays in the navigation toolbar")
+        confirm.tap()
+        let confirmAction = app.buttons["recipe-shopping-confirm-action"]
+        XCTAssertTrue(confirmAction.waitForExistence(timeout: 10))
+        confirmAction.tap()
 
         let pendingStatus = element("recipe-shopping-pending-status", in: app)
         XCTAssertTrue(pendingStatus.waitForExistence(timeout: 10))
         let pendingLine = element("recipe-shopping-pending-line-0", in: app)
-        XCTAssertTrue(pendingLine.waitForExistence(timeout: 5))
+        XCTAssertTrue(pendingLine.waitForExistence(timeout: 10))
         XCTAssertTrue(pendingLine.label.contains("kangkong"))
+        scrollTargetIntoView(pendingLine, inside: reviewForm)
         capture("Shopping_Confirmation_Retry_Pending", app: app)
         app.terminate()
 
         let relaunched = launch(scenario: "shopping-restart", fixtureID: fixtureID, useKeychain: true)
-        openShoppingPreview(relaunched, timeout: 30)
+        openShoppingPreview(relaunched)
         let relaunchedPending = element("recipe-shopping-pending-line-0", in: relaunched)
-        XCTAssertTrue(relaunchedPending.waitForExistence(timeout: 30))
+        XCTAssertTrue(relaunchedPending.waitForExistence(timeout: 10))
         XCTAssertTrue(relaunchedPending.label.contains("kangkong"))
         let retryPending = relaunched.buttons["recipe-shopping-retry-pending"]
-        scrollTo(retryPending, in: relaunched)
-        XCTAssertTrue(retryPending.isHittable)
+        let relaunchedReviewForm = relaunched.descendants(matching: .any)
+            .matching(identifier: "recipe-shopping-review-form").firstMatch
+        scrollTargetIntoView(retryPending, inside: relaunchedReviewForm)
         retryPending.tap()
-        let resultCounts = element("recipe-shopping-result-counts", in: relaunched)
-        XCTAssertTrue(resultCounts.waitForExistence(timeout: 20))
-        XCTAssertTrue(resultCounts.label.contains("Created 2"))
+        let resultCounts = relaunched.staticTexts["recipe-shopping-result-counts"]
+        XCTAssertTrue(resultCounts.waitForExistence(timeout: 10))
+        XCTAssertEqual(resultCounts.label, "Created 2 · Updated 0 · Unchanged 0 · Consolidated 0")
+
+        let viewShoppingList = relaunched.buttons["recipe-shopping-view-list"]
+        XCTAssertTrue(viewShoppingList.waitForExistence(timeout: 10))
+        viewShoppingList.tap()
+        XCTAssertTrue(relaunched.navigationBars["Shopping List"].waitForExistence(timeout: 10))
+        let shoppingItemNames = relaunched.staticTexts.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "shopping-list-item-name-")
+        )
+        let twoPersistedRows = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "count == 2"), object: shoppingItemNames
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [twoPersistedRows], timeout: 10), .completed,
+                       "An exact retry must leave only the two server-confirmed shopping rows")
     }
 
     func testSourceLookupErrorKeepsRecipeAndCanRetry() {
@@ -437,16 +459,26 @@ final class CookWithPipUITests: XCTestCase {
 
     private func openShoppingPreview(_ app: XCUIApplication, timeout: TimeInterval = 10) {
         openCookWithPip(app)
-        element("cook-mode-myRecipes", in: app).tap()
-        let recipe = element("recipe-card-305", in: app)
+        let myRecipes = app.buttons["cook-mode-myRecipes"]
+        XCTAssertTrue(myRecipes.waitForExistence(timeout: 10))
+        myRecipes.tap()
+        let myRecipesSelected = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "Selected"), object: myRecipes
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [myRecipesSelected], timeout: 5), .completed)
+
+        let recipe = app.buttons["recipe-card-305"]
         XCTAssertTrue(recipe.waitForExistence(timeout: 10))
         XCTAssertTrue(recipe.label.contains("Test Recipe: Ginataang Kangkong"))
-        scrollTo(recipe, in: app)
-        XCTAssertTrue(recipe.isHittable, "Shopping recipe should be tappable after scrolling")
+        let recipeList = app.scrollViews["cook-with-pip-recipe-list-scroll"]
+        scrollTargetIntoView(recipe, inside: recipeList)
         recipe.tap()
-        XCTAssertTrue(element("recipe-detail-title", in: app).waitForExistence(timeout: 20))
-        let previewLink = element("recipe-shopping-preview-link", in: app)
-        scrollTo(previewLink, in: app)
+        let recipeTitle = app.staticTexts["recipe-detail-title"]
+        XCTAssertTrue(recipeTitle.waitForExistence(timeout: 10),
+                      "Tapping the visible saved recipe should open its detail screen")
+        let previewLink = app.buttons["recipe-shopping-preview-link"]
+        let recipeDetail = app.scrollViews["recipe-detail-scroll"]
+        scrollTargetIntoView(previewLink, inside: recipeDetail)
         previewLink.tap()
         let ready = element("recipe-shopping-safety-status", in: app)
         let retry = element("recipe-shopping-load-preview", in: app)
@@ -457,8 +489,47 @@ final class CookWithPipUITests: XCTestCase {
         let loadExpectation = XCTNSPredicateExpectation(predicate: previewLoaded, object: app)
         XCTAssertEqual(XCTWaiter.wait(for: [loadExpectation], timeout: timeout), .completed)
         if settings.exists {
-            scrollTo(ready, in: app)
+            let reviewForm = app.descendants(matching: .any)
+                .matching(identifier: "recipe-shopping-review-form").firstMatch
+            scrollTargetIntoView(ready, inside: reviewForm)
         }
+    }
+
+    private func scrollTargetIntoView(_ target: XCUIElement, inside container: XCUIElement) {
+        XCTAssertTrue(container.waitForExistence(timeout: 5), "Expected the identified scroll container")
+        XCTAssertTrue(target.waitForExistence(timeout: 10), "Expected \(target.identifier) before scrolling")
+
+        let inset: CGFloat = 52
+        for _ in 0..<8 {
+            let containerFrame = container.frame
+            let targetFrame = target.frame
+            guard !containerFrame.isNull, !targetFrame.isNull,
+                  !containerFrame.isEmpty, !targetFrame.isEmpty else {
+                container.swipeUp()
+                continue
+            }
+
+            let fullyVisible = targetFrame.minY >= containerFrame.minY + inset
+                && targetFrame.maxY <= containerFrame.maxY - inset
+            if target.isHittable && fullyVisible { return }
+
+            if targetFrame.maxY > containerFrame.maxY - inset {
+                container.swipeUp()
+            } else if targetFrame.minY < containerFrame.minY + inset {
+                container.swipeDown()
+            } else if !target.isHittable {
+                container.swipeUp()
+            } else {
+                break
+            }
+        }
+
+        let containerFrame = container.frame
+        let targetFrame = target.frame
+        XCTAssertTrue(target.isHittable, "Expected \(target.identifier) to be hittable after scrolling")
+        XCTAssertTrue(targetFrame.minY >= containerFrame.minY + inset
+                      && targetFrame.maxY <= containerFrame.maxY - inset,
+                      "Expected \(target.identifier) to be inside the identified scroll viewport")
     }
 
     private func navigateBack(_ app: XCUIApplication) {

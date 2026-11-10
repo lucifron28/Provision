@@ -82,6 +82,7 @@ public struct RecipeDetailView: View {
         .toolbarBackground(ProvisionTheme.background, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .refreshable { await viewModel.load() }
+        .accessibilityIdentifier("recipe-detail-scroll")
         .task {
             if !viewModel.hasLoadedOnce { await viewModel.load() }
         }

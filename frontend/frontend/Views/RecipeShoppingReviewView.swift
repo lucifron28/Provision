@@ -85,6 +85,7 @@ public struct RecipeShoppingReviewView: View {
 
         }
         .scrollContentBackground(.hidden)
+        .accessibilityIdentifier("recipe-shopping-review-form")
         .background(ProvisionTheme.background)
         .navigationTitle("Shopping Preview")
         .navigationBarTitleDisplayMode(.inline)

@@ -108,6 +108,7 @@ public struct CookWithPipView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .refreshable { await viewModel.refresh() }
+            .accessibilityIdentifier("cook-with-pip-recipe-list-scroll")
         }
         .background(ProvisionTheme.background.ignoresSafeArea())
         .navigationTitle("Cook with Pip")
