@@ -122,6 +122,7 @@ public struct ProductLabelReviewView: View {
                         .font(.subheadline)
                         .foregroundStyle(ProvisionTheme.provisionGreen)
                         .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("pip-label-status-message")
                 }
             }
 

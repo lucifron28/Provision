@@ -138,10 +138,10 @@ public struct RecipeShoppingReviewView: View {
                     .accessibilityIdentifier("recipe-shopping-stale-preview")
             }
             DisclosureGroup("Revision details") {
-                LabeledContent("Shopping list", value: String(preview.shopping_revision))
-                    .accessibilityIdentifier("recipe-shopping-list-revision")
-                LabeledContent("Pantry", value: String(preview.inventory_revision))
-                    .accessibilityIdentifier("recipe-shopping-pantry-revision")
+                revisionDetailRow("Shopping list", value: String(preview.shopping_revision),
+                                  identifier: "recipe-shopping-list-revision")
+                revisionDetailRow("Pantry", value: String(preview.inventory_revision),
+                                  identifier: "recipe-shopping-pantry-revision")
             }
             .accessibilityIdentifier("recipe-shopping-revision-details")
             if let expirationDate = viewModel.expirationDate {
@@ -173,6 +173,32 @@ public struct RecipeShoppingReviewView: View {
             .disabled(viewModel.isLoading || viewModel.isConfirming || viewModel.pendingRecord != nil)
             .accessibilityIdentifier("recipe-shopping-refresh-preview")
         }
+    }
+
+    @ViewBuilder
+    private func revisionDetailRow(_ title: String, value: String, identifier: String) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(title)
+                    .font(.subheadline)
+                    .foregroundStyle(ProvisionTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                Text(value)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline)
+                    .foregroundStyle(ProvisionTheme.textSecondary)
+                Text(value)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(identifier)
     }
 
     private func safetySection(_ preview: RecipeShoppingPreview) -> some View {
