@@ -99,6 +99,7 @@ public struct RecipeDetailView: View {
 
 private struct RecipeDetailContents: View {
     @ScaledMetric(relativeTo: .subheadline) private var instructionNumberSize: CGFloat = 28
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let recipe: HouseholdRecipe
     let scope: HouseholdScope
@@ -145,6 +146,9 @@ private struct RecipeDetailContents: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             titleSection
+            if dynamicTypeSize.isAccessibilitySize {
+                summarySection
+            }
             evaluationSection
             workflowActions
             if let sourceReference {
@@ -217,7 +221,8 @@ private struct RecipeDetailContents: View {
                 .foregroundStyle(ProvisionTheme.provisionGreen)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("recipe-detail-title")
-            if let summary = recipe.summary, !summary.isEmpty {
+            if !dynamicTypeSize.isAccessibilitySize,
+               let summary = recipe.summary, !summary.isEmpty {
                 Text(summary)
                     .font(.body)
                     .foregroundStyle(ProvisionTheme.textSecondary)
@@ -248,6 +253,20 @@ private struct RecipeDetailContents: View {
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .provisionCard(backgroundColor: ProvisionTheme.heroCard)
+    }
+
+    @ViewBuilder
+    private var summarySection: some View {
+        if let summary = recipe.summary, !summary.isEmpty {
+            Text(summary)
+                .font(.body)
+                .foregroundStyle(ProvisionTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("recipe-detail-summary")
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .provisionCard(backgroundColor: ProvisionTheme.surfaceSecondary)
+        }
     }
 
     private var evaluationSection: some View {
