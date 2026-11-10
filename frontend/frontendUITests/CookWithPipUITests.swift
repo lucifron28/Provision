@@ -345,9 +345,22 @@ final class CookWithPipUITests: XCTestCase {
         let revisionDetails = element("recipe-shopping-revision-details", in: largeApp)
         scrollTo(revisionDetails, in: largeApp)
         XCTAssertTrue(revisionDetails.isHittable)
+        XCTAssertEqual(revisionDetails.value as? String, "Collapsed")
         revisionDetails.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
-        XCTAssertTrue(element("recipe-shopping-list-revision", in: largeApp).waitForExistence(timeout: 5))
-        XCTAssertTrue(element("recipe-shopping-pantry-revision", in: largeApp).exists)
+        let expanded = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "Expanded"), object: revisionDetails
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [expanded], timeout: 5), .completed)
+        let reviewForm = largeApp.descendants(matching: .any)
+            .matching(identifier: "recipe-shopping-review-form").firstMatch
+        let listRevision = element("recipe-shopping-list-revision", in: largeApp)
+        scrollTargetIntoView(listRevision, inside: reviewForm)
+        XCTAssertTrue(listRevision.isHittable)
+        XCTAssertTrue(listRevision.label.contains("Shopping list"))
+        let pantryRevision = element("recipe-shopping-pantry-revision", in: largeApp)
+        scrollTargetIntoView(pantryRevision, inside: reviewForm)
+        XCTAssertTrue(pantryRevision.isHittable)
+        XCTAssertTrue(pantryRevision.label.contains("Pantry"))
     }
 
     func testShoppingReviewRequiredAndBlockedStates() {

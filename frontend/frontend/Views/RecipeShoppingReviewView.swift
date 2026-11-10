@@ -11,6 +11,7 @@ public struct RecipeShoppingReviewView: View {
     private let onNavigateToShopping: () -> Void
     private let hasAppliedSubstitutions: Bool
     @State private var showingConfirmation = false
+    @State private var showingRevisionDetails = false
     @FocusState private var focusedField: QuantityField?
 
     public init(recipe: HouseholdRecipe, scope: HouseholdScope,
@@ -137,13 +138,17 @@ public struct RecipeShoppingReviewView: View {
                     .foregroundStyle(ProvisionTheme.amberWarning)
                     .accessibilityIdentifier("recipe-shopping-stale-preview")
             }
-            DisclosureGroup("Revision details") {
+            DisclosureGroup(isExpanded: $showingRevisionDetails) {
                 revisionDetailRow("Shopping list", value: String(preview.shopping_revision),
                                   identifier: "recipe-shopping-list-revision")
                 revisionDetailRow("Pantry", value: String(preview.inventory_revision),
                                   identifier: "recipe-shopping-pantry-revision")
+            } label: {
+                Text("Revision details")
             }
             .accessibilityIdentifier("recipe-shopping-revision-details")
+            .accessibilityValue(showingRevisionDetails ? "Expanded" : "Collapsed")
+            .accessibilityHint(showingRevisionDetails ? "Hide revision details" : "Show revision details")
             if let expirationDate = viewModel.expirationDate {
                 LabeledContent("Preview expires", value: expirationDate.formatted(date: .abbreviated, time: .shortened))
                     .accessibilityIdentifier("recipe-shopping-expiration-value")
@@ -177,27 +182,18 @@ public struct RecipeShoppingReviewView: View {
 
     @ViewBuilder
     private func revisionDetailRow(_ title: String, value: String, identifier: String) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(title)
-                    .font(.subheadline)
-                    .foregroundStyle(ProvisionTheme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 8)
-                Text(value)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(ProvisionTheme.textPrimary)
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.subheadline)
-                    .foregroundStyle(ProvisionTheme.textSecondary)
-                Text(value)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(ProvisionTheme.textPrimary)
-            }
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.subheadline)
+                .foregroundStyle(ProvisionTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(value)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(ProvisionTheme.textPrimary)
         }
-        .accessibilityElement(children: .combine)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title), revision \(value)")
         .accessibilityIdentifier(identifier)
     }
 
