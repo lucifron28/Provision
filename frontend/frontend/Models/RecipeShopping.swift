@@ -115,6 +115,19 @@ nonisolated public struct RecipeShoppingPreview: Decodable, Sendable {
     public let safety: FoodSafetySnapshot
     public let lines: [RecipeShoppingLine]
     public let unlinked_manual_items: [UnlinkedShoppingReview]
+    public var expirationDate: Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: expires_at) { return date }
+        let standard = ISO8601DateFormatter()
+        standard.formatOptions = [.withInternetDateTime]
+        return standard.date(from: expires_at)
+    }
+
+    public var isExpired: Bool {
+        guard let expirationDate else { return true }
+        return expirationDate <= Date()
+    }
 }
 
 nonisolated public struct RecipeShoppingAcceptedLine: Codable, Equatable, Sendable {

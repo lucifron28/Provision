@@ -46,7 +46,7 @@ final class CookWithPipWorkflowTests: XCTestCase {
 
     func testShoppingRetryUsesSavedExactRequestAndHouseholdScopedStore() async throws {
         let service = CookWithPipUITestService(scenario: "shopping-retry")
-        let recipe = try await service.fetchRecipe(id: 301, scope: scope)
+        let recipe = try await service.fetchRecipe(id: 305, scope: scope)
         let store = MemoryPendingRecipeShoppingStore()
         let viewModel = RecipeShoppingReviewViewModel(recipe: recipe, scope: scope,
                                                        service: service, pendingStore: store)
@@ -71,6 +71,7 @@ final class CookWithPipWorkflowTests: XCTestCase {
         await viewModel.retryPendingConfirmation()
 
         XCTAssertNotNil(viewModel.confirmationResult)
+        XCTAssertEqual(viewModel.confirmationResult?.created.compactMap(\.origin_recipe_id), [305, 305])
         XCTAssertEqual(store.readPendingRecipeShopping(scope: scope), .missing)
         let requests = await service.recordedConfirmations()
         XCTAssertEqual(requests.count, 2)
@@ -79,7 +80,7 @@ final class CookWithPipWorkflowTests: XCTestCase {
 
     func testStaleShoppingPreviewClearsSavedRequestAndRequiresRefresh() async throws {
         let service = CookWithPipUITestService(scenario: "shopping-stale")
-        let recipe = try await service.fetchRecipe(id: 301, scope: scope)
+        let recipe = try await service.fetchRecipe(id: 305, scope: scope)
         let store = MemoryPendingRecipeShoppingStore()
         let viewModel = RecipeShoppingReviewViewModel(recipe: recipe, scope: scope,
                                                        service: service, pendingStore: store)
@@ -99,7 +100,7 @@ final class CookWithPipWorkflowTests: XCTestCase {
 
     func testShoppingSafetyBlocksUnknownAndRequiresReviewAcknowledgement() async throws {
         let blockedService = CookWithPipUITestService(scenario: "shopping-blocked")
-        let blockedRecipe = try await blockedService.fetchRecipe(id: 301, scope: scope)
+        let blockedRecipe = try await blockedService.fetchRecipe(id: 305, scope: scope)
         let blocked = RecipeShoppingReviewViewModel(recipe: blockedRecipe, scope: scope,
                                                      service: blockedService,
                                                      pendingStore: MemoryPendingRecipeShoppingStore())
@@ -107,7 +108,7 @@ final class CookWithPipWorkflowTests: XCTestCase {
         XCTAssertFalse(blocked.canConfirm)
 
         let reviewService = CookWithPipUITestService(scenario: "shopping-review-required")
-        let reviewRecipe = try await reviewService.fetchRecipe(id: 301, scope: scope)
+        let reviewRecipe = try await reviewService.fetchRecipe(id: 305, scope: scope)
         let review = RecipeShoppingReviewViewModel(recipe: reviewRecipe, scope: scope,
                                                     service: reviewService,
                                                     pendingStore: MemoryPendingRecipeShoppingStore())
@@ -116,10 +117,49 @@ final class CookWithPipWorkflowTests: XCTestCase {
         review.safetyReviewAcknowledged = true
         XCTAssertTrue(review.canConfirm)
     }
+    func testExpiredAndMalformedShoppingPreviewsCannotPersistOrSend() async throws {
+        for scenario in ["shopping-expired", "shopping-malformed-expiry"] {
+            let service = CookWithPipUITestService(scenario: scenario)
+            let recipe = try await service.fetchRecipe(id: 305, scope: scope)
+            let store = MemoryPendingRecipeShoppingStore()
+            let viewModel = RecipeShoppingReviewViewModel(recipe: recipe, scope: scope,
+                                                            service: service, pendingStore: store)
+
+            await viewModel.load()
+            XCTAssertNotNil(viewModel.preview)
+            XCTAssertTrue(viewModel.isExpired)
+            XCTAssertFalse(viewModel.canConfirm)
+            await viewModel.confirmSelectedLines()
+
+            XCTAssertEqual(store.readPendingRecipeShopping(scope: scope), .missing)
+            let confirmations = await service.recordedConfirmations()
+            XCTAssertTrue(confirmations.isEmpty)
+        }
+    }
+    func testOpenPreviewBecomesNonConfirmableWhenItExpires() async throws {
+        let service = CookWithPipUITestService(scenario: "shopping-expiring-soon")
+        let recipe = try await service.fetchRecipe(id: 305, scope: scope)
+        let store = MemoryPendingRecipeShoppingStore()
+        let viewModel = RecipeShoppingReviewViewModel(recipe: recipe, scope: scope,
+                                                        service: service, pendingStore: store)
+
+        await viewModel.load()
+        XCTAssertTrue(viewModel.canConfirm)
+
+        try await Task.sleep(for: .seconds(2.2))
+
+        XCTAssertTrue(viewModel.isExpired)
+        XCTAssertFalse(viewModel.canConfirm)
+        await viewModel.confirmSelectedLines()
+        XCTAssertEqual(store.readPendingRecipeShopping(scope: scope), .missing)
+        let confirmations = await service.recordedConfirmations()
+        XCTAssertTrue(confirmations.isEmpty)
+    }
+
 
     func testCorruptAndUnavailablePendingStorageBlockNewShoppingRequests() async throws {
         let service = CookWithPipUITestService()
-        let recipe = try await service.fetchRecipe(id: 301, scope: scope)
+        let recipe = try await service.fetchRecipe(id: 305, scope: scope)
 
         for state in [PendingRecipeShoppingReadResult.corrupt, .unavailable] {
             let store = FixedStatePendingRecipeShoppingStore(state)
