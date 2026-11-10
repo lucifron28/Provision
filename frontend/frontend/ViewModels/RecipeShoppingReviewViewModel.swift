@@ -274,7 +274,7 @@ public final class RecipeShoppingReviewViewModel: ObservableObject {
                     errorMessage = "The preview is stale, and this device could not clear its saved request. Retry the same request or reload."
                 }
             } else {
-                errorMessage = "The server did not confirm the result. The exact request is saved; retry it without editing to avoid duplicate items. (\(error.localizedDescription))"
+                errorMessage = "We couldn't confirm the result. The request is saved. Retry it without editing to avoid duplicate items."
             }
         }
         isConfirming = false

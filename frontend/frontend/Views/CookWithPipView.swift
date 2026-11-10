@@ -58,6 +58,17 @@ public struct CookWithPipView: View {
                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(ProvisionTheme.border, lineWidth: 1))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
+                if searchFieldFocused {
+                    HStack {
+                        Spacer()
+                        Button("Done") { searchFieldFocused = false }
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .accessibilityIdentifier("cook-with-pip-search-keyboard-done")
+                    }
+                    .padding(.horizontal, 16)
+                }
             }
 
             ScrollView {
@@ -116,15 +127,6 @@ public struct CookWithPipView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(ProvisionTheme.background, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
-        .toolbar {
-            if searchFieldFocused {
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") { searchFieldFocused = false }
-                        .accessibilityIdentifier("cook-with-pip-search-keyboard-done")
-                }
-            }
-        }
         .task {
             if !viewModel.hasLoadedOnce {
                 await viewModel.load(reset: true)

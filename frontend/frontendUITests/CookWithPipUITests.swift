@@ -441,6 +441,9 @@ final class CookWithPipUITests: XCTestCase {
 
         let pendingStatus = element("recipe-shopping-pending-status", in: app)
         XCTAssertTrue(pendingStatus.waitForExistence(timeout: 10))
+        let retryMessage = element("recipe-shopping-error", in: app)
+        XCTAssertTrue(retryMessage.label.contains("Retry it without editing"))
+        XCTAssertFalse(retryMessage.label.contains("Network connection failed"))
         let pendingLine = element("recipe-shopping-pending-line-0", in: app)
         XCTAssertTrue(pendingLine.waitForExistence(timeout: 10))
         XCTAssertTrue(pendingLine.label.contains("kangkong"))
@@ -545,6 +548,10 @@ final class CookWithPipUITests: XCTestCase {
         let keyboardDone = element("cook-with-pip-search-keyboard-done", in: searchApp)
         XCTAssertTrue(keyboardDone.waitForExistence(timeout: 5))
         XCTAssertTrue(keyboardDone.isHittable)
+        let myRecipesMode = searchApp.buttons["cook-mode-myRecipes"]
+        XCTAssertTrue(myRecipesMode.waitForExistence(timeout: 5))
+        XCTAssertFalse(keyboardDone.frame.intersects(myRecipesMode.frame),
+                       "The search Done action must not cover the My Recipes filter")
         capture("Cook_with_Pip_Search_Keyboard", app: searchApp)
         search.typeText("Laing")
         let matchingRecipe = element("recipe-card-302", in: searchApp)
