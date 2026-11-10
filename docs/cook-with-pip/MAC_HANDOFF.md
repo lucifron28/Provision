@@ -85,3 +85,18 @@ Status: Cook with Pip iOS milestones 1–3 were merged to `main` on 2026-11-10 v
   scanner CI for the existing client does not verify newly planned screens.
 
 These are deferred client deliverables. None is marked complete by this document.
+
+## Visual-QA Mac lab run (feature branch)
+
+- Branch `fix/cook-with-pip-visual-qa` starts from fetched `origin/main` at `101018f752b94c9b125f6fac734b54d93dc115d9`. This acceptance run does not mark Cook with Pip milestones complete.
+- Environment: macOS 26.5.2, Xcode 26.6, Swift 6.3.3, iPhone 17 Simulator on iOS 26.5.
+- The tested worktree code was later committed as `28e90b7`. Command:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -project frontend/frontend.xcodeproj -scheme frontend -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- -resultBundlePath /tmp/Provision-cookpip-final-acceptance.xcresult
+  ```
+
+- Local full suite: **54 tests passed, 0 failed, 0 skipped**. Simulator signing used `CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-`; no Apple certificate or production signing was used. Result bundle: `/tmp/Provision-cookpip-final-acceptance.xcresult`.
+- XCUITest exercised the available M1–M3 screens and state cases, including Keychain retry after app termination/relaunch. The screenshot manifest contains **39 required scenarios** (the prior 38 plus expired preview) and **40 captured PNGs**, including an additional scrolled-search capture. All are marked `synthetic_fixture`, `liveDataUsed: false`; a separate direct Simulator home capture is also synthetic. The organized review ZIP is `/tmp/Provision-cookpip-visual-review.zip`. No connected-backend or production-household data was used.
+- Physical iPhones were unavailable. Camera permission, barcode scanning/rearm, receipt OCR, and on-device acceptance remain deferred. No suitable test accounts or connected backend were available for real household switching/isolation. VoiceOver was not separately exercised; accessibility is limited to UI-test coverage and visible labels/controls.
+- Local backend PostgreSQL tests were not run: Docker was unavailable and `TEST_DATABASE_URL` was unset. Hosted PR CI and screenshot artifacts remain pending.
