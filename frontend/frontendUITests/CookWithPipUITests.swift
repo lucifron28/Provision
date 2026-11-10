@@ -153,8 +153,22 @@ final class CookWithPipUITests: XCTestCase {
         let source = element("pip-label-source-reference", in: app)
         scrollTo(source, in: app)
         source.tap()
-        source.typeText("Synthetic package label")
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+        XCTAssertLessThan(source.frame.maxY, keyboard.frame.minY)
+        source.typeText("Synthetic")
+        XCTAssertEqual(source.value as? String, "Synthetic")
+        source.typeText(" package")
+        XCTAssertEqual(source.value as? String, "Synthetic package")
+        source.typeText(" label")
         XCTAssertEqual(source.value as? String, "Synthetic package label")
+        let keyboardDone = element("pip-label-keyboard-done", in: app)
+        XCTAssertTrue(keyboardDone.waitForExistence(timeout: 5))
+        keyboardDone.tap()
+        let keyboardDismissed = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "isHittable == false"), object: keyboard
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [keyboardDismissed], timeout: 5), .completed)
         let saveReview = element("pip-label-save-review", in: app)
         scrollTo(saveReview, in: app)
         XCTAssertTrue(saveReview.isEnabled, "A verified mapping and source reference enable saving the label review")
