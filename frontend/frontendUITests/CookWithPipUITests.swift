@@ -105,14 +105,22 @@ final class CookWithPipUITests: XCTestCase {
         element("cook-with-pip-preferences-link", in: app).tap()
 
         XCTAssertTrue(element("pip-preferences-save", in: app).waitForExistence(timeout: 10))
-        let milkAllergen = element("pip-allergen-milk", in: app)
+        let milkAllergen = app.switches["pip-allergen-milk"]
         scrollTo(milkAllergen, in: app)
         XCTAssertTrue(milkAllergen.waitForExistence(timeout: 5))
-        XCTAssertTrue(element("pip-allergen-cross-contact-milk", in: app).exists)
+        XCTAssertTrue(milkAllergen.isHittable)
+        XCTAssertEqual(milkAllergen.value as? String, "1")
+        let milkCrossContact = app.switches["pip-allergen-cross-contact-milk"]
+        XCTAssertTrue(milkCrossContact.exists)
+        XCTAssertEqual(milkCrossContact.value as? String, "1")
         element("pip-preferences-save", in: app).tap()
         let savedMessage = element("pip-preferences-success", in: app)
         for _ in 0..<6 where !savedMessage.exists { app.swipeDown() }
         XCTAssertTrue(savedMessage.waitForExistence(timeout: 10))
+        scrollTo(milkAllergen, in: app)
+        XCTAssertTrue(milkAllergen.isHittable)
+        XCTAssertEqual(milkAllergen.value as? String, "1")
+        XCTAssertEqual(milkCrossContact.value as? String, "1")
         capture("Preferences_Allergy_Declared", app: app)
 
         navigateBack(app)
@@ -179,7 +187,7 @@ final class CookWithPipUITests: XCTestCase {
         openShoppingPreview(app)
         XCTAssertEqual(element("recipe-shopping-safety-status", in: app).label, "Eligible")
         capture("Shopping_Preview_Ready", app: app)
-        let unlinked = element("recipe-shopping-unlinked-9906", in: app)
+        let unlinked = element("recipe-shopping-unlinked-9920", in: app)
         scrollTo(unlinked, in: app)
         XCTAssertTrue(unlinked.exists)
         capture("Shopping_Unlinked_Manual_Items", app: app)
@@ -187,10 +195,16 @@ final class CookWithPipUITests: XCTestCase {
         let includeOptional = app.switches["recipe-shopping-include-optional"]
         scrollTo(includeOptional, in: app)
         setSwitch(includeOptional, to: "1")
-        app.buttons["recipe-shopping-refresh-preview"].tap()
-        let optionalIngredient = app.staticTexts["kangkong (optional)"]
+        let stalePreview = element("recipe-shopping-stale-preview", in: app)
+        XCTAssertTrue(stalePreview.exists)
+        let refreshPreview = app.buttons["recipe-shopping-refresh-preview"]
+        scrollTo(refreshPreview, in: app)
+        XCTAssertTrue(refreshPreview.exists)
+        refreshPreview.tap()
+        let optionalIngredient = element("recipe-shopping-row-913", in: app)
         scrollTo(optionalIngredient, in: app)
         XCTAssertTrue(optionalIngredient.waitForExistence(timeout: 10))
+        XCTAssertFalse(stalePreview.exists)
         capture("Shopping_Optional_Ingredients", app: app)
 
         let target = element("recipe-shopping-target-901", in: app)
@@ -345,12 +359,45 @@ final class CookWithPipUITests: XCTestCase {
         let searchApp = launch()
         openCookWithPip(searchApp)
         element("cook-mode-myRecipes", in: searchApp).tap()
-        let search = searchApp.searchFields.firstMatch
+        let search = element("cook-with-pip-search", in: searchApp)
         XCTAssertTrue(search.waitForExistence(timeout: 10))
         search.tap()
-        search.typeText("Laing")
-        XCTAssertTrue(element("recipe-card-302", in: searchApp).waitForExistence(timeout: 10))
+        let keyboard = searchApp.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+        XCTAssertLessThan(search.frame.maxY, keyboard.frame.minY)
         capture("Cook_with_Pip_Search_Keyboard", app: searchApp)
+        search.typeText("Laing")
+        let matchingRecipe = element("recipe-card-302", in: searchApp)
+        XCTAssertTrue(matchingRecipe.waitForExistence(timeout: 10))
+        XCTAssertGreaterThanOrEqual(matchingRecipe.frame.minY, search.frame.maxY)
+        let recipeScrollView = searchApp.scrollViews.firstMatch
+        XCTAssertTrue(recipeScrollView.exists)
+        search.typeText("\n")
+        let keyboardDismissed = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "isHittable == false"),
+            object: keyboard
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [keyboardDismissed], timeout: 5), .completed)
+        for _ in 0..<5 where !matchingRecipe.isHittable {
+            recipeScrollView.swipeUp()
+        }
+        XCTAssertTrue(search.exists)
+        XCTAssertGreaterThanOrEqual(matchingRecipe.frame.minY, search.frame.maxY)
+        XCTAssertTrue(matchingRecipe.isHittable)
+        capture("My_Recipes_Search_Scrolled", app: searchApp)
+    }
+
+    func testShoppingPreviewExpiredIsNotConfirmable() {
+        let app = launch(scenario: "shopping-expired")
+        openShoppingPreview(app)
+        let expiration = element("recipe-shopping-expiration-value", in: app)
+        XCTAssertTrue(expiration.waitForExistence(timeout: 10))
+        XCTAssertFalse(expiration.label.isEmpty)
+        XCTAssertTrue(element("recipe-shopping-expired", in: app).exists)
+        let confirm = app.buttons["recipe-shopping-confirm"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        XCTAssertFalse(confirm.isEnabled)
+        capture("Shopping_Preview_Expired", app: app)
     }
 
     private func launch(scenario: String = "default", appearance: String? = nil,
@@ -389,7 +436,13 @@ final class CookWithPipUITests: XCTestCase {
     }
 
     private func openShoppingPreview(_ app: XCUIApplication, timeout: TimeInterval = 10) {
-        openCookNowRecipe(app)
+        openCookWithPip(app)
+        element("cook-mode-myRecipes", in: app).tap()
+        let recipe = element("recipe-card-305", in: app)
+        XCTAssertTrue(recipe.waitForExistence(timeout: 10))
+        XCTAssertTrue(recipe.label.contains("Test Recipe: Ginataang Kangkong"))
+        recipe.tap()
+        XCTAssertTrue(element("recipe-detail-title", in: app).waitForExistence(timeout: 10))
         let previewLink = element("recipe-shopping-preview-link", in: app)
         scrollTo(previewLink, in: app)
         previewLink.tap()
@@ -414,7 +467,7 @@ final class CookWithPipUITests: XCTestCase {
 
     private func scrollTo(_ target: XCUIElement, in app: XCUIApplication) {
         let scrollView = app.scrollViews.firstMatch
-        for _ in 0..<12 where !target.exists {
+        for _ in 0..<12 where !target.exists || !target.isHittable {
             if scrollView.exists { scrollView.swipeUp() } else { app.swipeUp() }
         }
         for _ in 0..<12 where !target.exists {

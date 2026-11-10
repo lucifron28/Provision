@@ -32,6 +32,23 @@ private final class MemoryCredentialStore: CredentialStore {
 }
 
 final class APIStatusTests: XCTestCase {
+    func testNetworkErrorsHaveReadableDescriptions() {
+        let cases: [(URLError.Code, String)] = [
+            (.notConnectedToInternet, "offline"),
+            (.timedOut, "timed out"),
+            (.cannotConnectToHost, "could not be reached"),
+            (.unknown, "check your connection")
+        ]
+
+        for (code, expectedText) in cases {
+            let description = APIError.networkError(URLError(code)).localizedDescription
+            XCTAssertTrue(description.hasPrefix("Network connection failed:"))
+            XCTAssertTrue(description.localizedCaseInsensitiveContains(expectedText), description)
+            XCTAssertFalse(description.contains("NSURLErrorDomain"), description)
+            XCTAssertFalse(description.range(of: #"\b-?\d+\b"#, options: .regularExpression) != nil, description)
+        }
+    }
+
     func testUserDecodesDefaultHousehold() throws {
         let data = Data(#"{"id":7,"email":"a@example.org","display_name":null,"is_active":true,"created_at":"2026-11-02T00:00:00Z","default_household_id":42,"default_household_name":"Family"}"#.utf8)
         let user = try JSONDecoder().decode(User.self, from: data)

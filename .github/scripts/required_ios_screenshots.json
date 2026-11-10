@@ -37,6 +37,7 @@
     "Shopping_Confirmation_Retry_Pending",
     "Shopping_Offline_Error_Retry",
     "Shopping_Stale_Preview_Refresh",
+    "Shopping_Preview_Expired",
     "Source_Error_Retry"
   ]
 }

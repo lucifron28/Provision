@@ -11,6 +11,7 @@ extension KeychainStore: PendingRecipeShoppingStore {}
 
 @MainActor
 public final class RecipeShoppingReviewViewModel: ObservableObject {
+    @Published public private(set) var expirationPassed = false
     @Published public private(set) var preview: RecipeShoppingPreview?
     @Published public private(set) var pendingRecord: PendingRecipeShoppingRecord?
     @Published public private(set) var pendingStorageState: PendingRecipeShoppingReadResult = .missing
@@ -31,6 +32,7 @@ public final class RecipeShoppingReviewViewModel: ObservableObject {
     private let scope: HouseholdScope
     private let service: any CookWithPipWorkflowService
     private let pendingStore: any PendingRecipeShoppingStore
+    private var expirationTask: Task<Void, Never>?
 
     public init(recipe: HouseholdRecipe, scope: HouseholdScope,
                 service: (any CookWithPipWorkflowService)? = nil,
@@ -47,9 +49,13 @@ public final class RecipeShoppingReviewViewModel: ObservableObject {
         return preview.include_optional == includeOptional && preview.servings.value == servings
     }
 
+    public var expirationDate: Date? { preview?.expirationDate }
+
+    public var isExpired: Bool { expirationPassed || (preview?.isExpired ?? true) }
+
     public var canConfirm: Bool {
         guard pendingStorageState == .missing, pendingRecord == nil, let preview, isPreviewCurrent,
-              !selectedIngredientIDs.isEmpty else { return false }
+              !isExpired, !selectedIngredientIDs.isEmpty else { return false }
         switch preview.safety.decision {
         case "eligible": break
         case "review_required" where safetyReviewAcknowledged: break
@@ -112,6 +118,8 @@ public final class RecipeShoppingReviewViewModel: ObservableObject {
             statusMessage = nil
         case .record(let stored):
             pendingRecord = stored
+            expirationTask?.cancel()
+            expirationPassed = false
             preview = nil
             statusMessage = "A confirmation is saved on this device. Retry the exact request to check its result."
             return
@@ -150,7 +158,17 @@ public final class RecipeShoppingReviewViewModel: ObservableObject {
                   response.include_optional == includeOptional else {
                 throw APIError.invalidResponse(502, "Shopping preview did not match the requested recipe version")
             }
+            expirationTask?.cancel()
+            expirationPassed = response.expirationDate.map { $0 <= Date() } ?? true
             preview = response
+            if let expirationDate = response.expirationDate, expirationDate > Date() {
+                expirationTask = Task { [weak self] in
+                    let delay = expirationDate.timeIntervalSinceNow
+                    try? await Task.sleep(for: .seconds(delay))
+                    guard !Task.isCancelled else { return }
+                    self?.expirationPassed = true
+                }
+            }
             selectedIngredientIDs = Set(response.lines.compactMap { line in
                 guard line.status == "ready", (line.additional_quantity?.value ?? 0) > 0 else { return nil }
                 return line.ingredient_id

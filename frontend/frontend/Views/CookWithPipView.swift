@@ -23,59 +23,97 @@ public struct CookWithPipView: View {
         _viewModel = StateObject(wrappedValue: CookWithPipViewModel(scope: scope, service: service))
     }
 
+    @FocusState private var searchFieldFocused: Bool
+
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                introduction
-                NavigationLink {
-                    CookWithPipManagementView(scope: scope, service: workflowService)
-                } label: {
-                    Label("Preferences and product labels", systemImage: "fork.knife.circle")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(ProvisionTheme.provisionGreen)
-                        .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
-                }
-                .accessibilityIdentifier("cook-with-pip-management")
-                modePicker
-
-                if viewModel.hasExcludedCandidates && viewModel.mode != .myRecipes {
-                    excludedCandidatesNote
-                }
-
-                if viewModel.isLoading && !viewModel.hasLoadedOnce {
-                    loadingState
-                } else if let error = viewModel.errorMessage,
-                          viewModel.currentRecipes.isEmpty && viewModel.currentRecommendations.isEmpty {
-                    errorState(error)
-                } else if viewModel.currentRecipes.isEmpty && viewModel.currentRecommendations.isEmpty {
-                    emptyState
-                    if viewModel.hasMore {
-                        loadMoreControl
-                    }
-                } else {
-                    recipeList
-                    if let error = viewModel.errorMessage {
-                        inlineErrorState(error)
-                    }
-                    if viewModel.isLoadingMore {
-                        ProgressView("Loading more recipes")
-                            .tint(ProvisionTheme.provisionGreen)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                    } else if viewModel.hasMore {
-                        loadMoreControl
+        VStack(spacing: 0) {
+            if viewModel.mode == .myRecipes {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                    TextField("Search household recipes", text: $viewModel.searchQuery)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.search)
+                        .onSubmit { searchFieldFocused = false }
+                        .focused($searchFieldFocused)
+                        .accessibilityIdentifier("cook-with-pip-search")
+                    if !viewModel.searchQuery.isEmpty {
+                        Button {
+                            viewModel.searchQuery = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(ProvisionTheme.textSecondary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Clear search")
                     }
                 }
+                .font(.body)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 46)
+                .background(ProvisionTheme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(ProvisionTheme.border, lineWidth: 1))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
-            .padding(.bottom, 24)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    introduction
+                    NavigationLink {
+                        CookWithPipManagementView(scope: scope, service: workflowService)
+                    } label: {
+                        Label("Preferences and product labels", systemImage: "fork.knife.circle")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                            .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
+                    }
+                    .accessibilityIdentifier("cook-with-pip-management")
+                    modePicker
+
+                    if viewModel.hasExcludedCandidates && viewModel.mode != .myRecipes {
+                        excludedCandidatesNote
+                    }
+
+                    if viewModel.isLoading && !viewModel.hasLoadedOnce {
+                        loadingState
+                    } else if let error = viewModel.errorMessage,
+                              viewModel.currentRecipes.isEmpty && viewModel.currentRecommendations.isEmpty {
+                        errorState(error)
+                    } else if viewModel.currentRecipes.isEmpty && viewModel.currentRecommendations.isEmpty {
+                        emptyState
+                        if viewModel.hasMore {
+                            loadMoreControl
+                        }
+                    } else {
+                        recipeList
+                        if let error = viewModel.errorMessage {
+                            inlineErrorState(error)
+                        }
+                        if viewModel.isLoadingMore {
+                            ProgressView("Loading more recipes")
+                                .tint(ProvisionTheme.provisionGreen)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                        } else if viewModel.hasMore {
+                            loadMoreControl
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 24)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .refreshable { await viewModel.refresh() }
         }
         .background(ProvisionTheme.background.ignoresSafeArea())
         .navigationTitle("Cook with Pip")
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $viewModel.searchQuery, prompt: "Search household recipes")
-        .refreshable { await viewModel.refresh() }
+        .toolbarBackground(ProvisionTheme.background, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .task {
             if !viewModel.hasLoadedOnce {
                 await viewModel.load(reset: true)
@@ -95,6 +133,9 @@ public struct CookWithPipView: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: 68, height: 68)
+                .padding(8)
+                .background(ProvisionTheme.surface, in: Circle())
+                .overlay(Circle().stroke(ProvisionTheme.border, lineWidth: 1))
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 5) {

@@ -15,14 +15,28 @@ public struct CookWithPipManagementView: View {
                 NavigationLink {
                     CookWithPipPreferencesView(scope: scope, service: service)
                 } label: {
-                    Label("My cooking preferences", systemImage: "person.crop.circle")
+                    VStack(alignment: .leading, spacing: 3) {
+                        Label("Cooking preferences", systemImage: "person.crop.circle")
+                            .font(.body)
+                        Text("Set cuisine, diet, servings, and member allergy declarations.")
+                            .font(.footnote)
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 .accessibilityIdentifier("cook-with-pip-preferences-link")
 
                 NavigationLink {
                     ProductLabelReviewListView(scope: scope, service: service)
                 } label: {
-                    Label("Product label reviews", systemImage: "tag")
+                    VStack(alignment: .leading, spacing: 3) {
+                        Label("Product label reviews", systemImage: "tag")
+                            .font(.body)
+                        Text("Review package labels and household product mappings.")
+                            .font(.footnote)
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 .accessibilityIdentifier("cook-with-pip-product-labels-link")
             } footer: {
@@ -33,5 +47,7 @@ public struct CookWithPipManagementView: View {
         .background(ProvisionTheme.background)
         .navigationTitle("Cook with Pip")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(ProvisionTheme.background, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
     }
 }

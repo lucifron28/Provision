@@ -60,12 +60,15 @@ public struct CookWithPipPreferencesView: View {
                     Text("Medium").tag("medium")
                     Text("Hot").tag("hot")
                 }
-                TextField("Preferred servings", text: $servingsText)
-                    .keyboardType(.decimalPad)
-                    .accessibilityIdentifier("pip-preferred-servings")
-                    .onChange(of: servingsText) { _, value in
-                        if let amount = decimal(value), amount > 0 { viewModel.preferences.servings = amount }
-                    }
+                LabeledContent("Servings per meal (people)") {
+                    TextField("Number of people", text: $servingsText)
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.trailing)
+                        .accessibilityIdentifier("pip-preferred-servings")
+                        .onChange(of: servingsText) { _, value in
+                            if let amount = decimal(value), amount > 0 { viewModel.preferences.servings = amount }
+                        }
+                }
                 TextField("Maximum cooking minutes", text: $cookMinutesText)
                     .keyboardType(.numberPad)
                     .accessibilityIdentifier("pip-max-cook-minutes")
@@ -138,6 +141,8 @@ public struct CookWithPipPreferencesView: View {
         .background(ProvisionTheme.background)
         .navigationTitle("My Cooking Preferences")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(ProvisionTheme.background, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {

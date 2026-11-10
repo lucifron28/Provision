@@ -48,6 +48,24 @@ jobs:
           --required .github/scripts/required_ios_screenshots.json
           --commit-sha "$GITHUB_SHA"
           --test-outcome "${{ steps.ios-tests.outcome }}"
+      - name: Package screenshots for visual review
+        if: always()
+        run: |
+          if [ -d artifacts/cook-with-pip-screenshots ]; then
+            ditto -c -k --sequesterRsrc --keepParent \
+              artifacts/cook-with-pip-screenshots \
+              artifacts/cook-with-pip-visual-review.zip
+          else
+            echo "Organized screenshot folder is missing." >&2
+            exit 1
+          fi
+      - name: Upload screenshot review archive
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cook-with-pip-visual-review
+          path: artifacts/cook-with-pip-visual-review.zip
+          if-no-files-found: error
       - name: Upload organized iOS screenshots and scenario manifest
         if: always()
         uses: actions/upload-artifact@v4
@@ -61,7 +79,7 @@ jobs:
         with:
           name: cook-with-pip-xcresult
           path: artifacts/frontend.xcresult
-          if-no-files-found: warn
+          if-no-files-found: error
 
   backend:
     runs-on: ubuntu-latest

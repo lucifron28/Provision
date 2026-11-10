@@ -28,10 +28,12 @@ private actor CookWithPipUITestScenarioCounter {
     private var confirmationRequests = 0
     private var lastConfirmedLines: [RecipeShoppingAcceptedLine] = []
     private var confirmations: [RecipeShoppingConfirmation] = []
-
+    private var previewRecipeID: Int?
     func nextRecommendation() -> Int { recommendationRequests += 1; return recommendationRequests }
     func nextSource() -> Int { sourceRequests += 1; return sourceRequests }
     func nextPreview() -> Int { previewRequests += 1; return previewRequests }
+    func setPreviewRecipeID(_ id: Int) { previewRecipeID = id }
+    func confirmedRecipeID() -> Int? { previewRecipeID }
     func nextConfirmation() -> Int { confirmationRequests += 1; return confirmationRequests }
     func recordConfirmation(_ confirmation: RecipeShoppingConfirmation) {
         confirmations.append(confirmation)
@@ -155,6 +157,19 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
                 Self.makeIngredient(id: 916, name: "bagoong isda na may hindi pa nasusuring label", amount: "30", unit: "g")
             ]
         )
+        let ginataangKangkong = Self.makeRecipe(
+            id: 305,
+            title: "Test Recipe: Ginataang Kangkong",
+            region: "Filipino",
+            summary: "A synthetic fixture with exact required and optional ingredient amounts.",
+            prepMinutes: 10,
+            cookMinutes: 20,
+            ingredients: [
+                Self.makeIngredient(id: 901, name: "kangkong", amount: "120", unit: "g"),
+                Self.makeIngredient(id: 914, name: "gata", amount: "200", unit: "mL"),
+                Self.makeIngredient(id: 913, name: "sili", amount: "1", unit: "pcs", required: false)
+            ]
+        )
 
         let sinigangEvaluation = Self.makeEvaluation(
             recipe: sinigang,
@@ -191,6 +206,20 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
             ],
             overallAvailability: "unknown"
         )
+        let ginataangKangkongEvaluation = Self.makeEvaluation(
+            recipe: ginataangKangkong,
+            decision: "eligible",
+            availability: [
+                Self.availabilityLine(id: 901, name: "kangkong", required: true, needed: "120", available: "20", shortfall: "100", unit: "g", status: "partial", batchIDs: [9904]),
+                Self.availabilityLine(id: 914, name: "gata", required: true, needed: "200", available: "50", shortfall: "150", unit: "mL", status: "partial", batchIDs: [9905]),
+                Self.availabilityLine(id: 913, name: "sili", required: false, needed: "1", available: "1", shortfall: "0", unit: "pcs", status: "full", batchIDs: [9906])
+            ],
+            ingredientDecisions: [
+                Self.safetyLine(index: 0, id: 901, decision: "eligible"),
+                Self.safetyLine(index: 1, id: 914, decision: "eligible"),
+                Self.safetyLine(index: 2, id: 913, decision: "eligible")
+            ]
+        )
         let pinakbetEvaluation = Self.makeEvaluation(
             recipe: pinakbet,
             decision: "blocked",
@@ -206,12 +235,13 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
             overallAvailability: "missing"
         )
 
-        recipes = [bicolExpress, laing, sinigang, pinakbet]
+        recipes = [bicolExpress, laing, sinigang, pinakbet, ginataangKangkong]
         evaluations = [
             sinigang.id: sinigangEvaluation,
             laing.id: laingEvaluation,
             bicolExpress.id: bicolExpressEvaluation,
-            pinakbet.id: pinakbetEvaluation
+            pinakbet.id: pinakbetEvaluation,
+            ginataangKangkong.id: ginataangKangkongEvaluation
         ]
         cookNowResults = [Self.recommendation(recipe: sinigang, evaluation: sinigangEvaluation, missingCount: 0)]
         almostThereResults = [Self.recommendation(recipe: laing, evaluation: laingEvaluation, missingCount: 2)]
@@ -376,34 +406,52 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
                 missing_expiry_batch_ids: [], unknown_reasons: [])
         ]
         let optionalLine = RecipeShoppingLine(
-            ingredient_id: 913, canonical_name: "kangkong", display_name: "kangkong (optional)", unit: "g",
-            required_quantity: Self.quantity("120"), pantry_quantity: Self.quantity("120"),
+            ingredient_id: 913, canonical_name: "sili", display_name: "sili", unit: "pcs",
+            required_quantity: Self.quantity("1"), pantry_quantity: Self.quantity("1"),
             shortage: Self.quantity("0"), pending_quantity: Self.quantity("0"),
             target_quantity: Self.quantity("0"), additional_quantity: Self.quantity("0"),
-            pending_item_ids: [], covered_batch_ids: [9904], status: "ready", review_reasons: [])
+            pending_item_ids: [], covered_batch_ids: [9906], status: "ready", review_reasons: [])
         if request.include_optional {
             requirements.append(IngredientAvailabilitySnapshot(
-                ingredient_id: 913, canonical_name: "kangkong", display_names: ["kangkong"], required: false,
-                required_amount: Self.quantity("120"), available_amount: Self.quantity("120"),
-                shortfall: Self.quantity("0"), unit: "g", status: "full", covered_batch_ids: [9904],
+                ingredient_id: 913, canonical_name: "sili", display_names: ["sili"], required: false,
+                required_amount: Self.quantity("1"), available_amount: Self.quantity("1"),
+                shortfall: Self.quantity("0"), unit: "pcs", status: "full", covered_batch_ids: [9906],
                 missing_expiry_batch_ids: [], unknown_reasons: []))
+        }
+        var safetyIngredients = [
+            Self.safetyLine(index: 0, id: 901, decision: "eligible"),
+            Self.safetyLine(index: 1, id: 914, decision: decision, reasons: reasons)
+        ]
+        if request.include_optional {
+            safetyIngredients.append(Self.safetyLine(index: 2, id: 913, decision: "eligible"))
         }
         let readySafety = FoodSafetySnapshot(
             decision: decision, reasons: reasons,
-            ingredients: [IngredientSafetySnapshot(requirement_index: 0, ingredient_id: 901,
-                decision: decision, reasons: reasons)],
+            ingredients: safetyIngredients,
             availability: RecipeAvailabilitySnapshot(
                 recipe_servings: request.servings, servings: request.servings, overall_status: "partial",
                 requirements: requirements
             ), notice: "No known conflict is not a safety guarantee. Check actual labels and preparation."
         )
+        let expiration: String
+        if scenario == "shopping-expired" {
+            expiration = "2020-01-01T00:00:00Z"
+        } else if scenario == "shopping-malformed-expiry" {
+            expiration = "not-a-timestamp"
+        } else {
+            let lifetime: TimeInterval = scenario == "shopping-expiring-soon" ? 2 : 300
+            expiration = ISO8601DateFormatter().string(from: Date().addingTimeInterval(lifetime))
+        }
+        await counter.setPreviewRecipeID(request.recipe_id)
         return RecipeShoppingPreview(
-            preview_id: "synthetic-preview-9905", expires_at: "2026-11-09T00:10:00Z", recipe_id: request.recipe_id,
+            preview_id: "synthetic-preview-\(request.recipe_id)-\(request.expected_recipe_revision)",
+            expires_at: expiration,
+            recipe_id: request.recipe_id,
             recipe_revision: request.expected_recipe_revision, servings: request.servings,
             include_optional: request.include_optional, shopping_revision: 3, inventory_revision: 7,
             included_requirement_indexes: request.include_optional ? [0, 1, 2] : [0, 1], safety: readySafety,
             lines: request.include_optional ? [firstLine, secondLine, optionalLine] : [firstLine, secondLine],
-            unlinked_manual_items: [UnlinkedShoppingReview(item_id: 9906, name: "manual market note",
+            unlinked_manual_items: [UnlinkedShoppingReview(item_id: 9920, name: "manual market note",
                 quantity: Self.quantity("1"), unit: nil, candidate_ingredient_ids: [], reason: "not_linked")]
         )
     }
@@ -429,7 +477,7 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
                       defaults.integer(forKey: mutationCountKey) == 1 else {
                     throw APIError.invalidResponse(502, "The fixture server rejected a non-identical retry")
                 }
-                return confirmationResult(for: confirmation)
+                return await confirmationResult(for: confirmation)
             }
             guard let data = try? JSONEncoder().encode(confirmation) else {
                 throw APIError.invalidResponse(502, "The fixture server could not save the confirmation")
@@ -438,18 +486,22 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
             defaults.set(1, forKey: mutationCountKey)
             throw APIError.networkError(URLError(.timedOut))
         }
-        return confirmationResult(for: confirmation)
+        return await confirmationResult(for: confirmation)
     }
 
-    private func confirmationResult(for confirmation: RecipeShoppingConfirmation) -> RecipeShoppingConfirmationResult {
-        RecipeShoppingConfirmationResult(
+    private func confirmationResult(for confirmation: RecipeShoppingConfirmation) async -> RecipeShoppingConfirmationResult {
+        let previewParts = confirmation.preview_id.split(separator: "-")
+        let previewRecipeID = previewParts.count >= 4 && previewParts[0] == "synthetic" && previewParts[1] == "preview"
+            ? Int(previewParts[2]) : nil
+        let recipeID = await counter.confirmedRecipeID() ?? previewRecipeID ?? -1
+        return RecipeShoppingConfirmationResult(
             preview_id: confirmation.preview_id, shopping_revision: confirmation.expected_revision + 1,
             created: confirmation.accepted_lines.map { line in
-                let name = line.ingredient_id == 914 ? "gata" : "kangkong"
-                let unit = line.ingredient_id == 914 ? "mL" : "g"
+                let name = line.ingredient_id == 914 ? "gata" : (line.ingredient_id == 913 ? "sili" : "kangkong")
+                let unit = line.ingredient_id == 914 ? "mL" : (line.ingredient_id == 913 ? "pcs" : "g")
                 return RecipeShoppingChange(id: 9907 + line.ingredient_id, name: name, quantity: line.target_quantity,
                     unit: unit, is_bought: false, notes: nil, product_id: nil, ingredient_id: line.ingredient_id,
-                    origin_recipe_id: 301, origin_recipe_revision: 1, origin_plan_id: nil, origin_plan_revision: nil,
+                    origin_recipe_id: recipeID, origin_recipe_revision: 1, origin_plan_id: nil, origin_plan_revision: nil,
                     created_at: nil, updated_at: nil)
             }, updated: [], unchanged: [], consolidated: confirmation.accepted_lines.filter { $0.consolidate_existing }.map { line in
                 ConsolidatedShoppingItems(kept_item_id: 9911,
@@ -463,11 +515,22 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
 
     func fetchShoppingListFromServer(scope: HouseholdScope) async throws -> [ShoppingItem] {
         let lines = await counter.confirmedLines()
-        return lines.enumerated().map { index, line in
-            let name = line.ingredient_id == 914 ? "gata" : "kangkong"
-            let unit = line.ingredient_id == 914 ? "mL" : "g"
+        return lines.map { line in
+            let name: String
+            let unit: String
+            switch line.ingredient_id {
+            case 914:
+                name = "gata"
+                unit = "mL"
+            case 913:
+                name = "sili"
+                unit = "pcs"
+            default:
+                name = "kangkong"
+                unit = "g"
+            }
             let amount = NSDecimalNumber(decimal: line.target_quantity.value).doubleValue
-            return ShoppingItem(id: 9907 + index, name: name, product_id: nil, quantity: amount,
+            return ShoppingItem(id: 9907 + line.ingredient_id, name: name, product_id: nil, quantity: amount,
                                 unit: unit, is_bought: false)
         }
     }
