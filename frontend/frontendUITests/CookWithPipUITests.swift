@@ -76,7 +76,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(element("recipe-safety-status", in: app).waitForExistence(timeout: 10))
         XCTAssertEqual(element("recipe-availability-status", in: app).label, "Partial")
         let partialIngredient = element("recipe-ingredient-1", in: app)
-        scrollTargetIntoView(partialIngredient, inside: app.scrollViews["recipe-detail-scroll"])
+        scrollTargetIntoView(partialIngredient, inside: app.scrollViews["recipe-detail-scroll"], in: app)
         XCTAssertTrue(partialIngredient.isHittable)
         capture("Recipe_Detail_Partial_Missing", app: app)
 
@@ -86,7 +86,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertEqual(element("recipe-safety-status", in: app).label, "Review required")
         XCTAssertEqual(element("recipe-availability-status", in: app).label, "Unknown")
         let unknownIngredient = element("recipe-ingredient-name-0", in: app)
-        scrollTargetIntoView(unknownIngredient, inside: app.scrollViews["recipe-detail-scroll"])
+        scrollTargetIntoView(unknownIngredient, inside: app.scrollViews["recipe-detail-scroll"], in: app)
         XCTAssertTrue(unknownIngredient.isHittable)
         let reviewLabels = element("recipe-review-product-labels", in: app)
         nudgeContentDown(in: app, by: 0.10)
@@ -102,11 +102,11 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertEqual(element("recipe-safety-status", in: app).label, "Blocked")
         XCTAssertEqual(element("recipe-availability-status", in: app).label, "Missing")
         let longIngredient = element("recipe-ingredient-name-0", in: app)
-        scrollTargetIntoView(longIngredient, inside: app.scrollViews["recipe-detail-scroll"])
+        scrollTargetIntoView(longIngredient, inside: app.scrollViews["recipe-detail-scroll"], in: app)
         XCTAssertTrue(longIngredient.label.contains("talong na hiniwa nang pahaba"))
         capture("Recipe_Detail_Blocked_Long_Filipino", app: app)
         let instructions = element("recipe-instructions", in: app)
-        scrollTargetIntoView(instructions, inside: app.scrollViews["recipe-detail-scroll"])
+        scrollTargetIntoView(instructions, inside: app.scrollViews["recipe-detail-scroll"], in: app)
         nudgeContentDown(in: app, by: 0.09)
         XCTAssertTrue(instructions.isHittable)
         capture("Recipe_Detail_Scrolled", app: app)
@@ -393,7 +393,7 @@ final class CookWithPipUITests: XCTestCase {
         let reviewForm = largeApp.descendants(matching: .any)
             .matching(identifier: "recipe-shopping-review-form").firstMatch
         let listRevision = element("recipe-shopping-list-revision", in: largeApp)
-        scrollTargetIntoView(listRevision, inside: reviewForm)
+        scrollTargetIntoView(listRevision, inside: reviewForm, in: largeApp)
         XCTAssertTrue(listRevision.isHittable)
         XCTAssertTrue(listRevision.label.contains("Shopping list"))
         let pantryRevision = element("recipe-shopping-pantry-revision", in: largeApp)
@@ -478,7 +478,7 @@ final class CookWithPipUITests: XCTestCase {
         let pendingLine = element("recipe-shopping-pending-line-0", in: app)
         XCTAssertTrue(pendingLine.waitForExistence(timeout: 10))
         XCTAssertTrue(pendingLine.label.contains("kangkong"))
-        scrollTargetIntoView(pendingLine, inside: reviewForm)
+        scrollTargetIntoView(pendingLine, inside: reviewForm, in: app)
         capture("Shopping_Confirmation_Retry_Pending", app: app)
         app.terminate()
 
@@ -490,7 +490,7 @@ final class CookWithPipUITests: XCTestCase {
         let retryPending = relaunched.buttons["recipe-shopping-retry-pending"]
         let relaunchedReviewForm = relaunched.descendants(matching: .any)
             .matching(identifier: "recipe-shopping-review-form").firstMatch
-        scrollTargetIntoView(retryPending, inside: relaunchedReviewForm)
+        scrollTargetIntoView(retryPending, inside: relaunchedReviewForm, in: relaunched)
         retryPending.tap()
         let resultCounts = relaunched.staticTexts["recipe-shopping-result-counts"]
         XCTAssertTrue(resultCounts.waitForExistence(timeout: 10))
@@ -570,7 +570,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(largeSummary.label.contains("long Filipino ingredient names"))
         capture("Recipe_Detail_Large_Text_Filipino", app: largeApp)
         let longIngredient = element("recipe-ingredient-name-0", in: largeApp)
-        scrollTargetIntoView(longIngredient, inside: largeApp.scrollViews["recipe-detail-scroll"])
+        scrollTargetIntoView(longIngredient, inside: largeApp.scrollViews["recipe-detail-scroll"], in: largeApp)
         XCTAssertTrue(longIngredient.isHittable)
         XCTAssertTrue(longIngredient.label.contains("talong na hiniwa nang pahaba"))
         assertBelowNavigationBar(longIngredient, in: largeApp)
@@ -681,14 +681,14 @@ final class CookWithPipUITests: XCTestCase {
         for _ in 0..<12 where !recipe.exists { recipeList.swipeUp() }
         XCTAssertTrue(recipe.waitForExistence(timeout: 10))
         XCTAssertTrue(recipe.label.contains("Test Recipe: Ginataang Kangkong"))
-        scrollTargetIntoView(recipe, inside: recipeList)
+        scrollTargetIntoView(recipe, inside: recipeList, in: app)
         recipe.tap()
         let recipeTitle = app.staticTexts["recipe-detail-title"]
         XCTAssertTrue(recipeTitle.waitForExistence(timeout: 10),
                       "Tapping the visible saved recipe should open its detail screen")
         let previewLink = app.buttons["recipe-shopping-preview-link"]
         let recipeDetail = app.scrollViews["recipe-detail-scroll"]
-        scrollTargetIntoView(previewLink, inside: recipeDetail)
+        scrollTargetIntoView(previewLink, inside: recipeDetail, in: app)
         assertBelowNavigationBar(previewLink, in: app)
         previewLink.tap()
         let ready = element("recipe-shopping-safety-status", in: app)
@@ -702,11 +702,11 @@ final class CookWithPipUITests: XCTestCase {
         if settings.exists {
             let reviewForm = app.descendants(matching: .any)
                 .matching(identifier: "recipe-shopping-review-form").firstMatch
-            scrollTargetIntoView(ready, inside: reviewForm)
+            scrollTargetIntoView(ready, inside: reviewForm, in: app)
         }
     }
 
-    private func scrollTargetIntoView(_ target: XCUIElement, inside container: XCUIElement) {
+    private func scrollTargetIntoView(_ target: XCUIElement, inside container: XCUIElement, in app: XCUIApplication) {
         XCTAssertTrue(container.waitForExistence(timeout: 5), "Expected the identified scroll container")
         for _ in 0..<16 where !target.exists { container.swipeUp() }
         XCTAssertTrue(target.waitForExistence(timeout: 10), "Expected \(target.identifier) before scrolling")
