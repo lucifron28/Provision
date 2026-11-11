@@ -290,7 +290,7 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(mappingVerified, in: app)
         assertBelowNavigationBar(mappingVerified, in: app)
         scrollTo(status, in: app)
-        nudgeContentDown(in: app, by: -0.12)
+        nudgeContentDown(in: app, by: -0.10)
         assertBelowNavigationBar(status, in: app)
         capture("Product_Label_Review_Stale", app: app)
     }
