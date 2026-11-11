@@ -633,8 +633,6 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(searchMyRecipesMode.waitForExistence(timeout: 5))
         XCTAssertFalse(keyboardDone.frame.intersects(searchMyRecipesMode.frame),
                        "The search Done action must not cover the My Recipes filter")
-        let recipeScrollView = searchApp.scrollViews["cook-with-pip-recipe-list-scroll"]
-        scrollTargetIntoView(searchMyRecipesMode, inside: recipeScrollView, in: searchApp)
         let recipeModeButtons = [
             searchApp.buttons["cook-mode-cookNow"],
             searchApp.buttons["cook-mode-almostThere"],
@@ -642,6 +640,8 @@ final class CookWithPipUITests: XCTestCase {
         ]
         for button in recipeModeButtons {
             XCTAssertTrue(button.isHittable, "The recipe filter remains usable while search is focused")
+            XCTAssertGreaterThanOrEqual(button.frame.minY, keyboardDone.frame.maxY,
+                                        "The pinned recipe filters stay below the search Done action")
             XCTAssertLessThanOrEqual(button.frame.maxY, keyboard.frame.minY - 8,
                                      "The recipe filter stays above the software keyboard")
         }
@@ -650,6 +650,7 @@ final class CookWithPipUITests: XCTestCase {
         let matchingRecipe = element("recipe-card-302", in: searchApp)
         XCTAssertTrue(matchingRecipe.waitForExistence(timeout: 10))
         XCTAssertGreaterThanOrEqual(matchingRecipe.frame.minY, search.frame.maxY)
+        let recipeScrollView = searchApp.scrollViews["cook-with-pip-recipe-list-scroll"]
         XCTAssertTrue(recipeScrollView.exists)
         keyboardDone.tap()
         let keyboardDismissed = XCTNSPredicateExpectation(

@@ -75,6 +75,12 @@ public struct CookWithPipView: View {
                 }
             }
 
+            if searchFieldFocused {
+                modePicker
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+            }
+
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     introduction
@@ -87,7 +93,9 @@ public struct CookWithPipView: View {
                             .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
                     }
                     .accessibilityIdentifier("cook-with-pip-management")
-                    modePicker
+                    if !searchFieldFocused {
+                        modePicker
+                    }
 
                     if viewModel.hasExcludedCandidates && viewModel.mode != .myRecipes {
                         excludedCandidatesNote
