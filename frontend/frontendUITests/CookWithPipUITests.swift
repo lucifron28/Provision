@@ -88,11 +88,11 @@ final class CookWithPipUITests: XCTestCase {
         let unknownIngredient = element("recipe-ingredient-name-0", in: app)
         scrollTargetIntoView(unknownIngredient, inside: app.scrollViews["recipe-detail-scroll"], in: app)
         XCTAssertTrue(unknownIngredient.isHittable)
+        assertBelowNavigationBar(unknownIngredient, in: app)
         let reviewPreferences = element("recipe-review-preferences", in: app)
         let reviewLabels = element("recipe-review-product-labels", in: app)
         scrollTo(reviewPreferences, in: app)
         assertBelowNavigationBar(reviewPreferences, in: app)
-        assertBelowNavigationBar(unknownIngredient, in: app)
         assertBelowNavigationBar(reviewLabels, in: app)
         capture("Recipe_Detail_Review_Unknown", app: app)
 
@@ -199,8 +199,10 @@ final class CookWithPipUITests: XCTestCase {
         let mappingType = element("pip-label-mapping-type", in: app)
         scrollTo(mappingType, in: app)
         assertBelowNavigationBar(mappingType, in: app)
-        assertBelowNavigationBar(currentStatus, in: app)
+        scrollTo(mappingVerified, in: app)
         assertBelowNavigationBar(mappingVerified, in: app)
+        scrollTo(currentStatus, in: app)
+        assertBelowNavigationBar(currentStatus, in: app)
         capture("Product_Label_Saved_Keyboard_Dismissed", app: app)
         capture("Product_Label_Review_Current", app: app)
     }
@@ -281,8 +283,10 @@ final class CookWithPipUITests: XCTestCase {
         let mappingType = element("pip-label-mapping-type", in: app)
         scrollTo(mappingType, in: app)
         assertBelowNavigationBar(mappingType, in: app)
-        assertBelowNavigationBar(status, in: app)
+        scrollTo(mappingVerified, in: app)
         assertBelowNavigationBar(mappingVerified, in: app)
+        scrollTo(status, in: app)
+        assertBelowNavigationBar(status, in: app)
         capture("Product_Label_Review_Stale", app: app)
     }
 
