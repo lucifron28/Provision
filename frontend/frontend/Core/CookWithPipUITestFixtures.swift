@@ -599,8 +599,9 @@ struct CookWithPipUITestHost: View {
         VStack(spacing: 0) {
             Text("UI TEST FIXTURES")
                 .font(.caption.weight(.bold))
+                .dynamicTypeSize(.xSmall ... .xxxLarge)
                 .foregroundStyle(ProvisionTheme.textPrimary)
-                .frame(maxWidth: .infinity, minHeight: 30)
+                .frame(maxWidth: .infinity, minHeight: 30, maxHeight: 30)
                 .background(ProvisionTheme.provisionGreenLight)
                 .overlay(alignment: .bottom) {
                     Rectangle().fill(ProvisionTheme.border).frame(height: 1)
