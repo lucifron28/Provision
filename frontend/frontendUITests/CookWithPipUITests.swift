@@ -223,10 +223,13 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(mappingVerified, in: app)
         assertBelowNavigationBar(mappingVerified, in: app)
         scrollTo(currentStatus, in: app)
-        nudgeContentDown(in: app, by: 0.10)
+        nudgeContentDown(in: app, by: -0.05)
         XCTAssertTrue(packageDeclarationHeading.waitForExistence(timeout: 5))
         assertBelowNavigationBar(packageDeclarationHeading, in: app)
         assertBelowNavigationBar(currentStatus, in: app)
+        let currentLabelViewport = visibleApplicationFrame(of: app, inset: 8)
+        XCTAssertLessThanOrEqual(currentStatus.frame.maxY, currentLabelViewport.maxY,
+                                 "The saved declaration stays above the bottom safe area")
         capture("Product_Label_Saved_Keyboard_Dismissed", app: app)
         capture("Product_Label_Review_Current", app: app)
     }
@@ -242,9 +245,14 @@ final class CookWithPipUITests: XCTestCase {
         let milkSeverity = element("pip-allergen-severity-milk", in: darkPreferences)
         let milkCrossContact = darkPreferences.switches["pip-allergen-cross-contact-milk"]
         scrollTo(milkCrossContact, in: darkPreferences)
+        nudgeContentDown(in: darkPreferences, by: -0.10)
         XCTAssertTrue(milkSeverity.isHittable)
         XCTAssertTrue(milkCrossContact.isHittable)
         XCTAssertTrue(milkCrossContact.label.contains("Milk"))
+        let preferencesViewport = visibleApplicationFrame(of: darkPreferences, inset: 8)
+        XCTAssertGreaterThanOrEqual(milkSeverity.frame.minY, preferencesViewport.minY)
+        XCTAssertLessThanOrEqual(milkCrossContact.frame.maxY, preferencesViewport.maxY,
+                                 "The allergy controls stay inside the dark-mode viewport")
         capture("Preferences_Allergy_Dark_Mode", app: darkPreferences)
 
         darkPreferences.terminate()
@@ -367,13 +375,18 @@ final class CookWithPipUITests: XCTestCase {
     func testShoppingPreviewEditsConsolidationAndExplicitConfirmation() {
         let app = launch()
         openShoppingPreview(app)
+        let shoppingForm = app.descendants(matching: .any)
+            .matching(identifier: "recipe-shopping-review-form").firstMatch
         XCTAssertEqual(element("recipe-shopping-safety-status", in: app).label, "Eligible")
         capture("Shopping_Preview_Ready", app: app)
         let unlinked = element("recipe-shopping-unlinked-9920", in: app)
         scrollTo(unlinked, in: app)
         XCTAssertTrue(unlinked.exists)
-        nudgeContentDown(in: app, by: 0.04)
+        nudgeContentDown(in: app, by: -0.15)
         XCTAssertTrue(unlinked.isHittable)
+        let unlinkedViewport = visibleScrollFrame(of: shoppingForm, in: app, inset: 8)
+        XCTAssertGreaterThanOrEqual(unlinked.frame.minY, unlinkedViewport.minY)
+        XCTAssertLessThanOrEqual(unlinked.frame.maxY, unlinkedViewport.maxY)
         capture("Shopping_Unlinked_Manual_Items", app: app)
 
         let includeOptional = app.switches["recipe-shopping-include-optional"]
@@ -390,9 +403,13 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(optionalIngredient, in: app)
         XCTAssertTrue(optionalIngredient.waitForExistence(timeout: 10))
         XCTAssertFalse(stalePreview.exists)
-        nudgeContentDown(in: app, by: 0.12)
+        nudgeContentDown(in: app, by: -0.12)
         XCTAssertTrue(optionalIngredient.isHittable)
         assertBelowNavigationBar(optionalIngredient, in: app)
+        let optionalViewport = visibleScrollFrame(of: shoppingForm, in: app, inset: 8)
+        XCTAssertGreaterThanOrEqual(optionalIngredient.frame.minY, optionalViewport.minY)
+        XCTAssertLessThanOrEqual(optionalIngredient.frame.maxY, optionalViewport.maxY,
+                                 "The optional ingredient row stays fully inside the shopping viewport")
         capture("Shopping_Optional_Ingredients", app: app)
 
         let target = element("recipe-shopping-target-901", in: app)
@@ -407,9 +424,14 @@ final class CookWithPipUITests: XCTestCase {
         let consolidate = app.switches["recipe-shopping-consolidate-914"]
         scrollTo(consolidate, in: app)
         setSwitch(consolidate, to: "1")
-        nudgeContentDown(in: app, by: 0.12)
+        let consolidationRow = element("recipe-shopping-row-914", in: app)
+        scrollTargetIntoView(consolidationRow, inside: shoppingForm, in: app)
         XCTAssertTrue(consolidate.isHittable)
         assertBelowNavigationBar(consolidate, in: app)
+        let consolidationViewport = visibleScrollFrame(of: shoppingForm, in: app, inset: 8)
+        XCTAssertGreaterThanOrEqual(consolidationRow.frame.minY, consolidationViewport.minY)
+        XCTAssertLessThanOrEqual(consolidationRow.frame.maxY, consolidationViewport.maxY,
+                                 "The ingredient name and consolidation control share a complete visible row")
         capture("Shopping_Duplicate_Consolidation_Opt_In", app: app)
 
         element("recipe-shopping-confirm", in: app).tap()
