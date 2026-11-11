@@ -268,7 +268,7 @@ final class CookWithPipUITests: XCTestCase {
             "A verified, complete mapping is required before a package label review can be recorded."
         ]
         scrollTo(milkDeclaration, in: largeLabel)
-        nudgeContentDown(in: largeLabel, by: 0.08)
+        nudgeContentDown(in: largeLabel, by: 0.16)
         XCTAssertTrue(mappingNote.waitForExistence(timeout: 5))
         assertBelowNavigationBar(mappingNote, in: largeLabel)
         XCTAssertTrue(milkDeclaration.isHittable)
@@ -503,8 +503,6 @@ final class CookWithPipUITests: XCTestCase {
         let fixtureID = Int.random(in: 10_000...90_000)
         let app = launch(scenario: "shopping-restart", fixtureID: fixtureID, useKeychain: true)
         openShoppingPreview(app)
-        let reviewForm = app.descendants(matching: .any)
-            .matching(identifier: "recipe-shopping-review-form").firstMatch
         let confirm = app.buttons["recipe-shopping-confirm"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 10))
         XCTAssertTrue(confirm.isHittable, "The shopping confirmation action stays in the navigation toolbar")
@@ -526,7 +524,7 @@ final class CookWithPipUITests: XCTestCase {
         let pendingLine = element("recipe-shopping-pending-line-0", in: app)
         XCTAssertTrue(pendingLine.waitForExistence(timeout: 10))
         XCTAssertTrue(pendingLine.label.contains("kangkong"))
-        scrollTargetIntoView(pendingLine, inside: reviewForm, in: app)
+        scrollTo(pendingLine, in: app)
         capture("Shopping_Confirmation_Retry_Pending", app: app)
         app.terminate()
 
@@ -536,9 +534,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(relaunchedPending.waitForExistence(timeout: 10))
         XCTAssertTrue(relaunchedPending.label.contains("kangkong"))
         let retryPending = relaunched.buttons["recipe-shopping-retry-pending"]
-        let relaunchedReviewForm = relaunched.descendants(matching: .any)
-            .matching(identifier: "recipe-shopping-review-form").firstMatch
-        scrollTargetIntoView(retryPending, inside: relaunchedReviewForm, in: relaunched)
+        scrollTo(retryPending, in: relaunched)
         retryPending.tap()
         let resultCounts = relaunched.staticTexts["recipe-shopping-result-counts"]
         XCTAssertTrue(resultCounts.waitForExistence(timeout: 10))
@@ -779,9 +775,8 @@ final class CookWithPipUITests: XCTestCase {
         let loadExpectation = XCTNSPredicateExpectation(predicate: previewLoaded, object: app)
         XCTAssertEqual(XCTWaiter.wait(for: [loadExpectation], timeout: timeout), .completed)
         if settings.exists {
-            let reviewForm = app.descendants(matching: .any)
-                .matching(identifier: "recipe-shopping-review-form").firstMatch
-            scrollTargetIntoView(ready, inside: reviewForm, in: app)
+            XCTAssertTrue(ready.waitForExistence(timeout: 10))
+            scrollTo(ready, in: app)
         }
     }
 
