@@ -288,7 +288,7 @@ private struct RecipeDetailContents: View {
 
     private var evaluationSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Current server evaluation")
+            Text("Recipe status")
                 .font(ProvisionTypography.sectionSerif)
                 .foregroundStyle(ProvisionTheme.textPrimary)
             VStack(alignment: .leading, spacing: 8) {

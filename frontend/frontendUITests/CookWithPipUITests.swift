@@ -551,6 +551,13 @@ final class CookWithPipUITests: XCTestCase {
         let safetyStatus = element("recipe-safety-status", in: largeApp)
         XCTAssertTrue(safetyStatus.waitForExistence(timeout: 10))
         XCTAssertTrue(safetyStatus.isHittable, "The food-safety decision stays visible below the large recipe title")
+        assertBelowNavigationBar(safetyStatus, in: largeApp)
+        let availabilityStatus = element("recipe-availability-status", in: largeApp)
+        XCTAssertTrue(availabilityStatus.waitForExistence(timeout: 10))
+        XCTAssertTrue(availabilityStatus.isHittable, "Pantry availability remains visible alongside food safety")
+        let recipeDetailScroll = largeApp.scrollViews["recipe-detail-scroll"]
+        XCTAssertLessThanOrEqual(availabilityStatus.frame.maxY, recipeDetailScroll.frame.maxY,
+                                 "The pantry status badge stays fully inside the first screen")
         let largeSummary = element("recipe-detail-summary", in: largeApp)
         XCTAssertTrue(largeSummary.waitForExistence(timeout: 10))
         XCTAssertTrue(largeSummary.label.contains("long Filipino ingredient names"))
