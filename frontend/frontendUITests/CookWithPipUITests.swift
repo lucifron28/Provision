@@ -150,7 +150,15 @@ final class CookWithPipUITests: XCTestCase {
         for _ in 0..<6 where !savedMessage.exists { app.swipeDown() }
         XCTAssertTrue(savedMessage.waitForExistence(timeout: 10))
         scrollTo(milkAllergen, in: app)
+        nudgeContentDown(in: app, by: -0.08)
+        let allergyHeading = element("pip-preferences-allergies-heading", in: app)
+        assertBelowNavigationBar(allergyHeading, in: app)
         XCTAssertTrue(milkAllergen.isHittable)
+        XCTAssertTrue(milkSeverity.isHittable)
+        XCTAssertTrue(milkCrossContact.isHittable)
+        let preferencesViewport = visibleScrollFrame(of: app.scrollViews.firstMatch, in: app, inset: 8)
+        XCTAssertLessThanOrEqual(milkCrossContact.frame.maxY, preferencesViewport.maxY,
+                                 "The declared-allergy controls stay inside the visible form area")
         XCTAssertEqual(milkAllergen.value as? String, "1")
         XCTAssertEqual(milkCrossContact.value as? String, "1")
         capture("Preferences_Allergy_Declared", app: app)
