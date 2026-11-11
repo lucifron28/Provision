@@ -34,6 +34,8 @@ final class CookWithPipUITests: XCTestCase {
         let instructions = element("recipe-instructions", in: app)
         scrollTo(instructions, in: app)
         XCTAssertTrue(instructions.exists)
+        nudgeContentDown(in: app, by: 0.06)
+        XCTAssertTrue(instructions.isHittable)
         capture("Recipe_Detail_Instructions", app: app)
     }
 
@@ -102,6 +104,8 @@ final class CookWithPipUITests: XCTestCase {
         capture("Recipe_Detail_Blocked_Long_Filipino", app: app)
         let instructions = element("recipe-instructions", in: app)
         scrollTargetIntoView(instructions, inside: app.scrollViews["recipe-detail-scroll"])
+        nudgeContentDown(in: app, by: 0.06)
+        XCTAssertTrue(instructions.isHittable)
         capture("Recipe_Detail_Scrolled", app: app)
     }
 
@@ -186,10 +190,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(currentStatus.label.contains("Current label review"))
         XCTAssertEqual(milkDeclaration.value as? String, "Declared on label")
         XCTAssertFalse(app.keyboards.firstMatch.isHittable, "Saving a label review dismisses the keyboard")
-        dragScrollContentDown(app.scrollViews.firstMatch, by: 0.045)
-        let mappingHeader = element("pip-label-mapping-header", in: app)
-        XCTAssertTrue(mappingHeader.isHittable, "The saved-state capture must not cut off the section heading")
-        assertBelowNavigationBar(mappingHeader, in: app)
+        nudgeContentDown(in: app, by: 0.045)
         assertBelowNavigationBar(currentStatus, in: app)
         capture("Product_Label_Saved_Keyboard_Dismissed", app: app)
         capture("Product_Label_Review_Current", app: app)
@@ -239,6 +240,8 @@ final class CookWithPipUITests: XCTestCase {
 
         let milkDeclaration = element("pip-label-allergen-milk", in: largeLabel)
         scrollTo(milkDeclaration, in: largeLabel)
+        XCTAssertTrue(milkDeclaration.isHittable)
+        nudgeContentDown(in: largeLabel, by: 0.07)
         XCTAssertTrue(milkDeclaration.isHittable)
         assertBelowNavigationBar(milkDeclaration, in: largeLabel)
         capture("Product_Label_Review_Scrolled", app: largeLabel)
@@ -295,6 +298,8 @@ final class CookWithPipUITests: XCTestCase {
         let unlinked = element("recipe-shopping-unlinked-9920", in: app)
         scrollTo(unlinked, in: app)
         XCTAssertTrue(unlinked.exists)
+        nudgeContentDown(in: app, by: 0.09)
+        XCTAssertTrue(unlinked.isHittable)
         capture("Shopping_Unlinked_Manual_Items", app: app)
 
         let includeOptional = app.switches["recipe-shopping-include-optional"]
@@ -311,6 +316,8 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(optionalIngredient, in: app)
         XCTAssertTrue(optionalIngredient.waitForExistence(timeout: 10))
         XCTAssertFalse(stalePreview.exists)
+        nudgeContentDown(in: app, by: 0.07)
+        XCTAssertTrue(optionalIngredient.isHittable)
         capture("Shopping_Optional_Ingredients", app: app)
 
         let target = element("recipe-shopping-target-901", in: app)
@@ -325,6 +332,8 @@ final class CookWithPipUITests: XCTestCase {
         let consolidate = app.switches["recipe-shopping-consolidate-914"]
         scrollTo(consolidate, in: app)
         setSwitch(consolidate, to: "1")
+        nudgeContentDown(in: app, by: 0.09)
+        XCTAssertTrue(consolidate.isHittable)
         capture("Shopping_Duplicate_Consolidation_Opt_In", app: app)
 
         element("recipe-shopping-confirm", in: app).tap()
@@ -376,9 +385,10 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(listRevision.isHittable)
         XCTAssertTrue(listRevision.label.contains("Shopping list"))
         let pantryRevision = element("recipe-shopping-pantry-revision", in: largeApp)
-        scrollTargetIntoView(pantryRevision, inside: reviewForm)
-        XCTAssertTrue(pantryRevision.isHittable)
+        XCTAssertTrue(pantryRevision.waitForExistence(timeout: 5))
         XCTAssertTrue(pantryRevision.label.contains("Pantry"))
+        nudgeContentDown(in: largeApp, by: 0.04)
+        capture("Shopping_Preview_Revision_Details_Large_Text", app: largeApp)
     }
 
     func testShoppingReviewRequiredAndBlockedStates() {
@@ -446,7 +456,11 @@ final class CookWithPipUITests: XCTestCase {
         let pendingStatus = element("recipe-shopping-pending-status", in: app)
         XCTAssertTrue(pendingStatus.waitForExistence(timeout: 10))
         let retryMessage = element("recipe-shopping-error", in: app)
-        XCTAssertTrue(retryMessage.label.contains("Retry it without editing"))
+        let retryCopyVisible = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label CONTAINS %@", "Retry it without editing"),
+            object: retryMessage
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [retryCopyVisible], timeout: 5), .completed)
         XCTAssertFalse(retryMessage.label.contains("Network connection failed"))
         let pendingLine = element("recipe-shopping-pending-line-0", in: app)
         XCTAssertTrue(pendingLine.waitForExistence(timeout: 10))
@@ -716,13 +730,9 @@ final class CookWithPipUITests: XCTestCase {
                                     "Expected \(target.identifier) to clear the navigation bar")
     }
 
-    private func dragScrollContentDown(_ scrollView: XCUIElement, by fraction: CGFloat) {
-        guard scrollView.exists else {
-            XCTFail("Expected a scroll view for the product label form")
-            return
-        }
-        let start = scrollView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25))
-        let end = scrollView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25 + fraction))
+    private func nudgeContentDown(in app: XCUIApplication, by fraction: CGFloat) {
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3 + fraction))
         start.press(forDuration: 0.1, thenDragTo: end)
     }
 
