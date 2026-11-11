@@ -128,12 +128,23 @@ public struct ProductLabelReviewView: View {
                     if let brand = product.brand, !brand.isEmpty { LabeledContent("Brand", value: brand) }
                     if let category = product.category, !category.isEmpty { LabeledContent("Category", value: category) }
                     if let unit = product.unit, !unit.isEmpty { LabeledContent("Inventory unit", value: unit) }
-                    if let updated = product.updated_at {
-                        LabeledContent("Server version", value: updated)
-                            .font(.caption.monospaced())
-                    } else {
+                    if product.updated_at == nil {
                         Label("Product is missing a server update timestamp", systemImage: "exclamationmark.triangle")
                             .foregroundStyle(ProvisionTheme.amberWarning)
+                    }
+                    if product.updated_at != nil || viewModel.label != nil {
+                        DisclosureGroup("Technical details") {
+                            if let updated = product.updated_at {
+                                LabeledContent("Server version", value: updated)
+                                    .font(.footnote.monospaced())
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            if let label = viewModel.label {
+                                LabeledContent("Label review revision", value: "v\(label.revision)")
+                                    .font(.footnote.monospaced())
+                            }
+                        }
+                        .accessibilityIdentifier("pip-label-technical-details")
                     }
                 }
             }
@@ -215,11 +226,12 @@ public struct ProductLabelReviewView: View {
 
             Section {
                 if let label = viewModel.label {
-                    Label(label.current_for_product ? "Current label review · v\(label.revision)" : "Review is no longer current · v\(label.revision)",
+                    let status = label.current_for_product ? "Current label review" : "Review is no longer current"
+                    Label(status,
                           systemImage: label.current_for_product ? "checkmark.circle" : "exclamationmark.triangle")
                         .foregroundStyle(label.current_for_product ? ProvisionTheme.provisionGreen : ProvisionTheme.amberWarning)
                         .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(label.current_for_product ? "Current label review · v\(label.revision)" : "Review is no longer current · v\(label.revision)")
+                        .accessibilityLabel(status)
                         .accessibilityIdentifier("pip-label-current-status")
                 } else {
                     Text("No package label review is recorded.")

@@ -276,6 +276,10 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(productTitle.waitForExistence(timeout: 10))
         XCTAssertTrue(productTitle.isHittable)
         assertBelowNavigationBar(productTitle, in: largeLabel)
+        let technicalDetails = element("pip-label-technical-details", in: largeLabel)
+        XCTAssertTrue(technicalDetails.waitForExistence(timeout: 5))
+        XCTAssertEqual(technicalDetails.value as? String, "Collapsed",
+                       "Raw timestamps and review revisions stay in a secondary detail row")
         capture("Product_Label_Review_Large_Text", app: largeLabel)
         let sourceField = element("pip-label-source-reference", in: largeLabel)
         let customAllergensHeading = element("pip-label-custom-allergens-heading", in: largeLabel)
