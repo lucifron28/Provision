@@ -220,11 +220,12 @@ private struct RecipeDetailContents: View {
         VStack(alignment: .leading, spacing: dynamicTypeSize.isAccessibilitySize ? 5 : 10) {
             Text(recipe.title)
                 .font(dynamicTypeSize.isAccessibilitySize
-                    ? .system(.title3, design: .serif, weight: .bold)
+                    ? .system(.headline, design: .serif, weight: .bold)
                     : ProvisionTypography.titleSerif)
                 .foregroundStyle(ProvisionTheme.provisionGreen)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("recipe-detail-title")
+                .accessibilityAddTraits(.isHeader)
             if !dynamicTypeSize.isAccessibilitySize,
                let summary = recipe.summary, !summary.isEmpty {
                 Text(summary)
@@ -329,39 +330,37 @@ private struct RecipeDetailContents: View {
     }
 
     private var recipeStatusSummary: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 12) {
-                recipeStatusItem(title: "Food safety") {
-                    StatusPill(presentation: .safety(evaluation.result.decision))
-                        .accessibilityIdentifier("recipe-safety-status")
-                }
-                recipeStatusItem(title: "Pantry availability") {
-                    StatusPill(presentation: .availability(evaluation.result.availability.overall_status))
-                        .accessibilityIdentifier("recipe-availability-status")
-                }
+        VStack(alignment: .leading, spacing: 8) {
+            recipeStatusItem(title: "Food safety") {
+                StatusPill(presentation: .safety(evaluation.result.decision))
+                    .accessibilityIdentifier("recipe-safety-status")
             }
-            VStack(alignment: .leading, spacing: 8) {
-                recipeStatusItem(title: "Food safety") {
-                    StatusPill(presentation: .safety(evaluation.result.decision))
-                        .accessibilityIdentifier("recipe-safety-status")
-                }
-                recipeStatusItem(title: "Pantry availability") {
-                    StatusPill(presentation: .availability(evaluation.result.availability.overall_status))
-                        .accessibilityIdentifier("recipe-availability-status")
-                }
+            recipeStatusItem(title: "Pantry availability") {
+                StatusPill(presentation: .availability(evaluation.result.availability.overall_status))
+                    .accessibilityIdentifier("recipe-availability-status")
             }
         }
     }
 
     private func recipeStatusItem<Content: View>(title: String, @ViewBuilder status: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(ProvisionTheme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-            status()
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 8) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(ProvisionTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .layoutPriority(1)
+                Spacer(minLength: 0)
+                status()
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(ProvisionTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                status()
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
     }
 

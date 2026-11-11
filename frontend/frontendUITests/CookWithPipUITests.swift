@@ -156,7 +156,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(milkAllergen.isHittable)
         XCTAssertTrue(milkSeverity.isHittable)
         XCTAssertTrue(milkCrossContact.isHittable)
-        let preferencesViewport = visibleScrollFrame(of: app.scrollViews.firstMatch, in: app, inset: 8)
+        let preferencesViewport = visibleApplicationFrame(of: app, inset: 8)
         XCTAssertLessThanOrEqual(milkCrossContact.frame.maxY, preferencesViewport.maxY,
                                  "The declared-allergy controls stay inside the visible form area")
         XCTAssertEqual(milkAllergen.value as? String, "1")
@@ -293,8 +293,11 @@ final class CookWithPipUITests: XCTestCase {
 
         let mappingVerified = element("pip-label-mapping-verified", in: largeLabel)
         scrollTo(mappingVerified, in: largeLabel)
+        nudgeContentDown(in: largeLabel, by: 0.12)
         assertBelowNavigationBar(mappingVerified, in: largeLabel)
-        let labelViewport = visibleScrollFrame(of: largeLabel.scrollViews.firstMatch, in: largeLabel, inset: 8)
+        let labelViewport = visibleApplicationFrame(of: largeLabel, inset: 8)
+        XCTAssertGreaterThanOrEqual(mappingVerified.frame.minY, labelViewport.minY,
+                                     "The mapping confirmation control clears the navigation bar")
         XCTAssertLessThanOrEqual(mappingVerified.frame.maxY, labelViewport.maxY,
                                  "The mapping confirmation control stays fully inside the large-text viewport")
         capture("Product_Label_Review_Scrolled", app: largeLabel)
@@ -645,7 +648,9 @@ final class CookWithPipUITests: XCTestCase {
                                  "The full safety notice stays above the bottom safe area at large text sizes")
         capture("Recipe_Detail_Large_Text_Filipino", app: largeApp)
         scrollTargetIntoView(largeSummary, inside: recipeDetailScroll, in: largeApp)
+        nudgeContentDown(in: largeApp, by: -0.15)
         XCTAssertTrue(largeSummary.isHittable)
+        assertBelowNavigationBar(largeSummary, in: largeApp)
         let summaryViewport = visibleScrollFrame(of: recipeDetailScroll, in: largeApp, inset: 8)
         XCTAssertGreaterThanOrEqual(largeSummary.frame.minY, summaryViewport.minY)
         XCTAssertLessThanOrEqual(largeSummary.frame.maxY, summaryViewport.maxY,
@@ -657,7 +662,6 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(longIngredient.label.contains("talong na hiniwa nang pahaba"))
         let requiredIngredientsHeading = largeApp.staticTexts["Required ingredients"].firstMatch
         XCTAssertTrue(requiredIngredientsHeading.waitForExistence(timeout: 5))
-        nudgeContentDown(in: largeApp, by: -0.22)
         assertBelowNavigationBar(requiredIngredientsHeading, in: largeApp)
         assertBelowNavigationBar(longIngredient, in: largeApp)
         let ingredientViewport = visibleScrollFrame(
@@ -861,6 +865,19 @@ final class CookWithPipUITests: XCTestCase {
         let bottom = min(frame.maxY - inset,
                          keyboard.exists ? keyboard.frame.minY - inset
                             : (tabBar.exists ? tabBar.frame.minY - inset : app.frame.maxY - inset))
+        return CGRect(x: frame.minX, y: top, width: frame.width, height: max(0, bottom - top))
+    }
+
+    private func visibleApplicationFrame(of app: XCUIApplication, inset: CGFloat) -> CGRect {
+        let frame = app.frame
+        let navigationBar = app.navigationBars.firstMatch
+        let top = max(frame.minY + inset,
+                      navigationBar.exists ? navigationBar.frame.maxY + inset : frame.minY + inset)
+        let keyboard = app.keyboards.firstMatch
+        let tabBar = app.tabBars.firstMatch
+        let bottom = min(frame.maxY - inset,
+                         keyboard.exists ? keyboard.frame.minY - inset
+                            : (tabBar.exists ? tabBar.frame.minY - inset : frame.maxY - inset))
         return CGRect(x: frame.minX, y: top, width: frame.width, height: max(0, bottom - top))
     }
 
