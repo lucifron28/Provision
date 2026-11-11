@@ -18,23 +18,8 @@ jobs:
           python-version: "3.13"
       - name: Prepare iOS test artifact folder
         run: mkdir -p artifacts/raw-cook-with-pip-screenshots artifacts/cook-with-pip-screenshots
-      - name: Run focused Cook with Pip relaunch test
-        id: focused-ios-tests
-        # The full UI suite captures this state; skip the duplicate screenshot RPC here.
-        env:
-          PROVISION_SKIP_UI_SCREENSHOTS: "1"
-        run: >-
-          xcodebuild test
-          -project frontend/frontend.xcodeproj
-          -scheme frontend
-          -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
-          -only-testing:frontendUITests/CookWithPipUITests/testAmbiguousShoppingConfirmationSurvivesAppRelaunch
-          -resultBundlePath artifacts/cook-with-pip-restart.xcresult
-          CODE_SIGNING_ALLOWED=YES
-          CODE_SIGN_IDENTITY=-
       - name: Run iOS XCTest and UI screenshot suite
         id: ios-tests
-        if: ${{ !cancelled() }}
         run: >-
           xcodebuild test
           -project frontend/frontend.xcodeproj
@@ -62,7 +47,7 @@ jobs:
           --output artifacts/cook-with-pip-screenshots
           --required .github/scripts/required_ios_screenshots.json
           --commit-sha "$GITHUB_SHA"
-          --test-outcome "$(if [[ '${{ steps.focused-ios-tests.outcome }}' == 'success' && '${{ steps.ios-tests.outcome }}' == 'success' ]]; then echo success; else echo failure; fi)"
+          --test-outcome "$(if [[ '${{ steps.ios-tests.outcome }}' == 'success' ]]; then echo success; else echo failure; fi)"
       - name: Package screenshots for visual review
         if: always()
         run: |
@@ -95,14 +80,6 @@ jobs:
           name: cook-with-pip-xcresult
           path: artifacts/frontend.xcresult
           if-no-files-found: error
-      - name: Upload focused relaunch test result
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cook-with-pip-focused-relaunch-xcresult
-          path: artifacts/cook-with-pip-restart.xcresult
-          if-no-files-found: warn
-
   backend:
     runs-on: ubuntu-latest
     services:
