@@ -35,6 +35,8 @@ public struct RecipeShoppingReviewView: View {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(ProvisionTheme.redAlert)
                         .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(error)
                         .accessibilityIdentifier("recipe-shopping-error")
                 }
             }

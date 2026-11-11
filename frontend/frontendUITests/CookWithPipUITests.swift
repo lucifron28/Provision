@@ -34,7 +34,7 @@ final class CookWithPipUITests: XCTestCase {
         let instructions = element("recipe-instructions", in: app)
         scrollTo(instructions, in: app)
         XCTAssertTrue(instructions.exists)
-        nudgeContentDown(in: app, by: 0.06)
+        nudgeContentDown(in: app, by: 0.055)
         XCTAssertTrue(instructions.isHittable)
         capture("Recipe_Detail_Instructions", app: app)
     }
@@ -104,7 +104,7 @@ final class CookWithPipUITests: XCTestCase {
         capture("Recipe_Detail_Blocked_Long_Filipino", app: app)
         let instructions = element("recipe-instructions", in: app)
         scrollTargetIntoView(instructions, inside: app.scrollViews["recipe-detail-scroll"])
-        nudgeContentDown(in: app, by: 0.06)
+        nudgeContentDown(in: app, by: 0.04)
         XCTAssertTrue(instructions.isHittable)
         capture("Recipe_Detail_Scrolled", app: app)
     }
@@ -190,7 +190,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(currentStatus.label.contains("Current label review"))
         XCTAssertEqual(milkDeclaration.value as? String, "Declared on label")
         XCTAssertFalse(app.keyboards.firstMatch.isHittable, "Saving a label review dismisses the keyboard")
-        nudgeContentDown(in: app, by: 0.045)
+        nudgeContentDown(in: app, by: 0.02)
         assertBelowNavigationBar(currentStatus, in: app)
         capture("Product_Label_Saved_Keyboard_Dismissed", app: app)
         capture("Product_Label_Review_Current", app: app)
@@ -241,7 +241,7 @@ final class CookWithPipUITests: XCTestCase {
         let milkDeclaration = element("pip-label-allergen-milk", in: largeLabel)
         scrollTo(milkDeclaration, in: largeLabel)
         XCTAssertTrue(milkDeclaration.isHittable)
-        nudgeContentDown(in: largeLabel, by: 0.07)
+        nudgeContentDown(in: largeLabel, by: 0.04)
         XCTAssertTrue(milkDeclaration.isHittable)
         assertBelowNavigationBar(milkDeclaration, in: largeLabel)
         capture("Product_Label_Review_Scrolled", app: largeLabel)
@@ -298,7 +298,7 @@ final class CookWithPipUITests: XCTestCase {
         let unlinked = element("recipe-shopping-unlinked-9920", in: app)
         scrollTo(unlinked, in: app)
         XCTAssertTrue(unlinked.exists)
-        nudgeContentDown(in: app, by: 0.09)
+        nudgeContentDown(in: app, by: 0.04)
         XCTAssertTrue(unlinked.isHittable)
         capture("Shopping_Unlinked_Manual_Items", app: app)
 
@@ -316,7 +316,7 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(optionalIngredient, in: app)
         XCTAssertTrue(optionalIngredient.waitForExistence(timeout: 10))
         XCTAssertFalse(stalePreview.exists)
-        nudgeContentDown(in: app, by: 0.07)
+        nudgeContentDown(in: app, by: 0.04)
         XCTAssertTrue(optionalIngredient.isHittable)
         capture("Shopping_Optional_Ingredients", app: app)
 
@@ -332,7 +332,7 @@ final class CookWithPipUITests: XCTestCase {
         let consolidate = app.switches["recipe-shopping-consolidate-914"]
         scrollTo(consolidate, in: app)
         setSwitch(consolidate, to: "1")
-        nudgeContentDown(in: app, by: 0.09)
+        nudgeContentDown(in: app, by: 0.05)
         XCTAssertTrue(consolidate.isHittable)
         capture("Shopping_Duplicate_Consolidation_Opt_In", app: app)
 
@@ -456,6 +456,7 @@ final class CookWithPipUITests: XCTestCase {
         let pendingStatus = element("recipe-shopping-pending-status", in: app)
         XCTAssertTrue(pendingStatus.waitForExistence(timeout: 10))
         let retryMessage = element("recipe-shopping-error", in: app)
+        XCTAssertTrue(retryMessage.waitForExistence(timeout: 5))
         let retryCopyVisible = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "label CONTAINS %@", "Retry it without editing"),
             object: retryMessage
@@ -733,7 +734,7 @@ final class CookWithPipUITests: XCTestCase {
     private func nudgeContentDown(in app: XCUIApplication, by fraction: CGFloat) {
         let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
         let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3 + fraction))
-        start.press(forDuration: 0.1, thenDragTo: end)
+        start.press(forDuration: 0.2, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
     }
 
     private func scrollTo(_ target: XCUIElement, in app: XCUIApplication) {
