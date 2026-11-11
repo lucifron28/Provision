@@ -94,6 +94,9 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(reviewPreferences, in: app)
         assertBelowNavigationBar(reviewPreferences, in: app)
         assertBelowNavigationBar(reviewLabels, in: app)
+        let recipeTitle = element("recipe-detail-title", in: app)
+        scrollTo(recipeTitle, in: app)
+        assertBelowNavigationBar(recipeTitle, in: app)
         capture("Recipe_Detail_Review_Unknown", app: app)
 
         navigateBack(app)
@@ -202,6 +205,7 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(mappingVerified, in: app)
         assertBelowNavigationBar(mappingVerified, in: app)
         scrollTo(currentStatus, in: app)
+        nudgeContentDown(in: app, by: 0.12)
         assertBelowNavigationBar(currentStatus, in: app)
         capture("Product_Label_Saved_Keyboard_Dismissed", app: app)
         capture("Product_Label_Review_Current", app: app)
@@ -286,6 +290,7 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(mappingVerified, in: app)
         assertBelowNavigationBar(mappingVerified, in: app)
         scrollTo(status, in: app)
+        nudgeContentDown(in: app, by: 0.12)
         assertBelowNavigationBar(status, in: app)
         capture("Product_Label_Review_Stale", app: app)
     }
@@ -391,6 +396,14 @@ final class CookWithPipUITests: XCTestCase {
         assertBelowNavigationBar(servings, in: largeApp)
         let confirm = largeApp.buttons["recipe-shopping-confirm"]
         XCTAssertTrue(confirm.isHittable, "The confirmation action stays reachable at accessibility text sizes")
+        let refresh = element("recipe-shopping-refresh-preview", in: largeApp)
+        XCTAssertTrue(refresh.isHittable, "Refresh remains visible at accessibility text sizes")
+        let reviewForm = largeApp.descendants(matching: .any)
+            .matching(identifier: "recipe-shopping-review-form").firstMatch
+        let largeTextViewport = visibleScrollFrame(of: reviewForm, in: largeApp, inset: 8)
+        XCTAssertGreaterThanOrEqual(refresh.frame.minY, largeTextViewport.minY)
+        XCTAssertLessThanOrEqual(refresh.frame.maxY, largeTextViewport.maxY,
+                                 "The Refresh action stays above the bottom safe area")
         capture("Shopping_Preview_Large_Text", app: largeApp)
 
         let revisionDetails = element("recipe-shopping-revision-details", in: largeApp)
@@ -402,8 +415,6 @@ final class CookWithPipUITests: XCTestCase {
             predicate: NSPredicate(format: "value == %@", "Expanded"), object: revisionDetails
         )
         XCTAssertEqual(XCTWaiter.wait(for: [expanded], timeout: 5), .completed)
-        let reviewForm = largeApp.descendants(matching: .any)
-            .matching(identifier: "recipe-shopping-review-form").firstMatch
         let listRevision = element("recipe-shopping-list-revision", in: largeApp)
         scrollTargetIntoView(listRevision, inside: reviewForm, in: largeApp)
         XCTAssertTrue(listRevision.isHittable)
@@ -411,6 +422,9 @@ final class CookWithPipUITests: XCTestCase {
         let pantryRevision = element("recipe-shopping-pantry-revision", in: largeApp)
         XCTAssertTrue(pantryRevision.waitForExistence(timeout: 5))
         XCTAssertTrue(pantryRevision.label.contains("Pantry"))
+        let expiration = element("recipe-shopping-expiration-value", in: largeApp)
+        XCTAssertTrue(expiration.waitForExistence(timeout: 5))
+        XCTAssertFalse(expiration.label.isEmpty)
         nudgeContentDown(in: largeApp, by: 0.04)
         capture("Shopping_Preview_Revision_Details_Large_Text", app: largeApp)
     }
@@ -632,6 +646,14 @@ final class CookWithPipUITests: XCTestCase {
     func testShoppingPreviewExpiredIsNotConfirmable() {
         let app = launch(scenario: "shopping-expired")
         openShoppingPreview(app)
+        let revisionDetails = element("recipe-shopping-revision-details", in: app)
+        scrollTo(revisionDetails, in: app)
+        XCTAssertEqual(revisionDetails.value as? String, "Collapsed")
+        revisionDetails.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+        let expandedDetails = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "Expanded"), object: revisionDetails
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [expandedDetails], timeout: 5), .completed)
         let expiration = element("recipe-shopping-expiration-value", in: app)
         XCTAssertTrue(expiration.waitForExistence(timeout: 10))
         XCTAssertFalse(expiration.label.isEmpty)

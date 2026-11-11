@@ -145,6 +145,13 @@ public struct RecipeShoppingReviewView: View {
                                   identifier: "recipe-shopping-list-revision")
                 revisionDetailRow("Pantry", value: String(preview.inventory_revision),
                                   identifier: "recipe-shopping-pantry-revision")
+                if let expirationDate = viewModel.expirationDate {
+                    LabeledContent("Preview expires", value: expirationDate.formatted(date: .abbreviated, time: .shortened))
+                        .accessibilityIdentifier("recipe-shopping-expiration-value")
+                } else {
+                    LabeledContent("Preview expires", value: "Unavailable")
+                        .accessibilityIdentifier("recipe-shopping-expiration-value")
+                }
             } label: {
                 Text("Revision details")
             }
@@ -152,13 +159,6 @@ public struct RecipeShoppingReviewView: View {
             .accessibilityIdentifier("recipe-shopping-revision-details")
             .accessibilityValue(showingRevisionDetails ? "Expanded" : "Collapsed")
             .accessibilityHint(showingRevisionDetails ? "Hide revision details" : "Show revision details")
-            if let expirationDate = viewModel.expirationDate {
-                LabeledContent("Preview expires", value: expirationDate.formatted(date: .abbreviated, time: .shortened))
-                    .accessibilityIdentifier("recipe-shopping-expiration-value")
-            } else {
-                LabeledContent("Preview expires", value: "Unavailable")
-                    .accessibilityIdentifier("recipe-shopping-expiration-value")
-            }
             if viewModel.isExpired {
                 Label("This preview has expired. Refresh it before confirming.", systemImage: "clock.badge.exclamationmark")
                     .foregroundStyle(ProvisionTheme.amberWarning)
