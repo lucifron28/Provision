@@ -79,7 +79,7 @@ public struct RecipeShoppingReviewView: View {
                 }
             } else {
                 Section {
-                    Text("No current preview is available. Load one from the server before confirming any changes.")
+                    Text("No current preview is available. Load one before confirming any changes.")
                         .foregroundStyle(ProvisionTheme.textSecondary)
                     Button("Load fresh preview") { Task { await viewModel.refreshPreview() } }
                         .accessibilityIdentifier("recipe-shopping-load-preview")

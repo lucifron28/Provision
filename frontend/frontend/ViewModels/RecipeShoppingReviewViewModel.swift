@@ -181,9 +181,22 @@ public final class RecipeShoppingReviewViewModel: ObservableObject {
             targetQuantityTexts = quantities
             consolidateIngredientIDs = []
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = previewErrorMessage(for: error)
         }
         isLoading = false
+    }
+
+    private func previewErrorMessage(for error: Error) -> String {
+        guard case APIError.networkError(let underlyingError) = error else {
+            return error.localizedDescription
+        }
+        if let urlError = underlyingError as? URLError, urlError.code == .notConnectedToInternet {
+            return "You're offline. Reconnect and load a fresh preview."
+        }
+        if let urlError = underlyingError as? URLError, urlError.code == .timedOut {
+            return "The request timed out. Load a fresh preview and try again."
+        }
+        return "Can't reach the server. Check your connection and load a fresh preview."
     }
 
     public func confirmSelectedLines() async {

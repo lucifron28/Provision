@@ -453,7 +453,9 @@ final class CookWithPipUITests: XCTestCase {
     func testShoppingOfflineRetryAndStalePreviewRecovery() {
         let offlineApp = launch(scenario: "shopping-offline-once")
         openShoppingPreview(offlineApp)
-        XCTAssertTrue(element("recipe-shopping-error", in: offlineApp).waitForExistence(timeout: 10))
+        let offlineError = element("recipe-shopping-error", in: offlineApp)
+        XCTAssertTrue(offlineError.waitForExistence(timeout: 10))
+        XCTAssertEqual(offlineError.label, "You're offline. Reconnect and load a fresh preview.")
         capture("Shopping_Offline_Error_Retry", app: offlineApp)
         element("recipe-shopping-load-preview", in: offlineApp).tap()
         let offlineReady = element("recipe-shopping-safety-status", in: offlineApp)
