@@ -188,6 +188,7 @@ public struct ProductLabelReviewView: View {
                         .accessibilityIdentifier("pip-label-ingredient-\(ingredient.id)")
                     }
                     Toggle("I checked this mapping against the package", isOn: $viewModel.mappingVerified)
+                        .accessibilityIdentifier("pip-label-mapping-verified")
                     Toggle("All ingredients are identified", isOn: $viewModel.mappingCompositionKnown)
                     Text("Unknown or incomplete composition must stay marked unknown. Package factors and unit conversions are not inferred here.")
                         .font(.footnote)

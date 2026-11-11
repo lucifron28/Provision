@@ -163,11 +163,11 @@ final class CookWithPipUITests: XCTestCase {
         let keyboard = app.keyboards.firstMatch
         XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
         XCTAssertLessThan(source.frame.maxY, keyboard.frame.minY)
-        source.typeText("Synthetic")
+        typeTextAndWait("Synthetic", in: source)
         XCTAssertEqual(source.value as? String, "Synthetic")
-        source.typeText(" package")
+        typeTextAndWait(" package", in: source)
         XCTAssertEqual(source.value as? String, "Synthetic package")
-        source.typeText(" label")
+        typeTextAndWait(" label", in: source)
         XCTAssertEqual(source.value as? String, "Synthetic package label")
         let keyboardDone = element("pip-label-keyboard-done", in: app)
         XCTAssertTrue(keyboardDone.waitForExistence(timeout: 5))
@@ -193,8 +193,10 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(currentStatus.label.contains("Current label review"))
         XCTAssertEqual(milkDeclaration.value as? String, "Declared on label")
         XCTAssertFalse(app.keyboards.firstMatch.isHittable, "Saving a label review dismisses the keyboard")
-        nudgeContentDown(in: app, by: 0.04)
+        let mappingVerified = element("pip-label-mapping-verified", in: app)
+        nudgeContentDown(in: app, by: 0.10)
         assertBelowNavigationBar(currentStatus, in: app)
+        assertBelowNavigationBar(mappingVerified, in: app)
         capture("Product_Label_Saved_Keyboard_Dismissed", app: app)
         capture("Product_Label_Review_Current", app: app)
     }
@@ -269,7 +271,10 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(status, in: app)
         XCTAssertTrue(status.waitForExistence(timeout: 10))
         XCTAssertTrue(status.label.contains("no longer current"))
+        let mappingVerified = element("pip-label-mapping-verified", in: app)
+        nudgeContentDown(in: app, by: 0.10)
         assertBelowNavigationBar(status, in: app)
+        assertBelowNavigationBar(mappingVerified, in: app)
         capture("Product_Label_Review_Stale", app: app)
     }
 
@@ -684,6 +689,7 @@ final class CookWithPipUITests: XCTestCase {
         let previewLink = app.buttons["recipe-shopping-preview-link"]
         let recipeDetail = app.scrollViews["recipe-detail-scroll"]
         scrollTargetIntoView(previewLink, inside: recipeDetail)
+        assertBelowNavigationBar(previewLink, in: app)
         previewLink.tap()
         let ready = element("recipe-shopping-safety-status", in: app)
         let retry = element("recipe-shopping-load-preview", in: app)
@@ -707,31 +713,45 @@ final class CookWithPipUITests: XCTestCase {
 
         let inset: CGFloat = 20
         for _ in 0..<12 {
-            let containerFrame = container.frame
             let targetFrame = target.frame
-            guard !containerFrame.isNull, !targetFrame.isNull,
-                  !containerFrame.isEmpty, !targetFrame.isEmpty else {
+            guard !targetFrame.isNull, !targetFrame.isEmpty else {
                 container.swipeUp()
                 continue
             }
 
-            let fullyVisible = targetFrame.minY >= containerFrame.minY + inset
-                && targetFrame.maxY <= containerFrame.maxY - inset
+            let viewport = visibleScrollFrame(of: container, in: app, inset: inset)
+            guard !viewport.isNull, !viewport.isEmpty else {
+                container.swipeUp()
+                continue
+            }
+            let fullyVisible = targetFrame.minY >= viewport.minY && targetFrame.maxY <= viewport.maxY
             if target.isHittable && fullyVisible { return }
 
-            if targetFrame.minY < containerFrame.minY + inset {
+            if targetFrame.minY < viewport.minY {
                 container.swipeDown()
             } else {
                 container.swipeUp()
             }
         }
 
-        let containerFrame = container.frame
         let targetFrame = target.frame
+        let viewport = visibleScrollFrame(of: container, in: app, inset: inset)
         XCTAssertTrue(target.isHittable, "Expected \(target.identifier) to be hittable after scrolling")
-        XCTAssertTrue(targetFrame.minY >= containerFrame.minY + inset
-                      && targetFrame.maxY <= containerFrame.maxY - inset,
-                      "Expected \(target.identifier) to be inside the identified scroll viewport")
+        XCTAssertTrue(targetFrame.minY >= viewport.minY && targetFrame.maxY <= viewport.maxY,
+                      "Expected \(target.identifier) to clear navigation and system overlays inside the scroll viewport")
+    }
+
+    private func visibleScrollFrame(of container: XCUIElement, in app: XCUIApplication, inset: CGFloat) -> CGRect {
+        let frame = container.frame
+        let navigationBar = app.navigationBars.firstMatch
+        let top = max(frame.minY + inset,
+                      navigationBar.exists ? navigationBar.frame.maxY + inset : frame.minY + inset)
+        let keyboard = app.keyboards.firstMatch
+        let tabBar = app.tabBars.firstMatch
+        let bottom = min(frame.maxY - inset,
+                         keyboard.exists ? keyboard.frame.minY - inset
+                            : (tabBar.exists ? tabBar.frame.minY - inset : app.frame.maxY - inset))
+        return CGRect(x: frame.minX, y: top, width: frame.width, height: max(0, bottom - top))
     }
 
     private func navigateBack(_ app: XCUIApplication) {
@@ -817,6 +837,20 @@ final class CookWithPipUITests: XCTestCase {
         field.tap()
         let oldValue = field.value as? String ?? ""
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: oldValue.count) + value)
+    }
+
+    private func typeTextAndWait(_ text: String, in field: XCUIElement) {
+        var expectedValue = field.value as? String ?? ""
+        for character in text {
+            field.typeText(String(character))
+            expectedValue.append(character)
+            let typedCharacter = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "value == %@", expectedValue),
+                object: field
+            )
+            XCTAssertEqual(XCTWaiter.wait(for: [typedCharacter], timeout: 2), .completed,
+                           "Expected \(field.identifier) to receive the complete keyboard input")
+        }
     }
 
     private func waitUntilGone(_ element: XCUIElement) {
