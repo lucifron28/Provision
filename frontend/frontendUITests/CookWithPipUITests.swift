@@ -247,6 +247,8 @@ final class CookWithPipUITests: XCTestCase {
         let productTitle = element("pip-label-product-title", in: largeLabel)
         XCTAssertTrue(productTitle.waitForExistence(timeout: 10))
         XCTAssertTrue(productTitle.isHittable)
+        assertBelowNavigationBar(productTitle, in: largeLabel)
+        capture("Product_Label_Review_Large_Text", app: largeLabel)
         let sourceField = element("pip-label-source-reference", in: largeLabel)
         let customAllergensHeading = element("pip-label-custom-allergens-heading", in: largeLabel)
         scrollTo(sourceField, in: largeLabel)
@@ -257,7 +259,6 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(customAllergensHeading, in: largeLabel)
         assertBelowNavigationBar(customAllergensHeading, in: largeLabel)
         assertBelowNavigationBar(customAllergensField, in: largeLabel)
-        capture("Product_Label_Review_Large_Text", app: largeLabel)
 
         let milkDeclaration = element("pip-label-allergen-milk", in: largeLabel)
         scrollTo(milkDeclaration, in: largeLabel)
@@ -601,7 +602,16 @@ final class CookWithPipUITests: XCTestCase {
         scrollTargetIntoView(longIngredient, inside: largeApp.scrollViews["recipe-detail-scroll"], in: largeApp)
         XCTAssertTrue(longIngredient.isHittable)
         XCTAssertTrue(longIngredient.label.contains("talong na hiniwa nang pahaba"))
+        let requiredIngredientsHeading = largeApp.staticTexts["Required ingredients"].firstMatch
+        XCTAssertTrue(requiredIngredientsHeading.waitForExistence(timeout: 5))
+        nudgeContentDown(in: largeApp, by: -0.22)
+        assertBelowNavigationBar(requiredIngredientsHeading, in: largeApp)
         assertBelowNavigationBar(longIngredient, in: largeApp)
+        let ingredientViewport = visibleScrollFrame(
+            of: largeApp.scrollViews["recipe-detail-scroll"], in: largeApp, inset: 8
+        )
+        XCTAssertLessThanOrEqual(longIngredient.frame.maxY, ingredientViewport.maxY,
+                                 "The long ingredient name stays fully above the bottom safe area")
         capture("Recipe_Ingredient_Long_Filipino", app: largeApp)
 
         largeApp.terminate()
