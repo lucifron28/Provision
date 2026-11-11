@@ -234,10 +234,12 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(productTitle.waitForExistence(timeout: 10))
         XCTAssertTrue(productTitle.isHittable)
         let sourceField = element("pip-label-source-reference", in: largeLabel)
+        let customAllergensHeading = element("pip-label-custom-allergens-heading", in: largeLabel)
         scrollTo(sourceField, in: largeLabel)
         XCTAssertEqual(sourceField.label, "Source reference")
         XCTAssertEqual(sourceField.placeholderValue, "Package label, URL, or label section")
-        nudgeContentDown(in: largeLabel, by: 0.12)
+        nudgeContentDown(in: largeLabel, by: 0.20)
+        assertBelowNavigationBar(customAllergensHeading, in: largeLabel)
         assertBelowNavigationBar(sourceField, in: largeLabel)
         capture("Product_Label_Review_Large_Text", app: largeLabel)
 

@@ -227,6 +227,7 @@ public struct ProductLabelReviewView: View {
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(ProvisionTheme.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("pip-label-custom-allergens-heading")
                     TextField(
                         "Custom allergens",
                         text: $viewModel.customAllergenText,
