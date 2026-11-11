@@ -55,25 +55,29 @@ public struct CookWithPipPreferencesView: View {
 
             Section("Cooking preferences") {
                 labeledField("Preferred cuisines") {
-                    TextField("Comma-separated", text: listBinding(\.preferred_cuisines))
+                    TextField("Comma-separated", text: listBinding(\.preferred_cuisines),
+                              prompt: Text("Comma-separated").foregroundStyle(ProvisionTheme.textSecondary))
                         .focused($focusedField, equals: .cuisines)
                         .accessibilityLabel("Preferred cuisines")
                         .accessibilityIdentifier("pip-preferred-cuisines")
                 }
                 labeledField("Filipino regions") {
-                    TextField("Comma-separated", text: listBinding(\.preferred_regions))
+                    TextField("Comma-separated", text: listBinding(\.preferred_regions),
+                              prompt: Text("Comma-separated").foregroundStyle(ProvisionTheme.textSecondary))
                         .focused($focusedField, equals: .regions)
                         .accessibilityLabel("Filipino regions")
                         .accessibilityIdentifier("pip-preferred-regions")
                 }
                 labeledField("Dislikes") {
-                    TextField("Comma-separated", text: listBinding(\.dislikes))
+                    TextField("Comma-separated", text: listBinding(\.dislikes),
+                              prompt: Text("Comma-separated").foregroundStyle(ProvisionTheme.textSecondary))
                         .focused($focusedField, equals: .dislikes)
                         .accessibilityLabel("Dislikes")
                         .accessibilityIdentifier("pip-dislikes")
                 }
                 labeledField("Kitchen equipment") {
-                    TextField("Comma-separated", text: listBinding(\.equipment))
+                    TextField("Comma-separated", text: listBinding(\.equipment),
+                              prompt: Text("Comma-separated").foregroundStyle(ProvisionTheme.textSecondary))
                         .focused($focusedField, equals: .equipment)
                         .accessibilityLabel("Kitchen equipment")
                         .accessibilityIdentifier("pip-equipment")
@@ -89,7 +93,8 @@ public struct CookWithPipPreferencesView: View {
                     Text("Hot").tag("hot")
                 }
                 labeledField("Servings per meal (people)") {
-                    TextField("People", text: $servingsText)
+                    TextField("People", text: $servingsText,
+                              prompt: Text("People").foregroundStyle(ProvisionTheme.textSecondary))
                         .keyboardType(.decimalPad)
                         .focused($focusedField, equals: .servings)
                         .accessibilityLabel("Servings per meal (people)")
@@ -99,7 +104,8 @@ public struct CookWithPipPreferencesView: View {
                         }
                 }
                 labeledField("Maximum cooking time (minutes)") {
-                    TextField("Minutes", text: $cookMinutesText)
+                    TextField("Minutes", text: $cookMinutesText,
+                              prompt: Text("Minutes").foregroundStyle(ProvisionTheme.textSecondary))
                         .keyboardType(.numberPad)
                         .focused($focusedField, equals: .cookMinutes)
                         .accessibilityLabel("Maximum cooking time (minutes)")
@@ -109,7 +115,8 @@ public struct CookWithPipPreferencesView: View {
                         }
                 }
                 labeledField("Meal budget per person (PHP)") {
-                    TextField("PHP", text: $budgetText)
+                    TextField("PHP", text: $budgetText,
+                              prompt: Text("PHP").foregroundStyle(ProvisionTheme.textSecondary))
                         .keyboardType(.decimalPad)
                         .focused($focusedField, equals: .budget)
                         .accessibilityLabel("Meal budget per person (PHP)")
@@ -148,7 +155,8 @@ public struct CookWithPipPreferencesView: View {
                     }
                 }
                 labeledField("Custom allergies") {
-                    TextField("Comma-separated", text: $customAllergyText)
+                    TextField("Comma-separated", text: $customAllergyText,
+                              prompt: Text("Comma-separated").foregroundStyle(ProvisionTheme.textSecondary))
                         .focused($focusedField, equals: .customAllergies)
                         .accessibilityLabel("Custom allergies")
                         .accessibilityIdentifier("pip-custom-allergies")

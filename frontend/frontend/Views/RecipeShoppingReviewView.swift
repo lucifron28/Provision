@@ -124,7 +124,8 @@ public struct RecipeShoppingReviewView: View {
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(ProvisionTheme.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
-                TextField("Number of people", text: $viewModel.servingsText)
+                TextField("Number of people", text: $viewModel.servingsText,
+                          prompt: Text("Number of people").foregroundStyle(ProvisionTheme.textSecondary))
                     .keyboardType(.decimalPad)
                     .focused($focusedField, equals: .servings)
                     .accessibilityLabel("Servings (people)")
@@ -268,7 +269,8 @@ public struct RecipeShoppingReviewView: View {
                                 .font(.subheadline.weight(.medium))
                                 .foregroundStyle(ProvisionTheme.textPrimary)
                                 .fixedSize(horizontal: false, vertical: true)
-                            TextField("Quantity", text: targetBinding(id))
+                            TextField("Quantity", text: targetBinding(id),
+                                      prompt: Text("Quantity").foregroundStyle(ProvisionTheme.textSecondary))
                                 .keyboardType(.decimalPad)
                                 .focused($focusedField, equals: .target(id))
                                 .accessibilityLabel("Target quantity (\(line.unit ?? "server unit"))")

@@ -82,7 +82,10 @@ public struct ProductLabelReviewListView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(ProvisionTheme.background, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
-        .searchable(text: $searchText, prompt: "Search household products")
+        .searchable(
+            text: $searchText,
+            prompt: Text("Search household products").foregroundStyle(ProvisionTheme.textSecondary)
+        )
         .task { if viewModel.products.isEmpty { await viewModel.load() } }
     }
 }
