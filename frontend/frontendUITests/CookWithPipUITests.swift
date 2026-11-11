@@ -900,6 +900,7 @@ final class CookWithPipUITests: XCTestCase {
     }
 
     private func capture(_ name: String, app: XCUIApplication) {
+        guard ProcessInfo.processInfo.environment["PROVISION_SKIP_UI_SCREENSHOTS"] != "1" else { return }
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name
         attachment.lifetime = .keepAlways

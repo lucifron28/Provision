@@ -20,6 +20,9 @@ jobs:
         run: mkdir -p artifacts/raw-cook-with-pip-screenshots artifacts/cook-with-pip-screenshots
       - name: Run focused Cook with Pip relaunch test
         id: focused-ios-tests
+        # The full UI suite captures this state; skip the duplicate screenshot RPC here.
+        env:
+          PROVISION_SKIP_UI_SCREENSHOTS: "1"
         run: >-
           xcodebuild test
           -project frontend/frontend.xcodeproj
