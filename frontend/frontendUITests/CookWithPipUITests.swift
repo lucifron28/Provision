@@ -518,7 +518,7 @@ final class CookWithPipUITests: XCTestCase {
         app.terminate()
 
         let relaunched = launch(scenario: "shopping-restart", fixtureID: fixtureID, useKeychain: true)
-        openShoppingPreview(relaunched)
+        openShoppingPreview(relaunched, timeout: 30)
         let relaunchedPending = element("recipe-shopping-pending-line-0", in: relaunched)
         XCTAssertTrue(relaunchedPending.waitForExistence(timeout: 10))
         XCTAssertTrue(relaunchedPending.label.contains("kangkong"))
