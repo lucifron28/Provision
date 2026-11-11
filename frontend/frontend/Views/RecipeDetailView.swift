@@ -148,10 +148,12 @@ private struct RecipeDetailContents: View {
         VStack(alignment: .leading, spacing: 18) {
             titleSection
             if dynamicTypeSize.isAccessibilitySize {
-                summarySection
                 metadataSection
             }
             evaluationSection
+            if dynamicTypeSize.isAccessibilitySize {
+                summarySection
+            }
             workflowActions
             if let sourceReference {
                 sourceSection(sourceReference)
