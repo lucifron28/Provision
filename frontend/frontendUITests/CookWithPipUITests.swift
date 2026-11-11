@@ -193,6 +193,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(didSave, "Expected the save result before checking the updated label: \(saveFailure)")
         XCTAssertTrue(savedLabelMessage.label.contains("Package label review recorded"))
         let currentStatus = element("pip-label-current-status", in: app)
+        let packageDeclarationHeading = app.staticTexts["Package label declaration"].firstMatch
         scrollTo(currentStatus, in: app)
         XCTAssertTrue(currentStatus.waitForExistence(timeout: 10))
         XCTAssertTrue(currentStatus.label.contains("Current label review"))
@@ -205,7 +206,9 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(mappingVerified, in: app)
         assertBelowNavigationBar(mappingVerified, in: app)
         scrollTo(currentStatus, in: app)
-        nudgeContentDown(in: app, by: -0.12)
+        nudgeContentDown(in: app, by: 0.10)
+        XCTAssertTrue(packageDeclarationHeading.waitForExistence(timeout: 5))
+        assertBelowNavigationBar(packageDeclarationHeading, in: app)
         assertBelowNavigationBar(currentStatus, in: app)
         capture("Product_Label_Saved_Keyboard_Dismissed", app: app)
         capture("Product_Label_Review_Current", app: app)
@@ -263,8 +266,6 @@ final class CookWithPipUITests: XCTestCase {
         let milkDeclaration = element("pip-label-allergen-milk", in: largeLabel)
         scrollTo(milkDeclaration, in: largeLabel)
         XCTAssertTrue(milkDeclaration.isHittable)
-        nudgeContentDown(in: largeLabel, by: 0.08)
-        XCTAssertTrue(milkDeclaration.isHittable)
         assertBelowNavigationBar(milkDeclaration, in: largeLabel)
         capture("Product_Label_Review_Scrolled", app: largeLabel)
     }
@@ -281,6 +282,7 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(milkDeclaration, in: app)
         XCTAssertEqual(milkDeclaration.value as? String, "Declared on label")
         let status = element("pip-label-current-status", in: app)
+        let packageDeclarationHeading = app.staticTexts["Package label declaration"].firstMatch
         scrollTo(status, in: app)
         XCTAssertTrue(status.waitForExistence(timeout: 10))
         XCTAssertTrue(status.label.contains("no longer current"))
@@ -291,7 +293,9 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(mappingVerified, in: app)
         assertBelowNavigationBar(mappingVerified, in: app)
         scrollTo(status, in: app)
-        nudgeContentDown(in: app, by: -0.10)
+        nudgeContentDown(in: app, by: 0.10)
+        XCTAssertTrue(packageDeclarationHeading.waitForExistence(timeout: 5))
+        assertBelowNavigationBar(packageDeclarationHeading, in: app)
         assertBelowNavigationBar(status, in: app)
         capture("Product_Label_Review_Stale", app: app)
     }
@@ -346,8 +350,9 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(optionalIngredient, in: app)
         XCTAssertTrue(optionalIngredient.waitForExistence(timeout: 10))
         XCTAssertFalse(stalePreview.exists)
-        nudgeContentDown(in: app, by: 0.04)
+        nudgeContentDown(in: app, by: 0.12)
         XCTAssertTrue(optionalIngredient.isHittable)
+        assertBelowNavigationBar(optionalIngredient, in: app)
         capture("Shopping_Optional_Ingredients", app: app)
 
         let target = element("recipe-shopping-target-901", in: app)
@@ -362,8 +367,9 @@ final class CookWithPipUITests: XCTestCase {
         let consolidate = app.switches["recipe-shopping-consolidate-914"]
         scrollTo(consolidate, in: app)
         setSwitch(consolidate, to: "1")
-        nudgeContentDown(in: app, by: 0.05)
+        nudgeContentDown(in: app, by: 0.12)
         XCTAssertTrue(consolidate.isHittable)
+        assertBelowNavigationBar(consolidate, in: app)
         capture("Shopping_Duplicate_Consolidation_Opt_In", app: app)
 
         element("recipe-shopping-confirm", in: app).tap()
