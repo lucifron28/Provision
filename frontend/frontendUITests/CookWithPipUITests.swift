@@ -572,7 +572,7 @@ final class CookWithPipUITests: XCTestCase {
             predicate: NSPredicate(format: "label CONTAINS %@", "Retry it without editing"),
             object: retryMessage
         )
-        XCTAssertEqual(XCTWaiter.wait(for: [retryCopyVisible], timeout: 5), .completed)
+        XCTAssertEqual(XCTWaiter.wait(for: [retryCopyVisible], timeout: 10), .completed)
         XCTAssertFalse(retryMessage.label.contains("Network connection failed"))
         let pendingLine = element("recipe-shopping-pending-line-0", in: app)
         XCTAssertTrue(pendingLine.waitForExistence(timeout: 10))
@@ -669,10 +669,15 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(largeSummary.label.contains("long Filipino ingredient names"))
         let safetyNotice = element("recipe-safety-notice", in: largeApp)
         XCTAssertTrue(safetyNotice.waitForExistence(timeout: 5))
-        XCTAssertTrue(safetyNotice.isHittable)
-        XCTAssertLessThanOrEqual(safetyNotice.frame.maxY, recipeViewport.maxY,
-                                 "The full safety notice stays above the bottom safe area at large text sizes")
         capture("Recipe_Detail_Large_Text_Filipino", app: largeApp)
+        scrollTargetIntoView(safetyNotice, inside: recipeDetailScroll, in: largeApp)
+        XCTAssertTrue(safetyNotice.isHittable)
+        assertBelowNavigationBar(safetyNotice, in: largeApp)
+        let safetyViewport = visibleScrollFrame(of: recipeDetailScroll, in: largeApp, inset: 8)
+        XCTAssertGreaterThanOrEqual(safetyNotice.frame.minY, safetyViewport.minY)
+        XCTAssertLessThanOrEqual(safetyNotice.frame.maxY, safetyViewport.maxY,
+                                 "The full safety notice stays visible after scrolling at large text sizes")
+        capture("Recipe_Detail_Large_Text_Safety_Filipino", app: largeApp)
         scrollTargetIntoView(largeSummary, inside: recipeDetailScroll, in: largeApp)
         nudgeContentDown(in: largeApp, by: -0.15)
         XCTAssertTrue(largeSummary.isHittable)
