@@ -6,6 +6,15 @@ final class CookWithPipUITests: XCTestCase {
         let homeEntry = element("cook-with-pip-entry", in: app)
         XCTAssertTrue(homeEntry.waitForExistence(timeout: 10))
         XCTAssertTrue(element("ui-test-fixture-banner", in: app).exists)
+        let emptyPantryTitle = element("home-empty-pantry-title", in: app)
+        let emptyPantryGuidance = element("home-empty-pantry-guidance", in: app)
+        XCTAssertTrue(emptyPantryTitle.waitForExistence(timeout: 5))
+        XCTAssertTrue(emptyPantryGuidance.waitForExistence(timeout: 5))
+        let homeViewport = visibleScrollFrame(of: app.scrollViews.firstMatch, in: app, inset: 8)
+        XCTAssertTrue(emptyPantryGuidance.isHittable)
+        XCTAssertGreaterThanOrEqual(emptyPantryGuidance.frame.minY, homeViewport.minY)
+        XCTAssertLessThanOrEqual(emptyPantryGuidance.frame.maxY, homeViewport.maxY,
+                                 "The home empty-pantry guidance stays fully visible on the first screen")
         capture("Home_Cook_with_Pip", app: app)
         homeEntry.tap()
 
@@ -273,6 +282,13 @@ final class CookWithPipUITests: XCTestCase {
         assertBelowNavigationBar(mappingNote, in: largeLabel)
         XCTAssertTrue(milkDeclaration.isHittable)
         assertBelowNavigationBar(milkDeclaration, in: largeLabel)
+
+        let mappingVerified = element("pip-label-mapping-verified", in: largeLabel)
+        scrollTo(mappingVerified, in: largeLabel)
+        assertBelowNavigationBar(mappingVerified, in: largeLabel)
+        let labelViewport = visibleScrollFrame(of: largeLabel.scrollViews.firstMatch, in: largeLabel, inset: 8)
+        XCTAssertLessThanOrEqual(mappingVerified.frame.maxY, labelViewport.maxY,
+                                 "The mapping confirmation control stays fully inside the large-text viewport")
         capture("Product_Label_Review_Scrolled", app: largeLabel)
     }
 
@@ -614,7 +630,19 @@ final class CookWithPipUITests: XCTestCase {
         let largeSummary = element("recipe-detail-summary", in: largeApp)
         XCTAssertTrue(largeSummary.waitForExistence(timeout: 10))
         XCTAssertTrue(largeSummary.label.contains("long Filipino ingredient names"))
+        let safetyNotice = element("recipe-safety-notice", in: largeApp)
+        XCTAssertTrue(safetyNotice.waitForExistence(timeout: 5))
+        XCTAssertTrue(safetyNotice.isHittable)
+        XCTAssertLessThanOrEqual(safetyNotice.frame.maxY, recipeViewport.maxY,
+                                 "The full safety notice stays above the bottom safe area at large text sizes")
         capture("Recipe_Detail_Large_Text_Filipino", app: largeApp)
+        scrollTargetIntoView(largeSummary, inside: recipeDetailScroll, in: largeApp)
+        XCTAssertTrue(largeSummary.isHittable)
+        let summaryViewport = visibleScrollFrame(of: recipeDetailScroll, in: largeApp, inset: 8)
+        XCTAssertGreaterThanOrEqual(largeSummary.frame.minY, summaryViewport.minY)
+        XCTAssertLessThanOrEqual(largeSummary.frame.maxY, summaryViewport.maxY,
+                                 "The long recipe summary stays fully visible at large text sizes")
+        capture("Recipe_Detail_Large_Text_Summary_Filipino", app: largeApp)
         let longIngredient = element("recipe-ingredient-name-0", in: largeApp)
         scrollTargetIntoView(longIngredient, inside: largeApp.scrollViews["recipe-detail-scroll"], in: largeApp)
         XCTAssertTrue(longIngredient.isHittable)

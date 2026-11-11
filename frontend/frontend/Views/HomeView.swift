@@ -343,18 +343,20 @@ public struct HomeView: View {
             Image("pip_in_context")
                 .resizable()
                 .scaledToFit()
-                .frame(maxHeight: 140)
+                .frame(maxHeight: 84)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
 
             Text("Your Pantry is Ready to Fill")
                 .font(.system(size: 16, weight: .bold, design: .serif))
                 .foregroundStyle(ProvisionTheme.textPrimary)
+                .accessibilityIdentifier("home-empty-pantry-title")
 
             Text("Start tracking freshness by scanning grocery receipt barcodes or adding pantry staples.")
                 .font(.system(size: 13))
                 .foregroundStyle(ProvisionTheme.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 16)
+                .accessibilityIdentifier("home-empty-pantry-guidance")
         }
         .padding(20)
         .frame(maxWidth: .infinity)

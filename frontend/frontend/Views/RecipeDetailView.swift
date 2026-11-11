@@ -303,26 +303,12 @@ private struct RecipeDetailContents: View {
             Text("Recipe status")
                 .font(ProvisionTypography.sectionSerif)
                 .foregroundStyle(ProvisionTheme.textPrimary)
-            VStack(alignment: .leading, spacing: 8) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Food safety")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(ProvisionTheme.textSecondary)
-                    StatusPill(presentation: .safety(evaluation.result.decision))
-                        .accessibilityIdentifier("recipe-safety-status")
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Pantry availability")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(ProvisionTheme.textSecondary)
-                    StatusPill(presentation: .availability(evaluation.result.availability.overall_status))
-                        .accessibilityIdentifier("recipe-availability-status")
-                }
-            }
+            recipeStatusSummary
             Text(evaluation.result.notice)
                 .font(.subheadline)
                 .foregroundStyle(ProvisionTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("recipe-safety-notice")
             Text("Evaluation uses all active household members unless the server request names diners.")
                 .font(.footnote)
                 .foregroundStyle(ProvisionTheme.textSecondary)
@@ -340,6 +326,43 @@ private struct RecipeDetailContents: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .provisionCard()
+    }
+
+    private var recipeStatusSummary: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 12) {
+                recipeStatusItem(title: "Food safety") {
+                    StatusPill(presentation: .safety(evaluation.result.decision))
+                        .accessibilityIdentifier("recipe-safety-status")
+                }
+                recipeStatusItem(title: "Pantry availability") {
+                    StatusPill(presentation: .availability(evaluation.result.availability.overall_status))
+                        .accessibilityIdentifier("recipe-availability-status")
+                }
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                recipeStatusItem(title: "Food safety") {
+                    StatusPill(presentation: .safety(evaluation.result.decision))
+                        .accessibilityIdentifier("recipe-safety-status")
+                }
+                recipeStatusItem(title: "Pantry availability") {
+                    StatusPill(presentation: .availability(evaluation.result.availability.overall_status))
+                        .accessibilityIdentifier("recipe-availability-status")
+                }
+            }
+        }
+    }
+
+    private func recipeStatusItem<Content: View>(title: String, @ViewBuilder status: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(ProvisionTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            status()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func sourceSection(_ source: RecipeSourceReference) -> some View {
