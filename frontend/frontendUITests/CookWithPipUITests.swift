@@ -95,7 +95,7 @@ final class CookWithPipUITests: XCTestCase {
         assertBelowNavigationBar(reviewPreferences, in: app)
         assertBelowNavigationBar(reviewLabels, in: app)
         let recipeTitle = element("recipe-detail-title", in: app)
-        scrollTo(recipeTitle, in: app)
+        scrollTargetIntoView(recipeTitle, inside: app.scrollViews["recipe-detail-scroll"], in: app)
         assertBelowNavigationBar(recipeTitle, in: app)
         capture("Recipe_Detail_Review_Unknown", app: app)
 
