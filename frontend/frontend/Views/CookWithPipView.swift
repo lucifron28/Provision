@@ -32,7 +32,11 @@ public struct CookWithPipView: View {
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(ProvisionTheme.textSecondary)
-                    TextField("Search household recipes", text: $viewModel.searchQuery)
+                    TextField(
+                        "Search household recipes",
+                        text: $viewModel.searchQuery,
+                        prompt: Text("Search household recipes").foregroundStyle(ProvisionTheme.textSecondary)
+                    )
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .submitLabel(.search)
