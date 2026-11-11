@@ -159,7 +159,12 @@ public struct ProductLabelReviewView: View {
                 }
                 if viewModel.mappingMode != .unknown {
                     LabeledContent("Search ingredients") {
-                        TextField("Canonical or Filipino name", text: $viewModel.searchText)
+                        TextField(
+                            "Canonical or Filipino name",
+                            text: $viewModel.searchText,
+                            prompt: Text("Canonical or Filipino name")
+                                .foregroundStyle(ProvisionTheme.textSecondary)
+                        )
                             .focused($focusedField, equals: .ingredientSearch)
                             .accessibilityIdentifier("pip-label-ingredient-search")
                     }
@@ -198,7 +203,6 @@ public struct ProductLabelReviewView: View {
                 }
             } header: {
                 Text("Ingredient mapping")
-                    .accessibilityIdentifier("pip-label-mapping-header")
             } footer: {
                 Text("A verified, complete mapping is required before a package label review can be recorded.")
             }
@@ -223,7 +227,12 @@ public struct ProductLabelReviewView: View {
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(ProvisionTheme.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
-                    TextField("Comma-separated", text: $viewModel.customAllergenText)
+                    TextField(
+                        "Custom allergens",
+                        text: $viewModel.customAllergenText,
+                        prompt: Text("Comma-separated")
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                    )
                         .focused($focusedField, equals: .customAllergens)
                         .accessibilityLabel("Custom allergens")
                         .accessibilityIdentifier("pip-label-custom-allergens")
@@ -235,7 +244,13 @@ public struct ProductLabelReviewView: View {
                     Text("Source reference")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(ProvisionTheme.textPrimary)
-                    TextField("Package label, URL, or label section", text: $viewModel.sourceReference, axis: .vertical)
+                    TextField(
+                        "Source reference",
+                        text: $viewModel.sourceReference,
+                        prompt: Text("Package label, URL, or label section")
+                            .foregroundStyle(ProvisionTheme.textSecondary),
+                        axis: .vertical
+                    )
                         .lineLimit(2...4)
                         .focused($focusedField, equals: .sourceReference)
                         .accessibilityLabel("Source reference")
