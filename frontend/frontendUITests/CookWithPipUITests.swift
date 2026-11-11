@@ -88,8 +88,10 @@ final class CookWithPipUITests: XCTestCase {
         let unknownIngredient = element("recipe-ingredient-name-0", in: app)
         scrollTargetIntoView(unknownIngredient, inside: app.scrollViews["recipe-detail-scroll"])
         XCTAssertTrue(unknownIngredient.isHittable)
-        nudgeContentDown(in: app, by: 0.05)
+        let reviewLabels = element("recipe-review-product-labels", in: app)
+        nudgeContentDown(in: app, by: 0.10)
         assertBelowNavigationBar(unknownIngredient, in: app)
+        assertBelowNavigationBar(reviewLabels, in: app)
         capture("Recipe_Detail_Review_Unknown", app: app)
 
         navigateBack(app)
