@@ -237,7 +237,7 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(sourceField, in: largeLabel)
         XCTAssertEqual(sourceField.label, "Source reference")
         XCTAssertEqual(sourceField.placeholderValue, "Package label, URL, or label section")
-        nudgeContentDown(in: largeLabel, by: 0.08)
+        nudgeContentDown(in: largeLabel, by: 0.12)
         assertBelowNavigationBar(sourceField, in: largeLabel)
         capture("Product_Label_Review_Large_Text", app: largeLabel)
 
@@ -546,6 +546,9 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(largeTitle.waitForExistence(timeout: 10))
         XCTAssertTrue(largeTitle.isHittable)
         XCTAssertTrue(largeTitle.label.contains("mahahabang pangalan ng sangkap"))
+        let safetyStatus = element("recipe-safety-status", in: largeApp)
+        XCTAssertTrue(safetyStatus.waitForExistence(timeout: 10))
+        XCTAssertTrue(safetyStatus.isHittable, "The food-safety decision stays visible below the large recipe title")
         let largeSummary = element("recipe-detail-summary", in: largeApp)
         XCTAssertTrue(largeSummary.waitForExistence(timeout: 10))
         XCTAssertTrue(largeSummary.label.contains("long Filipino ingredient names"))
