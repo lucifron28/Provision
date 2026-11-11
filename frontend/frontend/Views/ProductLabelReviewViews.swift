@@ -179,6 +179,7 @@ public struct ProductLabelReviewView: View {
                         else { Label("Search ingredients", systemImage: "magnifyingglass") }
                     }
                     .disabled(viewModel.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isSearching)
+                    .accessibilityIdentifier("pip-label-search-ingredients")
                     ForEach(viewModel.searchResults) { ingredient in
                         Toggle(isOn: ingredientBinding(ingredient.id)) {
                             VStack(alignment: .leading, spacing: 2) {

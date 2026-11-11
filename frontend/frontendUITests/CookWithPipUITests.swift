@@ -264,7 +264,13 @@ final class CookWithPipUITests: XCTestCase {
         assertBelowNavigationBar(customAllergensField, in: largeLabel)
 
         let milkDeclaration = element("pip-label-allergen-milk", in: largeLabel)
+        let mappingNote = largeLabel.staticTexts[
+            "A verified, complete mapping is required before a package label review can be recorded."
+        ]
         scrollTo(milkDeclaration, in: largeLabel)
+        nudgeContentDown(in: largeLabel, by: 0.08)
+        XCTAssertTrue(mappingNote.waitForExistence(timeout: 5))
+        assertBelowNavigationBar(mappingNote, in: largeLabel)
         XCTAssertTrue(milkDeclaration.isHittable)
         assertBelowNavigationBar(milkDeclaration, in: largeLabel)
         capture("Product_Label_Review_Scrolled", app: largeLabel)
@@ -279,6 +285,7 @@ final class CookWithPipUITests: XCTestCase {
 
         XCTAssertTrue(element("pip-label-product-title", in: app).waitForExistence(timeout: 10))
         let milkDeclaration = element("pip-label-allergen-milk", in: app)
+        let ingredientSearchButton = element("pip-label-search-ingredients", in: app)
         scrollTo(milkDeclaration, in: app)
         XCTAssertEqual(milkDeclaration.value as? String, "Declared on label")
         let status = element("pip-label-current-status", in: app)
@@ -293,9 +300,11 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(mappingVerified, in: app)
         assertBelowNavigationBar(mappingVerified, in: app)
         scrollTo(status, in: app)
-        nudgeContentDown(in: app, by: 0.10)
+        nudgeContentDown(in: app, by: 0.14)
         XCTAssertTrue(packageDeclarationHeading.waitForExistence(timeout: 5))
         assertBelowNavigationBar(packageDeclarationHeading, in: app)
+        XCTAssertTrue(ingredientSearchButton.waitForExistence(timeout: 5))
+        assertBelowNavigationBar(ingredientSearchButton, in: app)
         assertBelowNavigationBar(status, in: app)
         capture("Product_Label_Review_Stale", app: app)
     }
