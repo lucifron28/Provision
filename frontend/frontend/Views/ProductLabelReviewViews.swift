@@ -150,6 +150,7 @@ public struct ProductLabelReviewView: View {
                     Text("One ingredient").tag(IngredientMappingMode.direct)
                     Text("Composite product").tag(IngredientMappingMode.composite)
                 }
+                .accessibilityIdentifier("pip-label-mapping-type")
                 .onChange(of: viewModel.mappingMode) { _, mode in
                     if mode == .unknown {
                         viewModel.selectedIngredientIDs = []

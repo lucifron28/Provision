@@ -217,9 +217,11 @@ private struct RecipeDetailContents: View {
     }
 
     private var titleSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: dynamicTypeSize.isAccessibilitySize ? 5 : 10) {
             Text(recipe.title)
-                .font(ProvisionTypography.titleSerif)
+                .font(dynamicTypeSize.isAccessibilitySize
+                    ? .system(.title3, design: .serif, weight: .bold)
+                    : ProvisionTypography.titleSerif)
                 .foregroundStyle(ProvisionTheme.provisionGreen)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("recipe-detail-title")
@@ -230,14 +232,16 @@ private struct RecipeDetailContents: View {
                     .foregroundStyle(ProvisionTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Text("\(recipe.cuisine) · \(regionText)")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(ProvisionTheme.textSecondary)
+            if !dynamicTypeSize.isAccessibilitySize {
+                Text("\(recipe.cuisine) · \(regionText)")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(ProvisionTheme.textSecondary)
+            }
             if !dynamicTypeSize.isAccessibilitySize {
                 recipeMetadata
             }
         }
-        .padding(18)
+        .padding(dynamicTypeSize.isAccessibilitySize ? 12 : 18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .provisionCard(backgroundColor: ProvisionTheme.heroCard)
     }
@@ -266,10 +270,18 @@ private struct RecipeDetailContents: View {
     }
 
     private var metadataSection: some View {
-        recipeMetadata
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .provisionCard(backgroundColor: ProvisionTheme.surfaceSecondary)
+        VStack(alignment: .leading, spacing: 8) {
+            if dynamicTypeSize.isAccessibilitySize {
+                Text("\(recipe.cuisine) · \(regionText)")
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(ProvisionTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            recipeMetadata
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .provisionCard(backgroundColor: ProvisionTheme.surfaceSecondary)
     }
 
     @ViewBuilder

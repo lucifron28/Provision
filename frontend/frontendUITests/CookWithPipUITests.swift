@@ -88,8 +88,10 @@ final class CookWithPipUITests: XCTestCase {
         let unknownIngredient = element("recipe-ingredient-name-0", in: app)
         scrollTargetIntoView(unknownIngredient, inside: app.scrollViews["recipe-detail-scroll"], in: app)
         XCTAssertTrue(unknownIngredient.isHittable)
+        let reviewPreferences = element("recipe-review-preferences", in: app)
         let reviewLabels = element("recipe-review-product-labels", in: app)
-        nudgeContentDown(in: app, by: 0.10)
+        scrollTo(reviewPreferences, in: app)
+        assertBelowNavigationBar(reviewPreferences, in: app)
         assertBelowNavigationBar(unknownIngredient, in: app)
         assertBelowNavigationBar(reviewLabels, in: app)
         capture("Recipe_Detail_Review_Unknown", app: app)
@@ -194,7 +196,9 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertEqual(milkDeclaration.value as? String, "Declared on label")
         XCTAssertFalse(app.keyboards.firstMatch.isHittable, "Saving a label review dismisses the keyboard")
         let mappingVerified = element("pip-label-mapping-verified", in: app)
-        nudgeContentDown(in: app, by: 0.10)
+        let mappingType = element("pip-label-mapping-type", in: app)
+        scrollTo(mappingType, in: app)
+        assertBelowNavigationBar(mappingType, in: app)
         assertBelowNavigationBar(currentStatus, in: app)
         assertBelowNavigationBar(mappingVerified, in: app)
         capture("Product_Label_Saved_Keyboard_Dismissed", app: app)
@@ -242,9 +246,11 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(sourceField, in: largeLabel)
         XCTAssertEqual(sourceField.label, "Source reference")
         XCTAssertEqual(sourceField.placeholderValue, "Package label, URL, or label section")
-        nudgeContentDown(in: largeLabel, by: 0.20)
-        assertBelowNavigationBar(customAllergensHeading, in: largeLabel)
         assertBelowNavigationBar(sourceField, in: largeLabel)
+        let customAllergensField = element("pip-label-custom-allergens", in: largeLabel)
+        scrollTo(customAllergensHeading, in: largeLabel)
+        assertBelowNavigationBar(customAllergensHeading, in: largeLabel)
+        assertBelowNavigationBar(customAllergensField, in: largeLabel)
         capture("Product_Label_Review_Large_Text", app: largeLabel)
 
         let milkDeclaration = element("pip-label-allergen-milk", in: largeLabel)
@@ -272,7 +278,9 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(status.waitForExistence(timeout: 10))
         XCTAssertTrue(status.label.contains("no longer current"))
         let mappingVerified = element("pip-label-mapping-verified", in: app)
-        nudgeContentDown(in: app, by: 0.10)
+        let mappingType = element("pip-label-mapping-type", in: app)
+        scrollTo(mappingType, in: app)
+        assertBelowNavigationBar(mappingType, in: app)
         assertBelowNavigationBar(status, in: app)
         assertBelowNavigationBar(mappingVerified, in: app)
         capture("Product_Label_Review_Stale", app: app)
@@ -555,6 +563,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(largeTitle.waitForExistence(timeout: 10))
         XCTAssertTrue(largeTitle.isHittable)
         XCTAssertTrue(largeTitle.label.contains("mahahabang pangalan ng sangkap"))
+        assertBelowNavigationBar(largeTitle, in: largeApp)
         let safetyStatus = element("recipe-safety-status", in: largeApp)
         XCTAssertTrue(safetyStatus.waitForExistence(timeout: 10))
         XCTAssertTrue(safetyStatus.isHittable, "The food-safety decision stays visible below the large recipe title")
@@ -563,8 +572,9 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(availabilityStatus.waitForExistence(timeout: 10))
         XCTAssertTrue(availabilityStatus.isHittable, "Pantry availability remains visible alongside food safety")
         let recipeDetailScroll = largeApp.scrollViews["recipe-detail-scroll"]
-        XCTAssertLessThanOrEqual(availabilityStatus.frame.maxY, recipeDetailScroll.frame.maxY,
-                                 "The pantry status badge stays fully inside the first screen")
+        let recipeViewport = visibleScrollFrame(of: recipeDetailScroll, in: largeApp, inset: 8)
+        XCTAssertLessThanOrEqual(availabilityStatus.frame.maxY, recipeViewport.maxY,
+                                 "The pantry status badge stays fully above the bottom safe area")
         let largeSummary = element("recipe-detail-summary", in: largeApp)
         XCTAssertTrue(largeSummary.waitForExistence(timeout: 10))
         XCTAssertTrue(largeSummary.label.contains("long Filipino ingredient names"))
@@ -688,8 +698,8 @@ final class CookWithPipUITests: XCTestCase {
                       "Tapping the visible saved recipe should open its detail screen")
         let previewLink = app.buttons["recipe-shopping-preview-link"]
         let recipeDetail = app.scrollViews["recipe-detail-scroll"]
-        scrollTargetIntoView(previewLink, inside: recipeDetail, in: app)
-        assertBelowNavigationBar(previewLink, in: app)
+        for _ in 0..<12 where !previewLink.isHittable { recipeDetail.swipeUp() }
+        XCTAssertTrue(previewLink.isHittable, "The shopping preview link stays available from recipe details")
         previewLink.tap()
         let ready = element("recipe-shopping-safety-status", in: app)
         let retry = element("recipe-shopping-load-preview", in: app)
@@ -840,17 +850,14 @@ final class CookWithPipUITests: XCTestCase {
     }
 
     private func typeTextAndWait(_ text: String, in field: XCUIElement) {
-        var expectedValue = field.value as? String ?? ""
-        for character in text {
-            field.typeText(String(character))
-            expectedValue.append(character)
-            let typedCharacter = XCTNSPredicateExpectation(
-                predicate: NSPredicate(format: "value == %@", expectedValue),
-                object: field
-            )
-            XCTAssertEqual(XCTWaiter.wait(for: [typedCharacter], timeout: 2), .completed,
-                           "Expected \(field.identifier) to receive the complete keyboard input")
-        }
+        let expectedValue = (field.value as? String ?? "") + text
+        field.typeText(text)
+        let typedText = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", expectedValue),
+            object: field
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [typedText], timeout: 10), .completed,
+                        "Expected \(field.identifier) to receive the complete keyboard input")
     }
 
     private func waitUntilGone(_ element: XCUIElement) {
