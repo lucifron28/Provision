@@ -7,7 +7,7 @@ This guide prepares a separate Provision staging service. It does not deploy pro
 - Render runs the FastAPI backend from the root `Dockerfile`.
 - Neon provides an isolated PostgreSQL 18 staging project in Singapore.
 - The iOS app keeps its normal local API default. Debug and UI-test launches can opt into a validated Render HTTPS URL.
-- GitHub Actions keeps routine PostgreSQL 18 and iOS tests local. Separate manual workflows check staging and, after explicit confirmation, make one DeepSeek request.
+- GitHub Actions keeps routine PostgreSQL 18 and iOS tests local. The PR visual smoke captures 11 representative screens; a separate manual workflow retains the full screenshot gallery and `.xcresult`. Other manual workflows check staging and, after explicit confirmation, make one DeepSeek request.
 
 The Blueprint in `render.yaml` names the service `provision-staging`, uses the free web plan, selects Singapore, disables auto deploys, and checks `/ready`. Its current Render plan proposes `provision-staging-04dt` on the Free plan. The plan has no database resource declaration, so applying it will not create or alter a Neon database. Render free services have limits and can spin down while idle. Keep this service for synthetic staging only. [Render free plan limits](https://render.com/docs/free)
 
@@ -23,7 +23,7 @@ Run the image with runtime settings from a local PostgreSQL database. Do not pas
 
 Render terminates public TLS at its edge. The current API uses bearer authentication and does not build URLs or make authorization decisions from the forwarded client IP or scheme, so Uvicorn ignores `X-Forwarded-*` headers. Do not enable wildcard proxy trust. If the app later needs forwarded metadata, configure only verified proxy addresses first.
 
-The routine GitHub Actions workflow builds the image, verifies startup fails without required production settings, then checks `/health`, database-backed `/ready`, non-root execution, and that test files and `.env` files are absent. The existing root `compose.yaml` remains the local PostgreSQL workflow.
+The routine GitHub Actions workflow builds the image, verifies startup fails without required production settings, then checks `/health`, database-backed `/ready`, non-root execution, and that test files and `.env` files are absent. It also runs all Swift unit tests and a focused UI smoke covering navigation, safety blocks, offline retry, and stale-shopping recovery. The PR requires 11 named screenshots. **Cook with Pip full screenshot gallery** runs the complete existing UI suite on demand and uploads all scenarios plus the full `.xcresult`. The existing root `compose.yaml` remains the local PostgreSQL workflow.
 
 ## Isolated Neon staging
 
@@ -93,7 +93,7 @@ Create a GitHub Actions environment named `staging` and add:
 - Secret `PROVISION_STAGING_FIXTURE_TOKEN`, set to the same random fixture token stored in Render.
 - Leave variable `PROVISION_LIVE_DEEPSEEK_ENABLED` unset or set to `false` until the separate live-AI checks are approved.
 
-GitHub only accepts `workflow_dispatch` for workflows present on the repository's default branch. Because this PR does not merge itself, the two manual workflows become runnable after an approved merge to the default branch. A run must select a full commit SHA reachable from `main`; the job verifies that before exposing any staging secret, then checks Render is serving that same SHA. [GitHub manual workflow requirements](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)
+GitHub only accepts `workflow_dispatch` for workflows present on the repository's default branch. Because this PR does not merge itself, these manual workflows become runnable after an approved merge to the default branch. A run must select a full commit SHA reachable from `main`; the job verifies that before exposing any staging secret, then checks Render is serving that same SHA. [GitHub manual workflow requirements](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)
 
 The standard PR workflow does not contact Render or Neon. Run **Provision staging E2E** manually with the full commit SHA currently deployed to Render. Each account-creating, authenticated, and cleanup script first checks that the URL belongs to `*.onrender.com`, the health and readiness endpoints pass, and Render serves the requested commit. It then registers run-unique synthetic households through the normal API and checks household selection and isolation, product edits and label review, batch expiration and quantity, recipe detail and pantry availability, allergy review and blocking, provider-disabled recommendations, and explicit idempotent shopping confirmation. The workflow removes only the unique single-member synthetic households it created, including their household-scoped data, after checking that the accounts have no references outside those households. The iPhone 17 Simulator tests staging login, Keychain relaunch, logout, and login recovery, then runs deterministic offline and stale-shopping retry scenarios against the local UI-test fixtures. The workflow uploads the staging `.xcresult` and exported screenshots for 14 days.
 
@@ -114,7 +114,7 @@ This workflow is not a Pip Chat test. Pip Chat is not part of this deployment-pr
 
 ## Inspect results and recover
 
-Routine screenshots and `.xcresult` files remain in the PR workflow artifacts. Staging artifacts appear on the manual staging run. Download them from the GitHub Actions run page and open the `.xcresult` on a Mac with Xcode. Simulator runs do not verify physical camera, barcode scanner, or receipt-capture hardware.
+The 11 PR smoke screenshots appear in the routine workflow artifacts. The full screenshot set and `.xcresult` appear on **Cook with Pip full screenshot gallery** runs; staging artifacts appear on the manual staging run. Download them from the relevant GitHub Actions run page and open the `.xcresult` on a Mac with Xcode. Simulator runs do not verify physical camera, barcode scanner, or receipt-capture hardware.
 
 If a deploy fails, Render keeps the previous successful deploy running. With auto deploy disabled, inspect the failed build and service logs, correct configuration or deploy a known-good commit manually, and recheck `/health` and `/ready`. Do not run destructive migrations to recover. [Render deploy failure behavior](https://render.com/docs/deploys)
 
