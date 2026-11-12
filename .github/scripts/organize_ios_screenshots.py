@@ -19,6 +19,11 @@ def main() -> int:
     parser.add_argument("--input", required=True, type=Path, help="xcresulttool attachment export directory")
     parser.add_argument("--output", required=True, type=Path, help="organized screenshot directory")
     parser.add_argument("--required", required=True, type=Path, help="JSON file listing required screenshot names")
+    parser.add_argument(
+        "--only-required",
+        action="store_true",
+        help="copy only required scenarios (used for the small pull-request smoke gallery)",
+    )
     parser.add_argument("--commit-sha", default="unknown", help="commit that produced the test run")
     parser.add_argument(
         "--test-outcome",
@@ -69,6 +74,8 @@ def main() -> int:
             if not scenario or scenario in names:
                 print(f"Duplicate or invalid screenshot scenario name: {scenario!r}", file=sys.stderr)
                 return 1
+            if args.only_required and scenario not in required:
+                continue
 
             source = args.input / exported_name
             if not source.is_file():

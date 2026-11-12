@@ -18,16 +18,23 @@ jobs:
           python-version: "3.13"
       - name: Prepare iOS test artifact folder
         run: mkdir -p artifacts/raw-cook-with-pip-screenshots artifacts/cook-with-pip-screenshots
-      - name: Run iOS XCTest and UI screenshot suite
+      - name: Run focused iOS regressions and visual smoke suite
         id: ios-tests
-        run: >-
-          xcodebuild test
-          -project frontend/frontend.xcodeproj
-          -scheme frontend
-          -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
-          -resultBundlePath artifacts/frontend.xcresult
-          CODE_SIGNING_ALLOWED=YES
-          CODE_SIGN_IDENTITY=-
+        run: |
+          xcodebuild test \
+            -project frontend/frontend.xcodeproj \
+            -scheme frontend \
+            -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+            -resultBundlePath artifacts/frontend.xcresult \
+            -only-testing:frontendTests \
+            -only-testing:frontendUITests/CookWithPipUITests/testHomeNavigationAndCaptureRecipeScreens \
+            -only-testing:frontendUITests/CookWithPipUITests/testSafetyAndAvailabilityStatesWithLongFilipinoNames \
+            -only-testing:frontendUITests/CookWithPipUITests/testPreferencesAndPackageLabelReviewScreens \
+            -only-testing:frontendUITests/CookWithPipUITests/testFormsStayReadableInDarkModeAndLargeText \
+            -only-testing:frontendUITests/CookWithPipUITests/testAmbiguousShoppingConfirmationSurvivesAppRelaunch \
+            -only-testing:frontendUITests/CookWithPipUITests/testShoppingReviewRequiredAndBlockedStates \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=-
       - name: Export simulator screenshots
         if: always()
         run: |
@@ -45,7 +52,8 @@ jobs:
           python .github/scripts/organize_ios_screenshots.py
           --input artifacts/raw-cook-with-pip-screenshots
           --output artifacts/cook-with-pip-screenshots
-          --required .github/scripts/required_ios_screenshots.json
+          --required .github/scripts/required_ios_smoke_screenshots.json
+          --only-required
           --commit-sha "$GITHUB_SHA"
           --test-outcome "$(if [[ '${{ steps.ios-tests.outcome }}' == 'success' ]]; then echo success; else echo failure; fi)"
       - name: Package screenshots for visual review
@@ -54,31 +62,24 @@ jobs:
           if [ -d artifacts/cook-with-pip-screenshots ]; then
             ditto -c -k --sequesterRsrc --keepParent \
               artifacts/cook-with-pip-screenshots \
-              artifacts/cook-with-pip-visual-review.zip
+              artifacts/cook-with-pip-visual-smoke.zip
           else
             echo "Organized screenshot folder is missing." >&2
             exit 1
           fi
-      - name: Upload screenshot review archive
+      - name: Upload PR visual smoke archive
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cook-with-pip-visual-review
-          path: artifacts/cook-with-pip-visual-review.zip
+          name: cook-with-pip-visual-smoke
+          path: artifacts/cook-with-pip-visual-smoke.zip
           if-no-files-found: error
       - name: Upload organized iOS screenshots and scenario manifest
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cook-with-pip-ios-screenshots
+          name: cook-with-pip-smoke-screenshots
           path: artifacts/cook-with-pip-screenshots
-          if-no-files-found: error
-      - name: Upload iOS test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cook-with-pip-xcresult
-          path: artifacts/frontend.xcresult
           if-no-files-found: error
   backend:
     runs-on: ubuntu-latest

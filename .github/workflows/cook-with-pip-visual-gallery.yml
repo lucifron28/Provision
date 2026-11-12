@@ -1,0 +1,86 @@
+name: Cook with Pip visual gallery
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  ios-gallery:
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show Xcode and simulator runtimes
+        run: xcodebuild -version && xcrun simctl list devices available
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Prepare full gallery artifact folders
+        run: mkdir -p artifacts/raw-cook-with-pip-screenshots artifacts/cook-with-pip-screenshots
+      - name: Run full iOS XCTest and screenshot gallery
+        id: ios-tests
+        run: >-
+          xcodebuild test
+          -project frontend/frontend.xcodeproj
+          -scheme frontend
+          -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
+          -resultBundlePath artifacts/frontend.xcresult
+          CODE_SIGNING_ALLOWED=YES
+          CODE_SIGN_IDENTITY=-
+      - name: Export full simulator screenshot gallery
+        if: always()
+        run: |
+          if [ -d artifacts/frontend.xcresult ]; then
+            xcrun xcresulttool export attachments \
+              --path artifacts/frontend.xcresult \
+              --output-path artifacts/raw-cook-with-pip-screenshots
+          else
+            echo "No xcresult bundle was produced." >&2
+            exit 1
+          fi
+      - name: Organize and verify all required screenshots
+        if: always()
+        run: >-
+          python .github/scripts/organize_ios_screenshots.py
+          --input artifacts/raw-cook-with-pip-screenshots
+          --output artifacts/cook-with-pip-screenshots
+          --required .github/scripts/required_ios_screenshots.json
+          --commit-sha "$GITHUB_SHA"
+          --test-outcome "$(if [[ '${{ steps.ios-tests.outcome }}' == 'success' ]]; then echo success; else echo failure; fi)"
+      - name: Package full gallery for visual review
+        if: always()
+        run: |
+          if [ -d artifacts/cook-with-pip-screenshots ]; then
+            ditto -c -k --sequesterRsrc --keepParent \
+              artifacts/cook-with-pip-screenshots \
+              artifacts/cook-with-pip-visual-gallery.zip
+          else
+            echo "Organized screenshot folder is missing." >&2
+            exit 1
+          fi
+      - name: Upload full screenshot gallery ZIP
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cook-with-pip-visual-gallery
+          path: artifacts/cook-with-pip-visual-gallery.zip
+          if-no-files-found: error
+      - name: Upload organized screenshots and manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cook-with-pip-gallery-screenshots
+          path: artifacts/cook-with-pip-screenshots
+          if-no-files-found: error
+      - name: Upload full Xcode result bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cook-with-pip-xcresult
+          path: artifacts/frontend.xcresult
+          if-no-files-found: error
+          compression-level: 0
