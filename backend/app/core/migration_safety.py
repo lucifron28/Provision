@@ -75,6 +75,10 @@ def acquire_migration_advisory_lock(
         except Exception:
             raise RuntimeError("Could not acquire PostgreSQL migration lock") from None
         if acquired:
+            # The SELECT opens SQLAlchemy's implicit transaction. End it before
+            # Alembic starts its own migration transaction. Session locks survive
+            # commits and remain held until this connection closes.
+            connection.commit()
             return
 
         remaining = deadline - time.monotonic()

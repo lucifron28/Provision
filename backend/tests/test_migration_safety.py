@@ -123,10 +123,14 @@ def test_migration_advisory_lock_waits_for_an_existing_runner(monkeypatch):
         def __init__(self):
             self.results = iter([False, True])
             self.statements = []
+            self.commits = 0
 
         def scalar(self, statement):
             self.statements.append(str(statement))
             return next(self.results)
+
+        def commit(self):
+            self.commits += 1
 
     connection = Connection()
     monkeypatch.setattr("app.core.migration_safety.time.sleep", lambda _: None)
@@ -139,6 +143,7 @@ def test_migration_advisory_lock_waits_for_an_existing_runner(monkeypatch):
 
     assert len(connection.statements) == 2
     assert all("pg_try_advisory_lock" in statement for statement in connection.statements)
+    assert connection.commits == 1
 
 
 def test_migration_advisory_lock_fails_after_its_bounded_wait(monkeypatch):
