@@ -135,15 +135,19 @@ public struct ProductLabelReviewView: View {
                     if product.updated_at != nil || viewModel.label != nil {
                         DisclosureGroup("Technical details") {
                             if let updated = product.updated_at {
-                                LabeledContent("Server version", value: updated)
+                                LabeledContent("Server version") {
+                                    Text(updated)
+                                        .accessibilityIdentifier("pip-label-server-version")
+                                }
                                     .font(.footnote.monospaced())
                                     .fixedSize(horizontal: false, vertical: true)
-                                    .accessibilityIdentifier("pip-label-server-version")
                             }
                             if let label = viewModel.label {
-                                LabeledContent("Label review revision", value: "v\(label.revision)")
+                                LabeledContent("Label review revision") {
+                                    Text("v\(label.revision)")
+                                        .accessibilityIdentifier("pip-label-review-revision")
+                                }
                                     .font(.footnote.monospaced())
-                                    .accessibilityIdentifier("pip-label-review-revision")
                             }
                         }
                         .accessibilityIdentifier("pip-label-technical-details")
