@@ -39,15 +39,47 @@ def test_remote_production_database_accepts_required_tls_and_staging_designation
     configured = settings_for(
         ENVIRONMENT="production",
         DEPLOYMENT_ENVIRONMENT="staging",
-        DATABASE_URL="postgresql+psycopg://app:secret@db-pooler.example.test/provision?sslmode=require",
+        DATABASE_URL=(
+            "postgresql+psycopg://app:secret@ep-staging-pooler.ap-southeast-1.aws.neon.tech/"
+            "provision_staging?sslmode=require"
+        ),
         MIGRATION_DATABASE_URL=SecretStr(
-            "postgresql+psycopg://migrator:secret@db.example.test/provision?sslmode=require"
+            "postgresql+psycopg://migrator:secret@ep-staging.ap-southeast-1.aws.neon.tech/"
+            "provision_staging?sslmode=require"
         ),
         JWT_SECRET_KEY="s" * 40,
     )
 
     assert configured.DEPLOYMENT_ENVIRONMENT == "staging"
     assert configured.MIGRATION_DATABASE_URL is not None
+
+
+def test_staging_requires_a_matching_direct_neon_migration_target():
+    with pytest.raises(ValidationError, match="MIGRATION_DATABASE_URL is required"):
+        settings_for(
+            ENVIRONMENT="production",
+            DEPLOYMENT_ENVIRONMENT="staging",
+            DATABASE_URL=(
+                "postgresql+psycopg://app:secret@ep-staging-pooler.ap-southeast-1.aws.neon.tech/"
+                "provision_staging?sslmode=require"
+            ),
+            JWT_SECRET_KEY="s" * 40,
+        )
+
+    with pytest.raises(ValidationError, match="same Neon staging database"):
+        settings_for(
+            ENVIRONMENT="production",
+            DEPLOYMENT_ENVIRONMENT="staging",
+            DATABASE_URL=(
+                "postgresql+psycopg://app:secret@ep-other-pooler.ap-southeast-1.aws.neon.tech/"
+                "provision_staging?sslmode=require"
+            ),
+            MIGRATION_DATABASE_URL=SecretStr(
+                "postgresql+psycopg://migrator:secret@ep-staging.ap-southeast-1.aws.neon.tech/"
+                "provision_staging?sslmode=require"
+            ),
+            JWT_SECRET_KEY="s" * 40,
+        )
 
 
 def test_migrations_reject_a_transaction_pooled_database_url():

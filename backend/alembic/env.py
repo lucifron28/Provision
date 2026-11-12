@@ -16,7 +16,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 from app.core.config import settings
-from app.core.migration_safety import resolve_migration_database_url
+from app.core.migration_safety import acquire_migration_advisory_lock, resolve_migration_database_url
 from app.models import Base
 
 # Use the direct migration endpoint when configured. Neon's pooled endpoint is
@@ -69,6 +69,8 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        if migration_database_url.startswith("postgresql"):
+            acquire_migration_advisory_lock(connection)
         context.configure(
             connection=connection,
             target_metadata=target_metadata,

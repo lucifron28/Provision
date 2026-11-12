@@ -5,6 +5,8 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, m
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
+from app.core.migration_safety import validate_staging_database_urls
+
 
 LOCAL_DATABASE_URL = "postgresql+psycopg://provision:provision@127.0.0.1:5432/provision"
 
@@ -114,6 +116,13 @@ class Settings(BaseSettings):
     def validate_deployment_configuration(self):
         if self.DEPLOYMENT_ENVIRONMENT in {"staging", "production"} and self.ENVIRONMENT != "production":
             raise ValueError("Hosted deployments must use ENVIRONMENT=production")
+        if self.DEPLOYMENT_ENVIRONMENT == "staging":
+            if self.MIGRATION_DATABASE_URL is None:
+                raise ValueError("MIGRATION_DATABASE_URL is required for staging")
+            validate_staging_database_urls(
+                self.DATABASE_URL,
+                self.MIGRATION_DATABASE_URL.get_secret_value(),
+            )
         if self.STAGING_TEST_FIXTURES_ENABLED:
             if self.DEPLOYMENT_ENVIRONMENT != "staging":
                 raise ValueError("Staging test fixtures may only be enabled in a staging deployment")
