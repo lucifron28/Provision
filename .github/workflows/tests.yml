@@ -57,6 +57,7 @@ jobs:
           --input artifacts/raw-cook-with-pip-screenshots
           --output artifacts/cook-with-pip-screenshots
           --required .github/scripts/required_ios_smoke_screenshots.json
+          --only-required
           --commit-sha "$GITHUB_SHA"
           --test-outcome "${{ steps.ios-tests.outcome }}"
       - name: Package screenshots for visual review
