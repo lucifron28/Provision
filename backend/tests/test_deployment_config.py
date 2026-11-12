@@ -25,6 +25,13 @@ def test_render_container_uses_port_and_ignores_untrusted_forwarded_headers():
     assert "--forwarded-allow-ips=*" not in shell_command
 
 
+def test_render_free_staging_blueprint_avoids_paid_only_shutdown_setting():
+    blueprint = (REPOSITORY_ROOT / "render.yaml").read_text(encoding="utf-8")
+
+    assert "plan: free" in blueprint
+    assert "maxShutdownDelaySeconds" not in blueprint
+
+
 def settings_for(**values) -> Settings:
     values.setdefault("JWT_SECRET_KEY", "development-test-secret")
     return Settings(_env_file=None, **values)

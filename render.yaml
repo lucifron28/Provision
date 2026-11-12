@@ -9,7 +9,6 @@ services:
     dockerContext: .
     autoDeployTrigger: off
     healthCheckPath: /ready
-    maxShutdownDelaySeconds: 60
     envVars:
       - key: ENVIRONMENT
         value: production
