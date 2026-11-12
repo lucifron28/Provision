@@ -1,15 +1,15 @@
 # Render and Neon staging guide
 
-This guide prepares a separate Provision staging service. It does not deploy production or reuse production data. No Provision Render service or Neon project has been created for this change. Set up those resources only after reviewing this PR.
+This guide prepares a separate Provision staging service. It does not deploy production or reuse production data. An isolated Neon Free project has been created and validated. A Render Blueprint exists, but the Provision service has not been created: the current plan proposes one Free Docker service and is waiting for review and explicit approval before it is applied.
 
 ## Architecture
 
 - Render runs the FastAPI backend from the root `Dockerfile`.
-- Neon provides a new, isolated PostgreSQL 18 staging project in Singapore.
+- Neon provides an isolated PostgreSQL 18 staging project in Singapore.
 - The iOS app keeps its normal local API default. Debug and UI-test launches can opt into a validated Render HTTPS URL.
 - GitHub Actions keeps routine PostgreSQL 18 and iOS tests local. Separate manual workflows check staging and, after explicit confirmation, make one DeepSeek request.
 
-The Blueprint in `render.yaml` names the service `provision-staging`, uses the free web plan, selects Singapore, disables auto deploys, and checks `/ready`. It has no database resource declaration, so syncing it cannot create a Neon database. Render free services have limits and can spin down while idle. Keep this service for synthetic staging only. [Render free plan limits](https://render.com/docs/free)
+The Blueprint in `render.yaml` names the service `provision-staging`, uses the free web plan, selects Singapore, disables auto deploys, and checks `/ready`. Its current Render plan proposes `provision-staging-04dt` on the Free plan. The plan has no database resource declaration, so applying it will not create or alter a Neon database. Render free services have limits and can spin down while idle. Keep this service for synthetic staging only. [Render free plan limits](https://render.com/docs/free)
 
 ## Build and run the container locally
 
@@ -25,19 +25,17 @@ Render terminates public TLS at its edge. The current API uses bearer authentica
 
 The routine GitHub Actions workflow builds the image, verifies startup fails without required production settings, then checks `/health`, database-backed `/ready`, non-root execution, and that test files and `.env` files are absent. The existing root `compose.yaml` remains the local PostgreSQL workflow.
 
-## Create isolated Neon staging
+## Isolated Neon staging
 
-1. In Neon, create a **new project** named `provision-staging`. Do not choose an existing project or branch used by another app.
-2. Select PostgreSQL 18 and the Singapore region (`aws-ap-southeast-1`). A Neon project stays in its chosen region. [Neon regions](https://neon.com/docs/introduction/regions)
-3. Use a database named `provision_staging`. Keep it empty until the migration step below. Do not import a production backup or run `backend/seed.py`.
-4. Create a dedicated staging database role. Prefer a distinct application role and migration-owner role when you can grant the application role only the required runtime privileges. Do not reuse a production credential.
-5. Copy the **pooled** TLS connection string for `DATABASE_URL` and the **direct** TLS connection string for `MIGRATION_DATABASE_URL`. Convert each scheme to `postgresql+psycopg://` for this app. Keep `sslmode=require`. The migration guard requires both URLs to resolve to the same Neon endpoint and database, rejects pooled migration URLs, and requires `staging` in the database name.
+The isolated project `provision-staging` is on Neon Free, PostgreSQL 18, in Singapore (`aws-ap-southeast-1`), with a 0.25-CU compute cap. Its `provision_staging` database has separate migration-owner and application roles. Never use an existing project or branch belonging to another app, import a production backup, or run `backend/seed.py`.
 
-The backend uses bounded SQLAlchemy pools, stale-connection checks, and disables psycopg automatic prepared statements for Neon pooled endpoints. Neon runs pooled connections through PgBouncer transaction mode; schema migrations should use a direct endpoint. [Neon pooled and direct connections](https://neon.com/docs/connect/connection-pooling)
+The application connection uses Neon pooling; the migration connection uses the direct endpoint. Both require TLS and the `postgresql+psycopg://` scheme. The migration guard requires the URLs to resolve to the same Neon endpoint and database, rejects pooled migration URLs, and requires `staging` in the database name. Neon runs pooled connections through PgBouncer transaction mode, so schema migrations use the direct endpoint. [Neon pooled and direct connections](https://neon.com/docs/connect/connection-pooling)
 
-Use the Free plan only for synthetic staging. Its current limits include 100 compute-hours and 1 GB storage per project; verify the current quota before creation. [Neon pricing](https://neon.com/pricing)
+The backend uses bounded SQLAlchemy pools, stale-connection checks, and disables psycopg automatic prepared statements for Neon pooled endpoints. The project is Free and restricted to synthetic staging. Its current quota is 100 compute-hours and 1 GB storage per project; verify current limits before relying on them. [Neon pricing](https://neon.com/pricing)
 
-## Apply the initial migration once
+## Migration validation and future changes
+
+The initial migration was applied to the isolated Neon database and `alembic check` passed at revision `9c31f410ab82`, the current Alembic head. A pooled application-role `SELECT 1` and a synthetic transaction insert/update/delete also passed. The database contains the migration-created schema and quarantine household, with no user accounts or imported household data.
 
 Render's pre-deploy command is unavailable on the free web plan, so this setup uses one guarded migration run from a trusted Windows workstation before deploying each schema change. The migration guard requires the direct Neon endpoint to match the application endpoint and database, TLS, a database name containing `staging`, and an explicit confirmation value. Online PostgreSQL migrations also take a session advisory lock and wait up to ten minutes for another migration to finish. [Render pre-deploy command availability](https://render.com/docs/deploys)
 
@@ -60,12 +58,15 @@ uv run --frozen alembic check
 Remove-Item Env:PROVISION_CONFIRM_STAGING_MIGRATION
 ```
 
-Only run this against the newly created empty `provision_staging` database after checking its project, region, host, and database name. The advisory lock prevents overlapping Alembic operators from applying schema changes at the same time. Do not run `alembic downgrade base` against staging. The migration must be exercised on Neon before calling Neon compatibility verified. This repository preparation has not yet run migrations on a Provision Neon project.
+Use this guarded sequence for future schema changes only after checking the project, region, host, and database name. The advisory lock prevents overlapping Alembic operators from applying schema changes at the same time. Do not run `alembic downgrade base` against staging.
 
 ## Configure Render staging
 
-1. In Render, create a Blueprint from this repository and inspect the plan before applying. Keep `provision-staging` on the Free plan and Singapore. Do not upgrade a plan.
-2. Supply the secret values requested by the Blueprint, then set or verify these environment variables in the service dashboard:
+The Render Blueprint already exists with auto-sync disabled. Its current plan proposes a single `provision-staging-04dt` Docker web service on the Free plan in Singapore, with auto deploy off and `/ready` as its health check. Review the [current Render plan](https://dashboard.render.com/blueprint/exs-dbqqubd6e07s738163ng/sync/exe-dbqr46rrjlhs73a738jg) and approve it only after confirming the resource and required environment-variable names below. Applying the plan will create the web service; no Neon resource is part of that plan. Do not upgrade a plan.
+
+When the plan is approved:
+
+1. Supply the secret values requested by Render, then set or verify these environment variables in the service dashboard:
 
    - `ENVIRONMENT=production`
    - `DEPLOYMENT_ENVIRONMENT=staging`
@@ -94,9 +95,9 @@ Create a GitHub Actions environment named `staging` and add:
 
 GitHub only accepts `workflow_dispatch` for workflows present on the repository's default branch. Because this PR does not merge itself, the two manual workflows become runnable after an approved merge to the default branch. A run must select a full commit SHA reachable from `main`; the job verifies that before exposing any staging secret, then checks Render is serving that same SHA. [GitHub manual workflow requirements](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)
 
-The standard PR workflow does not contact Render or Neon. Run **Provision staging E2E** manually with the full commit SHA currently deployed to Render. Each account-creating, authenticated, and cleanup script first checks that the URL belongs to `*.onrender.com`, the health and readiness endpoints pass, and Render serves the requested commit. It then registers run-unique synthetic households through the normal API and checks household selection and isolation, product edits and label review, batch expiration and quantity, recipe detail and pantry availability, allergy review and blocking, provider-disabled recommendations, and explicit idempotent shopping confirmation. The workflow removes only the unique single-member synthetic households it created, including their household-scoped data, after checking that the accounts have no references outside those households. It then performs iPhone 17 Simulator login, Keychain relaunch, logout, and login recovery. The workflow uploads the staging `.xcresult` and exported screenshots for 14 days.
+The standard PR workflow does not contact Render or Neon. Run **Provision staging E2E** manually with the full commit SHA currently deployed to Render. Each account-creating, authenticated, and cleanup script first checks that the URL belongs to `*.onrender.com`, the health and readiness endpoints pass, and Render serves the requested commit. It then registers run-unique synthetic households through the normal API and checks household selection and isolation, product edits and label review, batch expiration and quantity, recipe detail and pantry availability, allergy review and blocking, provider-disabled recommendations, and explicit idempotent shopping confirmation. The workflow removes only the unique single-member synthetic households it created, including their household-scoped data, after checking that the accounts have no references outside those households. The iPhone 17 Simulator tests staging login, Keychain relaunch, logout, and login recovery, then runs deterministic offline and stale-shopping retry scenarios against the local UI-test fixtures. The workflow uploads the staging `.xcresult` and exported screenshots for 14 days.
 
-The staging smoke uses the public API, checks that Cook with Pip keeps the provider disabled and that missing allergy information requires review, and does not reset a shared database. A failed cleanup is reported as a failure and leaves records intact for inspection. Run only one staging workflow at a time.
+The staging smoke uses the public API, checks that Cook with Pip keeps the provider disabled and that missing allergy information requires review, and does not reset a shared database. The repository has synthetic label-review data and reference screenshots, but no suitable receipt or product-label input photos; image/OCR processing is therefore not claimed as covered. A failed cleanup is reported as a failure and leaves records intact for inspection. Run only one staging workflow at a time.
 
 ## Run the optional live DeepSeek smoke
 
@@ -127,4 +128,4 @@ If a deploy fails, Render keeps the previous successful deploy running. With aut
 
 ## Current verification boundary
 
-The Docker build and local container HTTP/readiness smoke have passed. Focused deployment, migration-guard, health, and cleanup tests have passed. No Provision Neon project or Render staging service exists yet, so Neon migrations, deployed API checks, the manual iOS staging run, and the live provider call remain unexecuted until the isolated free staging resources and GitHub environment values are configured.
+The Docker build and local container HTTP/readiness smoke have passed. Focused deployment, migration-guard, health, and cleanup tests have passed. Neon migration and connection compatibility have been verified on the isolated Free project. The Render plan is ready but not applied, so deployed API checks, the manual staging workflow, and the live provider call have not run. The GitHub `staging` environment still needs the Render URL and fixture token after the Render service is approved and configured.
