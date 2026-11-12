@@ -1,0 +1,121 @@
+name: Provision staging E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_render_commit:
+        description: Full commit SHA currently deployed to the Render staging service
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provision-staging-e2e
+  cancel-in-progress: false
+
+jobs:
+  staging-e2e:
+    name: Render API and iPhone Simulator smoke
+    runs-on: macos-26
+    timeout-minutes: 65
+    environment: staging
+    env:
+      PROVISION_EXPECTED_RENDER_COMMIT: ${{ inputs.expected_render_commit }}
+      PROVISION_STAGING_API_BASE_URL: ${{ vars.PROVISION_STAGING_API_BASE_URL }}
+      PROVISION_API_BASE_URL: ${{ vars.PROVISION_STAGING_API_BASE_URL }}
+    steps:
+      - name: Check out the requested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_render_commit }}
+          fetch-depth: 0
+
+      - name: Verify the requested source revision
+        shell: bash
+        run: |
+          [[ "$PROVISION_EXPECTED_RENDER_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]] || {
+            echo "Enter a full 40-character commit SHA." >&2
+            exit 1
+          }
+          actual="$(git rev-parse HEAD)"
+          expected="${PROVISION_EXPECTED_RENDER_COMMIT,,}"
+          [[ "$actual" == "$expected" ]] || {
+            echo "Checked out $actual, expected $expected." >&2
+            exit 1
+          }
+
+      - name: Set up Python and uv
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+          python-version: "3.13"
+
+      - name: Install locked backend runtime dependencies
+        working-directory: backend
+        run: uv sync --frozen --no-dev --no-install-project
+
+      - name: Verify Render commit, staging designation, and database readiness
+        working-directory: backend
+        run: uv run --no-sync python scripts/staging_e2e_smoke.py preflight
+
+      - name: Create a unique synthetic household for this run
+        id: staging-fixture
+        working-directory: backend
+        env:
+          PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
+        run: uv run --no-sync python scripts/staging_e2e_smoke.py prepare
+
+      - name: Verify authenticated persistence and household isolation
+        working-directory: backend
+        env:
+          PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
+        run: uv run --no-sync python scripts/staging_e2e_smoke.py api-smoke
+
+      - name: Run staging login and Keychain relaunch test on iPhone 17
+        id: ios-staging
+        run: |
+          mkdir -p artifacts
+          xcodebuild test \
+            -project frontend/frontend.xcodeproj \
+            -scheme frontend \
+            -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+            -only-testing:frontendUITests/CookWithPipUITests/testStagingLoginAndRelaunch \
+            -resultBundlePath artifacts/staging-e2e.xcresult \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=-
+
+      - name: Export staging simulator screenshots
+        if: always()
+        run: |
+          if [ -d artifacts/staging-e2e.xcresult ]; then
+            mkdir -p artifacts/staging-screenshots
+            xcrun xcresulttool export attachments \
+              --path artifacts/staging-e2e.xcresult \
+              --output-path artifacts/staging-screenshots
+          else
+            echo "The staging XCUITest did not produce an xcresult bundle." >&2
+          fi
+
+      - name: Upload staging simulator screenshots and xcresult
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provision-staging-e2e-${{ inputs.expected_render_commit }}
+          path: |
+            artifacts/staging-screenshots
+            artifacts/staging-e2e.xcresult
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Remove the empty run-owned synthetic household
+        if: always() && steps.staging-fixture.outcome == 'success'
+        working-directory: backend
+        env:
+          PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
+        run: uv run --no-sync python scripts/staging_e2e_smoke.py cleanup

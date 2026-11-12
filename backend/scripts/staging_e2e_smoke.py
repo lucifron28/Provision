@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import secrets
 import sys
+import time
 import uuid
 from urllib.parse import urlsplit
 
@@ -95,6 +96,7 @@ def prepare() -> None:
     env_file = os.environ.get("GITHUB_ENV")
     if not env_file:
         raise RuntimeError("Run prepare only in the staging GitHub Actions job")
+    _fixture_token()
     run_id = uuid.uuid4().hex
     email = f"provision-e2e+{run_id}@example.com"
     password = secrets.token_urlsafe(32)
@@ -117,12 +119,25 @@ def preflight() -> None:
     base_url = _api_base_url()
     parsed = urlsplit(base_url)
     origin = f"{parsed.scheme}://{parsed.netloc}"
-    with httpx.Client(timeout=httpx.Timeout(60, connect=10), follow_redirects=False, trust_env=False) as client:
-        health = client.get(f"{origin}/health")
-        ready = client.get(f"{origin}/ready")
-    if health.status_code != 200 or ready.status_code != 200:
+    health = ready = None
+    with httpx.Client(timeout=httpx.Timeout(30, connect=10), follow_redirects=False, trust_env=False) as client:
+        for attempt in range(5):
+            try:
+                health = client.get(f"{origin}/health")
+                ready = client.get(f"{origin}/ready")
+            except httpx.HTTPError:
+                if attempt == 4:
+                    raise RuntimeError("Render staging did not respond within five bounded health attempts") from None
+            else:
+                if health.status_code == 200 and ready.status_code == 200:
+                    break
+            if attempt < 4:
+                time.sleep(5)
+    if health is None or ready is None or health.status_code != 200 or ready.status_code != 200:
+        health_status = health.status_code if health is not None else "no response"
+        ready_status = ready.status_code if ready is not None else "no response"
         raise RuntimeError(
-            f"Staging health/readiness checks failed (HTTP {health.status_code}/{ready.status_code})"
+            f"Staging health/readiness checks failed after five bounded attempts (HTTP {health_status}/{ready_status})"
         )
     health_data = health.json()
     if health_data.get("deployment") != "staging":

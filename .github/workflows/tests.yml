@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   ios:
     runs-on: macos-26
@@ -120,6 +123,50 @@ jobs:
           uv run alembic downgrade base
           uv run alembic upgrade head
           uv run alembic check
+      - name: Build the locked backend Docker image
+        run: docker build --pull --file Dockerfile --tag provision-backend:${GITHUB_SHA} .
+      - name: Verify production configuration fails closed
+        run: |
+          if docker run --rm \
+            --env ENVIRONMENT=production \
+            --env DEPLOYMENT_ENVIRONMENT=staging \
+            provision-backend:${GITHUB_SHA} >/dev/null 2>&1; then
+            echo "The backend started without required runtime secrets." >&2
+            exit 1
+          fi
+      - name: Start the image and verify HTTP readiness
+        env:
+          IMAGE_TAG: provision-backend:${{ github.sha }}
+        run: |
+          set -euo pipefail
+          container=provision-backend-smoke
+          cleanup() { docker rm --force "$container" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+
+          test "$(docker image inspect --format '{{.Config.User}}' "$IMAGE_TAG")" = "10001:10001"
+          docker run --detach \
+            --name "$container" \
+            --network host \
+            --env DATABASE_URL \
+            --env JWT_SECRET_KEY \
+            --env ENVIRONMENT=production \
+            --env DEPLOYMENT_ENVIRONMENT=staging \
+            --env PORT=10000 \
+            "$IMAGE_TAG"
+
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent http://127.0.0.1:10000/health >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          curl --fail --silent http://127.0.0.1:10000/health | python -c 'import json,sys; assert json.load(sys.stdin)["deployment"] == "staging"'
+          curl --fail --silent http://127.0.0.1:10000/ready | python -c 'import json,sys; assert json.load(sys.stdin) == {"status":"ready"}'
+          docker exec "$container" test ! -e /app/.env
+          docker exec "$container" test ! -d /app/tests
+      - name: Verify migrations can use a direct Neon staging URL only with explicit confirmation
+        working-directory: backend
+        run: uv run pytest tests/test_deployment_config.py tests/test_migration_safety.py
       - name: Prepare backend test artifact folder
         run: mkdir -p artifacts
       - name: Run backend tests
