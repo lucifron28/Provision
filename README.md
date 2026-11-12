@@ -96,6 +96,12 @@ Tests require PostgreSQL 18 and an explicit `TEST_DATABASE_URL` ending in `_test
 They must fail if PostgreSQL is unavailable, rather than using SQLite or the
 application database. Test tables live in a unique schema owned by each run.
 
+### Render and Neon staging
+
+See the [Render and Neon staging guide](docs/deployment/RENDER_NEON_STAGING.md)
+for the isolated staging setup, guarded migration procedure, manual GitHub
+Actions checks, and current verification limits.
+
 
 ### Database Management (PostgreSQL 18 via Docker Compose)
 

@@ -62,6 +62,7 @@ public struct LoginView: View {
                                     .keyboardType(.emailAddress)
                                     .textInputAutocapitalization(.never)
                                     .autocorrectionDisabled()
+                                    .accessibilityIdentifier("login-email")
                                     .foregroundStyle(ProvisionTheme.textPrimary)
                                     .tint(ProvisionTheme.provisionGreen)
                             }
@@ -89,6 +90,7 @@ public struct LoginView: View {
                                 SecureField("Enter password", text: $password)
                                     .foregroundStyle(ProvisionTheme.textPrimary)
                                     .tint(ProvisionTheme.provisionGreen)
+                                    .accessibilityIdentifier("login-password")
                             }
                             .padding(.horizontal, 14)
                             .padding(.vertical, 12)
@@ -121,6 +123,7 @@ public struct LoginView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
                         .disabled(isSubmitDisabled || authVM.isLoading)
+                        .accessibilityIdentifier("login-submit")
                         .padding(.top, 6)
                     }
                     .padding(20)

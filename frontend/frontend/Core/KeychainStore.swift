@@ -24,12 +24,14 @@ public protocol CredentialStore {
 public final class KeychainStore: CredentialStore {
     public static let shared = KeychainStore()
     
-    private let service = "mseuf.edu.ph.provision.auth"
+    private let service: String
     private let tokenAccount = "accessToken"
     private let verifiedSessionAccount = "verifiedHouseholdSession"
     private let pendingShoppingPrefix = "pendingRecipeShopping-"
     
-    private init() {}
+    private init() {
+        service = APIEnvironment.keychainServiceIdentifier
+    }
     
     /// Saves the JWT access token securely into the iOS Keychain.
     /// Overwrites existing token if present.

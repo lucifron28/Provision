@@ -13,10 +13,12 @@ dependencies = [
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
     "pyjwt>=2.13.0",
-    "pytest>=9.1.1",
     "sqlalchemy>=2.0.52",
     "uvicorn[standard]>=0.52.4",
 ]
+
+[dependency-groups]
+dev = ["pytest>=9.1.1"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

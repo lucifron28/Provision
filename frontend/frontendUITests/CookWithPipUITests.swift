@@ -1,4 +1,5 @@
 import XCTest
+@testable import frontend
 
 final class CookWithPipUITests: XCTestCase {
     func testHomeNavigationAndCaptureRecipeScreens() {
@@ -432,7 +433,7 @@ final class CookWithPipUITests: XCTestCase {
         capture("Shopping_Duplicate_Consolidation_Opt_In", app: app)
 
         element("recipe-shopping-confirm", in: app).tap()
-        let confirmAction = element("recipe-shopping-confirm-action", in: app)
+        let confirmAction = app.alerts.buttons.matching(identifier: "recipe-shopping-confirm-action").firstMatch
         XCTAssertTrue(confirmAction.waitForExistence(timeout: 5))
         confirmAction.tap()
         XCTAssertTrue(element("recipe-shopping-result-counts", in: app).waitForExistence(timeout: 10))
@@ -531,7 +532,10 @@ final class CookWithPipUITests: XCTestCase {
         let staleApp = launch(scenario: "shopping-stale")
         openShoppingPreview(staleApp)
         element("recipe-shopping-confirm", in: staleApp).tap()
-        element("recipe-shopping-confirm-action", in: staleApp).tap()
+        let staleConfirmAction = staleApp.alerts.buttons
+            .matching(identifier: "recipe-shopping-confirm-action").firstMatch
+        XCTAssertTrue(staleConfirmAction.waitForExistence(timeout: 5))
+        staleConfirmAction.tap()
         let staleMessage = appText("Inventory or shopping data changed", in: staleApp)
         scrollTowardTopUntilVisible(staleMessage, in: staleApp)
         XCTAssertTrue(staleMessage.waitForExistence(timeout: 10))
@@ -551,10 +555,13 @@ final class CookWithPipUITests: XCTestCase {
         openShoppingPreview(app)
         let confirm = app.navigationBars.buttons["recipe-shopping-confirm"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 10))
-        XCTAssertTrue(confirm.isHittable, "The shopping confirmation action stays in the navigation toolbar")
+        XCTAssertTrue(confirm.isEnabled,
+                      "An eligible current preview with selected lines enables explicit confirmation")
         confirm.tap()
-        let confirmAction = element("recipe-shopping-confirm-action", in: app)
+        let confirmAction = app.alerts.buttons.matching(identifier: "recipe-shopping-confirm-action").firstMatch
         XCTAssertTrue(confirmAction.waitForExistence(timeout: 10))
+        XCTAssertTrue(confirmAction.isEnabled,
+                      "The explicit confirmation choice stays enabled for the reviewed request")
         confirmAction.tap()
 
         let pendingStatus = element("recipe-shopping-pending-status", in: app)
@@ -781,11 +788,11 @@ final class CookWithPipUITests: XCTestCase {
         return app
     }
 
-    private func openCookWithPip(_ app: XCUIApplication) {
+    private func openCookWithPip(_ app: XCUIApplication, timeout: TimeInterval = 10) {
         let entry = element("cook-with-pip-entry", in: app)
-        XCTAssertTrue(entry.waitForExistence(timeout: 10))
+        XCTAssertTrue(entry.waitForExistence(timeout: timeout))
         entry.tap()
-        XCTAssertTrue(element("cook-with-pip-introduction", in: app).waitForExistence(timeout: 10))
+        XCTAssertTrue(element("cook-with-pip-introduction", in: app).waitForExistence(timeout: timeout))
     }
 
     private func openCookNowRecipe(_ app: XCUIApplication) {
@@ -797,7 +804,7 @@ final class CookWithPipUITests: XCTestCase {
     }
 
     private func openShoppingPreview(_ app: XCUIApplication, timeout: TimeInterval = 10) {
-        openCookWithPip(app)
+        openCookWithPip(app, timeout: timeout)
         let myRecipes = app.buttons["cook-mode-myRecipes"]
         XCTAssertTrue(myRecipes.waitForExistence(timeout: 10))
         scrollTo(myRecipes, in: app)
@@ -834,7 +841,8 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [loadExpectation], timeout: timeout), .completed)
         if settings.exists {
             XCTAssertTrue(ready.waitForExistence(timeout: 10))
-            scrollTo(ready, in: app)
+            let reviewForm = element("recipe-shopping-review-form", in: app)
+            scrollTargetIntoView(ready, inside: reviewForm, in: app)
         }
     }
 
@@ -955,5 +963,69 @@ final class CookWithPipUITests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+}
+extension CookWithPipUITests {
+    func testStagingLoginAndRelaunch() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let baseURL = environment["PROVISION_API_BASE_URL"],
+              let email = environment["PROVISION_STAGING_TEST_EMAIL"],
+              let password = environment["PROVISION_STAGING_TEST_PASSWORD"] else {
+            throw XCTSkip("Staging API credentials are supplied only by the manual staging workflow")
+        }
+        let app = XCUIApplication()
+        app.launchEnvironment["PROVISION_API_BASE_URL"] = baseURL
+        app.launchEnvironment["PROVISION_STAGING_TEST_EMAIL"] = email
+        app.launchEnvironment["PROVISION_STAGING_TEST_PASSWORD"] = password
+        app.launchArguments = ["--provision-reset-staging-session"]
+        app.launch()
+
+        let emailField = app.textFields["login-email"]
+        let passwordField = app.secureTextFields["login-password"]
+        let signIn = app.buttons["login-submit"]
+        XCTAssertTrue(emailField.waitForExistence(timeout: 20))
+        emailField.tap()
+        emailField.typeText(email)
+        passwordField.tap()
+        passwordField.typeText(password)
+        signIn.tap()
+
+        let inventoryTab = app.buttons["Inventory"]
+        XCTAssertTrue(inventoryTab.waitForExistence(timeout: 40), "Staging login did not establish an authorized household session")
+        capture("Staging_Authenticated_Home", app: app)
+
+        app.terminate()
+        app.launchArguments = []
+        app.launch()
+        XCTAssertTrue(inventoryTab.waitForExistence(timeout: 40), "The verified staging session did not recover after relaunch")
+        capture("Staging_Relaunch_Recovery", app: app)
+
+        let accountSettings = app.buttons["settings-account-button"]
+        XCTAssertTrue(accountSettings.waitForExistence(timeout: 20))
+        accountSettings.tap()
+        let logOut = app.buttons["account-logout"]
+        if !logOut.waitForExistence(timeout: 5) {
+            app.scrollViews.firstMatch.swipeUp()
+        }
+        XCTAssertTrue(logOut.waitForExistence(timeout: 10), "Account settings did not expose Log Out")
+        logOut.tap()
+        XCTAssertTrue(emailField.waitForExistence(timeout: 20), "Log Out did not return the app to login")
+        app.terminate()
+        app.launchArguments = []
+        app.launch()
+        XCTAssertTrue(emailField.waitForExistence(timeout: 20), "The logged-out state did not survive relaunch")
+        capture("Staging_Logged_Out", app: app)
+
+        emailField.tap()
+        emailField.typeText(email)
+        passwordField.tap()
+        passwordField.typeText(password)
+        signIn.tap()
+        XCTAssertTrue(inventoryTab.waitForExistence(timeout: 40), "The synthetic staging account could not log in again")
+        app.terminate()
+        app.launchArguments = []
+        app.launch()
+        XCTAssertTrue(inventoryTab.waitForExistence(timeout: 40), "The new staging session did not survive relaunch")
+        capture("Staging_Relogin_Relaunch_Recovery", app: app)
     }
 }

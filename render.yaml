@@ -1,0 +1,41 @@
+services:
+  - type: web
+    name: provision-staging
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    autoDeployTrigger: off
+    healthCheckPath: /ready
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DEPLOYMENT_ENVIRONMENT
+        value: staging
+      - key: DATABASE_URL
+        sync: false
+      - key: MIGRATION_DATABASE_URL
+        sync: false
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: STAGING_TEST_FIXTURES_ENABLED
+        value: "false"
+      - key: STAGING_TEST_FIXTURE_TOKEN
+        generateValue: true
+      - key: DEEPSEEK_ENABLED
+        value: "false"
+      - key: DEEPSEEK_REQUESTS_PER_MINUTE
+        value: "1"
+      - key: DEEPSEEK_REQUEST_BUDGET
+        value: "10"
+      - key: DEEPSEEK_HOUSEHOLD_REQUEST_BUDGET
+        value: "1"
+      - key: DEEPSEEK_MAX_OUTPUT_TOKENS
+        value: "512"
+      - key: DEEPSEEK_TIMEOUT_SECONDS
+        value: "45"
+      - key: MEALDB_ENABLED
+        value: "false"
+      - key: WIKIBOOKS_ENABLED
+        value: "false"

@@ -106,7 +106,7 @@ public struct RecipeShoppingReviewView: View {
                     .accessibilityIdentifier("recipe-shopping-keyboard-done")
             }
         }
-        .confirmationDialog("Add the selected recipe ingredients to the household shopping list?", isPresented: $showingConfirmation, titleVisibility: .visible) {
+        .alert("Add the selected recipe ingredients to the household shopping list?", isPresented: $showingConfirmation) {
             Button("Confirm shopping changes") { Task { await confirmSelectedLines() } }
                 .accessibilityIdentifier("recipe-shopping-confirm-action")
             Button("Keep reviewing", role: .cancel) {}

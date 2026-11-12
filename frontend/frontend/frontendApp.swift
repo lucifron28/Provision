@@ -10,6 +10,12 @@ import SwiftUI
 @main
 struct ProvisionApp: App {
     init() {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--provision-reset-staging-session") {
+            KeychainStore.shared.deleteAccessToken()
+            KeychainStore.shared.deleteVerifiedSession()
+        }
+        #endif
         if ProcessInfo.processInfo.arguments.contains("-run-tests") ||
            ProcessInfo.processInfo.environment["PROVISION_RUN_TESTS"] == "1" {
             Task { @MainActor in

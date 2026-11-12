@@ -32,6 +32,24 @@ private final class MemoryCredentialStore: CredentialStore {
 }
 
 final class APIStatusTests: XCTestCase {
+    func testStagingAPIURLRequiresHTTPSAndTheVersionedAPIPath() {
+        XCTAssertEqual(
+            APIEnvironment.validateStagingBaseURL("https://Provision-Staging.onrender.com/api/v1/")?.absoluteString,
+            "https://provision-staging.onrender.com/api/v1"
+        )
+        XCTAssertEqual(
+            APIEnvironment.validateStagingBaseURL("https://provision-staging.onrender.com:443/api/v1")?.absoluteString,
+            "https://provision-staging.onrender.com/api/v1"
+        )
+        XCTAssertNil(APIEnvironment.validateStagingBaseURL("http://provision-staging.onrender.com/api/v1"))
+        XCTAssertNil(APIEnvironment.validateStagingBaseURL("https://production.example.com/api/v1"))
+        XCTAssertNil(APIEnvironment.validateStagingBaseURL("https://provision-staging.onrender.com.evil.example/api/v1"))
+        XCTAssertNil(APIEnvironment.validateStagingBaseURL("https://user:secret@provision-staging.onrender.com/api/v1"))
+        XCTAssertNil(APIEnvironment.validateStagingBaseURL("https://provision-staging.onrender.com:444/api/v1"))
+        XCTAssertNil(APIEnvironment.validateStagingBaseURL("https://provision-staging.onrender.com/api/v1?debug=true"))
+        XCTAssertNil(APIEnvironment.validateStagingBaseURL("https://provision-staging.onrender.com/"))
+    }
+
     func testNetworkErrorsHaveReadableDescriptions() {
         let cases: [(URLError.Code, String)] = [
             (.notConnectedToInternet, "offline"),
