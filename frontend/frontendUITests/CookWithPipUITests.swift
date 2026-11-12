@@ -686,7 +686,7 @@ final class CookWithPipUITests: XCTestCase {
         let safetyNotice = element("recipe-safety-notice", in: largeApp)
         XCTAssertTrue(safetyNotice.waitForExistence(timeout: 5))
         capture("Recipe_Detail_Large_Text_Filipino", app: largeApp)
-        scrollTargetIntoView(safetyNotice, inside: recipeDetailScroll, in: largeApp)
+        scrollTo(safetyNotice, in: largeApp)
         XCTAssertTrue(safetyNotice.isHittable)
         assertBelowNavigationBar(safetyNotice, in: largeApp)
         let safetyViewport = visibleScrollFrame(of: recipeDetailScroll, in: largeApp, inset: 8)
