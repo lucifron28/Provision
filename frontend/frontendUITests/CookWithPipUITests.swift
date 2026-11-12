@@ -1,4 +1,5 @@
 import XCTest
+@testable import frontend
 
 final class CookWithPipUITests: XCTestCase {
     func testHomeNavigationAndCaptureRecipeScreens() {
@@ -535,5 +536,44 @@ final class CookWithPipUITests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+}
+
+extension CookWithPipUITests {
+    func testStagingLoginAndRelaunch() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let baseURL = environment["PROVISION_API_BASE_URL"],
+              let email = environment["PROVISION_STAGING_TEST_EMAIL"],
+              let password = environment["PROVISION_STAGING_TEST_PASSWORD"] else {
+            throw XCTSkip("Staging API credentials are supplied only by the manual staging workflow")
+        }
+        XCTAssertNotNil(APIEnvironment.validateStagingBaseURL(baseURL))
+
+        let app = XCUIApplication()
+        app.launchEnvironment["PROVISION_API_BASE_URL"] = baseURL
+        app.launchEnvironment["PROVISION_STAGING_TEST_EMAIL"] = email
+        app.launchEnvironment["PROVISION_STAGING_TEST_PASSWORD"] = password
+        app.launchArguments = ["--provision-reset-staging-session"]
+        app.launch()
+
+        let emailField = app.textFields["login-email"]
+        let passwordField = app.secureTextFields["login-password"]
+        let signIn = app.buttons["login-submit"]
+        XCTAssertTrue(emailField.waitForExistence(timeout: 20))
+        emailField.tap()
+        emailField.typeText(email)
+        passwordField.tap()
+        passwordField.typeText(password)
+        signIn.tap()
+
+        let inventoryTab = app.buttons["Inventory"]
+        XCTAssertTrue(inventoryTab.waitForExistence(timeout: 40), "Staging login did not establish an authorized household session")
+        capture("Staging_Authenticated_Home", app: app)
+
+        app.terminate()
+        app.launchArguments = []
+        app.launch()
+        XCTAssertTrue(inventoryTab.waitForExistence(timeout: 40), "The verified staging session did not recover after relaunch")
+        capture("Staging_Relaunch_Recovery", app: app)
     }
 }

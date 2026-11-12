@@ -90,6 +90,7 @@ nonisolated public enum APIError: LocalizedError, Sendable {
 public enum APIEnvironment {
     nonisolated private static let hostKey = "provision_backend_host"
     nonisolated private static let fallbackHost = "10.212.56.11"
+    nonisolated private static let stagingBaseURLEnvironmentKey = "PROVISION_API_BASE_URL"
 
     /// Configurable local LAN host for physical iPhone testing.
     /// Can be customized at runtime via UserDefaults without requiring code recompilation.
@@ -113,7 +114,46 @@ public enum APIEnvironment {
         return url
     }
 
+    /// Validate the HTTPS API URL used only by Debug and UI-test launches.
+    nonisolated public static func validateStagingBaseURL(_ value: String) -> URL? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var components = URLComponents(string: trimmed),
+              components.scheme?.lowercased() == "https",
+              let host = components.host,
+              !host.isEmpty,
+              components.user == nil,
+              components.password == nil,
+              components.query == nil,
+              components.fragment == nil,
+              components.path == "/api/v1" || components.path == "/api/v1/" else {
+            return nil
+        }
+        components.scheme = "https"
+        components.host = host.lowercased()
+        components.path = "/api/v1"
+        return components.url
+    }
+
+    nonisolated static var keychainServiceIdentifier: String {
+        #if DEBUG
+        if let configuredURL = ProcessInfo.processInfo.environment[stagingBaseURLEnvironmentKey],
+           let stagingURL = validateStagingBaseURL(configuredURL),
+           let host = stagingURL.host {
+            return "mseuf.edu.ph.provision.auth.staging.\(host)"
+        }
+        #endif
+        return "mseuf.edu.ph.provision.auth"
+    }
+
     nonisolated public static var defaultBaseURL: URL {
+        #if DEBUG
+        if let configuredURL = ProcessInfo.processInfo.environment[stagingBaseURLEnvironmentKey] {
+            guard let stagingURL = validateStagingBaseURL(configuredURL) else {
+                preconditionFailure("PROVISION_API_BASE_URL must be an HTTPS URL ending in /api/v1.")
+            }
+            return stagingURL
+        }
+        #endif
         #if targetEnvironment(simulator)
         return URL(string: "http://127.0.0.1:\(port)/\(apiVersionPath)")!
         #else

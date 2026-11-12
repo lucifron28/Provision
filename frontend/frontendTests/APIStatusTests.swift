@@ -32,6 +32,17 @@ private final class MemoryCredentialStore: CredentialStore {
 }
 
 final class APIStatusTests: XCTestCase {
+    func testStagingAPIURLRequiresHTTPSAndTheVersionedAPIPath() {
+        XCTAssertEqual(
+            APIEnvironment.validateStagingBaseURL("https://staging.example.com/api/v1/")?.absoluteString,
+            "https://staging.example.com/api/v1"
+        )
+        XCTAssertNil(APIEnvironment.validateStagingBaseURL("http://staging.example.com/api/v1"))
+        XCTAssertNil(APIEnvironment.validateStagingBaseURL("https://user:secret@staging.example.com/api/v1"))
+        XCTAssertNil(APIEnvironment.validateStagingBaseURL("https://staging.example.com/api/v1?debug=true"))
+        XCTAssertNil(APIEnvironment.validateStagingBaseURL("https://staging.example.com/"))
+    }
+
     func testNetworkErrorsHaveReadableDescriptions() {
         let cases: [(URLError.Code, String)] = [
             (.notConnectedToInternet, "offline"),
