@@ -1,7 +1,7 @@
 from pydantic import SecretStr, ValidationError
 import pytest
 
-from app.core.config import Settings
+from app.core.config import LOCAL_DATABASE_URL, Settings
 from app.core.database import engine_options_for_url
 
 
@@ -12,7 +12,11 @@ def settings_for(**values) -> Settings:
 
 def test_production_rejects_the_implicit_local_database_default():
     with pytest.raises(ValidationError, match="explicitly configured"):
-        settings_for(ENVIRONMENT="production", JWT_SECRET_KEY="s" * 40)
+        settings_for(
+            ENVIRONMENT="production",
+            DATABASE_URL=LOCAL_DATABASE_URL,
+            JWT_SECRET_KEY="s" * 40,
+        )
 
 
 def test_production_requires_a_strong_signing_secret_and_database_tls():
