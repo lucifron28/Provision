@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import os
 import sys
-from urllib.parse import urlsplit
 
 import httpx
 from pydantic import ValidationError
 
+from app.core.staging_target import validate_staging_api_base_url, verify_staging_deployment
 from app.schemas.ai_recipe import AIRecipeProposal
 
 
@@ -23,18 +23,25 @@ def _request(client: httpx.Client, method: str, base_url: str, path: str, **kwar
 
 
 def run_one_request() -> None:
+    if os.environ.get("PROVISION_LIVE_DEEPSEEK_ENABLED") != "true":
+        raise RuntimeError("Live DeepSeek testing remains disabled until staging is explicitly validated")
     if os.environ.get("PROVISION_LIVE_DEEPSEEK_CONFIRMATION") != CONFIRMATION:
         raise RuntimeError("Live DeepSeek requires the exact one-request confirmation")
 
-    base_url = os.environ.get("PROVISION_STAGING_API_BASE_URL", "").rstrip("/")
+    try:
+        base_url = validate_staging_api_base_url(os.environ.get("PROVISION_STAGING_API_BASE_URL", ""))
+    except ValueError:
+        raise RuntimeError("A valid HTTPS Render staging API URL is required") from None
+    expected_commit = os.environ.get("PROVISION_EXPECTED_RENDER_COMMIT", "")
     email = os.environ.get("PROVISION_STAGING_TEST_EMAIL", "")
     password = os.environ.get("PROVISION_STAGING_TEST_PASSWORD", "")
     household_id = os.environ.get("PROVISION_STAGING_TEST_HOUSEHOLD_ID", "")
-    if not all((base_url, email, password, household_id)):
+    if not all((email, password, household_id)):
         raise RuntimeError("A staging API URL and run-specific synthetic account are required")
 
     # Trust no proxy from the runner environment and do not configure retries.
     with httpx.Client(timeout=45, follow_redirects=False, trust_env=False) as client:
+        verify_staging_deployment(client, base_url, expected_commit)
         login = _request(
             client,
             "POST",
@@ -49,15 +56,6 @@ def run_one_request() -> None:
             "Authorization": f"Bearer {token}",
             "X-Household-ID": household_id,
         }
-
-        parsed_base_url = urlsplit(base_url)
-        origin = f"{parsed_base_url.scheme}://{parsed_base_url.netloc}"
-        health_response = client.get(f"{origin}/health")
-        if health_response.is_error:
-            raise RuntimeError(f"Staging health check returned HTTP {health_response.status_code}")
-        health = health_response.json()
-        if health.get("deployment") != "staging":
-            raise RuntimeError("Refusing live AI request because the service is not marked staging")
 
         consent = _request(client, "GET", base_url, "/privacy/consent", headers=headers).json()
         if not consent.get("provider_enabled"):

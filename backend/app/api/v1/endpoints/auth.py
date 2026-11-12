@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi import Header, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from sqlalchemy import delete, exists, select
+from sqlalchemy import delete, exists, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
@@ -14,12 +14,34 @@ from app.core.security import hash_password, verify_password, create_access_toke
 from app.models.household import Household, HouseholdMembership, HouseholdRole
 from app.models.user import User
 from app.models.base import Base
-from app.models.deepseek_budget import HouseholdDeepSeekBudget
 from app.models.privacy import ProcessingConsent
 from app.schemas.auth import UserCreate, UserRead, LoginRequest, TokenResponse
 
 router = APIRouter()
 http_bearer = HTTPBearer(auto_error=False)
+
+
+def _household_scope_filter(table, household_id: int, visited: frozenset[str] = frozenset()):
+    """Return a SQL filter for rows owned by a household, including child tables."""
+    if "household_id" in table.c:
+        return table.c.household_id == household_id
+    if table.name in visited:
+        return None
+
+    next_visited = visited | {table.name}
+    filters = []
+    for foreign_key in table.foreign_keys:
+        parent = foreign_key.column.table
+        parent_filter = _household_scope_filter(parent, household_id, next_visited)
+        if parent_filter is not None:
+            filters.append(
+                table.c[foreign_key.parent.name].in_(
+                    select(foreign_key.column).where(parent_filter)
+                )
+            )
+    if not filters:
+        return None
+    return filters[0] if len(filters) == 1 else or_(*filters)
 
 
 def get_current_user(
@@ -165,7 +187,7 @@ def delete_staging_test_account(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    """Remove only an empty, single-household account created by staging E2E."""
+    """Remove only one run-owned synthetic staging account and its household data."""
     expected_token = settings.STAGING_TEST_FIXTURE_TOKEN
     if (
         settings.DEPLOYMENT_ENVIRONMENT != "staging"
@@ -195,62 +217,52 @@ def delete_staging_test_account(
         or household.slug != f"user-{current_user.id}"
     ):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Test account scope changed")
+    household_member_ids = db.scalars(
+        select(HouseholdMembership.user_id).where(HouseholdMembership.household_id == household.id)
+    ).all()
+    if household_member_ids != [current_user.id]:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Test household has another member")
 
-    # E2E fixtures may grant and then revoke consent, and a live smoke test
-    # leaves one household-only budget counter. Both are safe to remove after
-    # confirming the consent is revoked and belongs only to this account.
+    # A run-owned synthetic household may contain consent and data created by
+    # the smoke. Refuse cleanup if its records refer to a different user.
     consent_rows = db.execute(
         select(
-            ProcessingConsent.id,
             ProcessingConsent.user_id,
-            ProcessingConsent.purpose,
-            ProcessingConsent.granted,
         ).where(ProcessingConsent.household_id == household.id)
     ).all()
-    if any(
-        row.user_id != current_user.id
-        or row.purpose != "deepseek_recipes_v1"
-        or row.granted
-        for row in consent_rows
-    ):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Test household still has active data")
-
-    allowed_scoped_tables = {
-        "household_memberships",
-        "households",
-        "processing_consents",
-        "household_deepseek_budget",
-    }
-    for table in Base.metadata.tables.values():
-        if "household_id" not in table.c or table.name in allowed_scoped_tables:
-            continue
-        has_rows = db.scalar(select(exists().where(table.c.household_id == household.id)))
-        if has_rows:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Test household still has active data")
+    if any(row.user_id != current_user.id for row in consent_rows):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Test household scope changed")
 
     # Refuse to alter rows that reference the synthetic user outside its own
     # household (for example, a review on shared catalogue data).
     for table in Base.metadata.tables.values():
-        if table.name in {"household_memberships", "processing_consents"} or "household_id" in table.c:
-            continue
         for column in table.c:
             if any(foreign_key.column.table.name == "users" for foreign_key in column.foreign_keys):
-                has_rows = db.scalar(select(exists().where(column == current_user.id)))
+                predicate = column == current_user.id
+                if "household_id" in table.c:
+                    predicate = predicate & (table.c.household_id != household.id)
+                elif table.name not in {"household_memberships", "processing_consents"}:
+                    has_rows = db.scalar(select(exists().where(predicate)))
+                    if has_rows:
+                        raise HTTPException(
+                            status_code=status.HTTP_409_CONFLICT,
+                            detail="Test account has related data outside its household",
+                        )
+                    continue
+                else:
+                    continue
+                has_rows = db.scalar(select(exists().where(predicate)))
                 if has_rows:
-                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Test account has related data")
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Test account has related data outside its household",
+                    )
 
     try:
-        db.execute(
-            delete(ProcessingConsent).where(
-                ProcessingConsent.household_id == household.id,
-                ProcessingConsent.user_id == current_user.id,
-            )
-        )
-        db.execute(
-            delete(HouseholdDeepSeekBudget).where(
-                HouseholdDeepSeekBudget.household_id == household.id
-            )
-        )
+        for table in reversed(Base.metadata.sorted_tables):
+            predicate = _household_scope_filter(table, household.id)
+            if predicate is not None:
+                db.execute(delete(table).where(predicate))
         db.delete(household)
         db.delete(current_user)
         db.commit()

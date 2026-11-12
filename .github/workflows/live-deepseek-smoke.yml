@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: provision-staging-live-deepseek
+  group: provision-staging-e2e
   cancel-in-progress: false
 
 jobs:
@@ -30,7 +30,18 @@ jobs:
       PROVISION_EXPECTED_RENDER_COMMIT: ${{ inputs.expected_render_commit }}
       PROVISION_STAGING_API_BASE_URL: ${{ vars.PROVISION_STAGING_API_BASE_URL }}
       PROVISION_LIVE_DEEPSEEK_CONFIRMATION: ${{ inputs.live_confirmation }}
+      PROVISION_LIVE_DEEPSEEK_ENABLED: ${{ vars.PROVISION_LIVE_DEEPSEEK_ENABLED }}
     steps:
+      - name: Require explicit live testing enablement
+        shell: bash
+        env:
+          PROVISION_LIVE_DEEPSEEK_ENABLED: ${{ vars.PROVISION_LIVE_DEEPSEEK_ENABLED }}
+        run: |
+          if [[ "$PROVISION_LIVE_DEEPSEEK_ENABLED" != "true" ]]; then
+            echo "Set PROVISION_LIVE_DEEPSEEK_ENABLED=true only after staging validation." >&2
+            exit 1
+          fi
+
       - name: Check out the requested commit
         uses: actions/checkout@v4
         with:
@@ -85,7 +96,7 @@ jobs:
         working-directory: backend
         run: uv run --no-sync python scripts/staging_live_deepseek_smoke.py
 
-      - name: Remove the empty run-owned synthetic household
+      - name: Remove the run-owned synthetic household
         if: always() && steps.staging-fixture.outcome == 'success'
         working-directory: backend
         env:

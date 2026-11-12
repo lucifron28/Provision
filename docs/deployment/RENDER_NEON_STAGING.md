@@ -29,7 +29,7 @@ The routine GitHub Actions workflow builds the image, verifies startup fails wit
 2. Select PostgreSQL 18 and the Singapore region (`aws-ap-southeast-1`). A Neon project stays in its chosen region. [Neon regions](https://neon.com/docs/introduction/regions)
 3. Use a database named `provision_staging`. Keep it empty until the migration step below. Do not import a production backup or run `backend/seed.py`.
 4. Create a dedicated staging database role. Prefer a distinct application role and migration-owner role when you can grant the application role only the required runtime privileges. Do not reuse a production credential.
-5. Copy the **pooled** TLS connection string for `DATABASE_URL` and the **direct** TLS connection string for `MIGRATION_DATABASE_URL`. Convert each scheme to `postgresql+psycopg://` for this app. Keep `sslmode=require`. The migration guard rejects pooled URLs and databases whose names do not contain `staging`.
+5. Copy the **pooled** TLS connection string for `DATABASE_URL` and the **direct** TLS connection string for `MIGRATION_DATABASE_URL`. Convert each scheme to `postgresql+psycopg://` for this app. Keep `sslmode=require`. The migration guard requires both URLs to resolve to the same Neon endpoint and database, rejects pooled migration URLs, and requires `staging` in the database name.
 
 The backend uses bounded SQLAlchemy pools, stale-connection checks, and disables psycopg automatic prepared statements for Neon pooled endpoints. Neon runs pooled connections through PgBouncer transaction mode; schema migrations should use a direct endpoint. [Neon pooled and direct connections](https://neon.com/docs/connect/connection-pooling)
 
@@ -37,7 +37,7 @@ Use the Free plan only for synthetic staging. Its current limits include 100 com
 
 ## Apply the initial migration once
 
-Render's pre-deploy command is unavailable on the free web plan, so this setup uses a one-time migration from a trusted Windows workstation. The migration guard requires a direct Neon endpoint, TLS, a database name containing `staging`, and an explicit confirmation value. [Render pre-deploy command availability](https://render.com/docs/deploys)
+Render's pre-deploy command is unavailable on the free web plan, so this setup uses one guarded migration run from a trusted Windows workstation before deploying each schema change. The migration guard requires the direct Neon endpoint to match the application endpoint and database, TLS, a database name containing `staging`, and an explicit confirmation value. Online PostgreSQL migrations also take a session advisory lock and wait up to ten minutes for another migration to finish. [Render pre-deploy command availability](https://render.com/docs/deploys)
 
 Set these values in a short-lived PowerShell process from a password manager. Do not echo them, put them in shell profiles, or save them on a shared Mac:
 
@@ -58,7 +58,7 @@ uv run --frozen alembic check
 Remove-Item Env:PROVISION_CONFIRM_STAGING_MIGRATION
 ```
 
-Only run this against the newly created empty `provision_staging` database after checking its project, region, host, and database name. Do not run `alembic downgrade base` against staging. The migration must be exercised on Neon before calling Neon compatibility verified. This repository preparation has not yet run migrations on a Provision Neon project.
+Only run this against the newly created empty `provision_staging` database after checking its project, region, host, and database name. The advisory lock prevents overlapping Alembic operators from applying schema changes at the same time. Do not run `alembic downgrade base` against staging. The migration must be exercised on Neon before calling Neon compatibility verified. This repository preparation has not yet run migrations on a Provision Neon project.
 
 ## Configure Render staging
 
@@ -88,23 +88,24 @@ Create a GitHub Actions environment named `staging` and add:
 
 - Variable `PROVISION_STAGING_API_BASE_URL`, set to the Render HTTPS URL ending in `/api/v1`.
 - Secret `PROVISION_STAGING_FIXTURE_TOKEN`, set to the same random fixture token stored in Render.
+- Leave variable `PROVISION_LIVE_DEEPSEEK_ENABLED` unset or set to `false` until the separate live-AI checks are approved.
 
 GitHub only accepts `workflow_dispatch` for workflows present on the repository's default branch. Because this PR does not merge itself, the two manual workflows become runnable after an approved merge to the default branch. A run must select a full commit SHA reachable from `main`; the job verifies that before exposing any staging secret, then checks Render is serving that same SHA. [GitHub manual workflow requirements](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)
 
-The standard PR workflow does not contact Render or Neon. Run **Provision staging E2E** manually with the full commit SHA currently deployed to Render. It checks the commit and health, registers run-unique synthetic households through the normal API, validates authenticated product edits, cross-household denial, and exact shopping-quantity persistence, then performs iPhone 17 Simulator login and Keychain relaunch recovery. The workflow removes only the empty household it created. It uploads the staging `.xcresult` and exported screenshots for 14 days.
+The standard PR workflow does not contact Render or Neon. Run **Provision staging E2E** manually with the full commit SHA currently deployed to Render. Each account-creating, authenticated, and cleanup script first checks that the URL belongs to `*.onrender.com`, the health and readiness endpoints pass, and Render serves the requested commit. It then registers run-unique synthetic households through the normal API and checks household selection and isolation, product edits and label review, batch expiration and quantity, recipe detail and pantry availability, allergy review and blocking, provider-disabled recommendations, and explicit idempotent shopping confirmation. The workflow removes only the unique single-member synthetic households it created, including their household-scoped data, after checking that the accounts have no references outside those households. It then performs iPhone 17 Simulator login, Keychain relaunch, logout, and login recovery. The workflow uploads the staging `.xcresult` and exported screenshots for 14 days.
 
 The staging smoke uses the public API, checks that Cook with Pip keeps the provider disabled and that missing allergy information requires review, and does not reset a shared database. A failed cleanup is reported as a failure and leaves records intact for inspection. Run only one staging workflow at a time.
 
 ## Run the optional live DeepSeek smoke
 
-Keep DeepSeek disabled for all routine tests and initial staging validation. To authorize one live request:
+Keep DeepSeek disabled for all routine tests and initial staging validation. The live workflow stays disabled unless the GitHub `staging` environment variable `PROVISION_LIVE_DEEPSEEK_ENABLED` is exactly `true`. Set it only after the deployed backend, fixtures, and consent behavior have passed manual review. To authorize one live request:
 
 1. Confirm that `provision-staging` is healthy, uses the isolated Neon project, and has the fixture cleanup token configured.
 2. Add the DeepSeek API key only to the Render staging service. Never put it in GitHub, the iOS app, a Mac lab account, or a screenshot.
 3. Set `DEEPSEEK_ENABLED=true` on Render staging and configure the strict budget values already listed in `render.yaml`.
 4. Manually run **Provision staging live DeepSeek smoke** with the deployed commit SHA and the exact phrase `RUN_ONE_SYNTHETIC_DEEPSEEK_REQUEST`.
 5. Confirm the output reports one synthetic request, valid proposal schema and provenance, a deterministic safety result, and no inventory, recipe, or shopping writes. The workflow does not configure automatic retries.
-6. Turn `DEEPSEEK_ENABLED` off and remove or rotate the staging provider key after the check.
+6. Turn `DEEPSEEK_ENABLED` off, set `PROVISION_LIVE_DEEPSEEK_ENABLED=false`, and remove or rotate the staging provider key after the check.
 
 This workflow is not a Pip Chat test. Pip Chat is not part of this deployment-preparation change.
 

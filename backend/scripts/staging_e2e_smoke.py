@@ -5,29 +5,21 @@ from __future__ import annotations
 import os
 import secrets
 import sys
-import time
 import uuid
-from urllib.parse import urlsplit
+from datetime import date, timedelta
+from decimal import Decimal
 
 import httpx
+
+from app.core.staging_target import validate_staging_api_base_url, verify_staging_deployment
 
 
 def _api_base_url() -> str:
     value = os.environ.get("PROVISION_STAGING_API_BASE_URL", "").strip()
-    parsed = urlsplit(value)
-    if (
-        parsed.scheme != "https"
-        or not parsed.hostname
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.path.rstrip("/") != "/api/v1"
-        or parsed.query
-        or parsed.fragment
-    ):
-        raise RuntimeError(
-            "PROVISION_STAGING_API_BASE_URL must be an HTTPS /api/v1 URL without credentials"
-        )
-    return value.rstrip("/")
+    try:
+        return validate_staging_api_base_url(value)
+    except ValueError as exc:
+        raise RuntimeError("PROVISION_STAGING_API_BASE_URL must be an HTTPS Render /api/v1 URL") from None
 
 
 def _fixture_token() -> str:
@@ -70,6 +62,28 @@ def _register(client: httpx.Client, email: str, password: str) -> dict:
     return user
 
 
+def _remember_account(email: str, password: str, *, slot: str = "", household_id: int | None = None) -> None:
+    env_file = os.environ.get("GITHUB_ENV")
+    if not env_file:
+        raise RuntimeError("Synthetic staging accounts can only be created by the GitHub Actions workflow")
+
+    suffix = f"_{slot}" if slot else ""
+    lines = []
+    if household_id is None:
+        print(f"::add-mask::{email}")
+        print(f"::add-mask::{password}")
+        lines.extend(
+            [
+                f"PROVISION_STAGING_TEST_EMAIL{suffix}={email}",
+                f"PROVISION_STAGING_TEST_PASSWORD{suffix}={password}",
+            ]
+        )
+    else:
+        lines.append(f"PROVISION_STAGING_TEST_HOUSEHOLD_ID{suffix}={household_id}")
+    with open(env_file, "a", encoding="utf-8") as output:
+        output.write("\n".join(lines) + "\n")
+
+
 def _cleanup_account(client: httpx.Client, email: str, password: str) -> None:
     try:
         token = _login(client, email, password)
@@ -87,90 +101,86 @@ def _cleanup_account(client: httpx.Client, email: str, password: str) -> None:
     )
     if response.status_code != 204:
         raise RuntimeError(
-            "Staging test-account cleanup refused or failed; it only deletes an empty, owned synthetic household "
+            "Staging test-account cleanup refused or failed; it only deletes a unique single-member synthetic "
+            "household and its scoped data "
             f"(HTTP {response.status_code})"
         )
 
 
+def _expect(condition: bool, message: str) -> None:
+    if not condition:
+        raise RuntimeError(message)
+
+
 def prepare() -> None:
-    env_file = os.environ.get("GITHUB_ENV")
-    if not env_file:
+    if not os.environ.get("GITHUB_ENV"):
         raise RuntimeError("Run prepare only in the staging GitHub Actions job")
+    preflight()
     _fixture_token()
     run_id = uuid.uuid4().hex
     email = f"provision-e2e+{run_id}@example.com"
     password = secrets.token_urlsafe(32)
+    _remember_account(email, password)
     with httpx.Client(timeout=20, follow_redirects=False, trust_env=False) as client:
         user = _register(client, email, password)
-    # Mask values before later steps can print an unexpected command or failure.
-    print(f"::add-mask::{email}")
-    print(f"::add-mask::{password}")
-    with open(env_file, "a", encoding="utf-8") as output:
-        output.write(f"PROVISION_STAGING_TEST_EMAIL={email}\n")
-        output.write(f"PROVISION_STAGING_TEST_PASSWORD={password}\n")
-        output.write(f"PROVISION_STAGING_TEST_HOUSEHOLD_ID={user['default_household_id']}\n")
+    _remember_account(email, password, household_id=user["default_household_id"])
     print(f"Prepared a synthetic staging account and household {user['default_household_id']}.")
 
 
 def preflight() -> None:
     expected_commit = os.environ.get("PROVISION_EXPECTED_RENDER_COMMIT", "").lower()
-    if len(expected_commit) != 40 or any(character not in "0123456789abcdef" for character in expected_commit):
-        raise RuntimeError("PROVISION_EXPECTED_RENDER_COMMIT must be a full 40-character commit SHA")
     base_url = _api_base_url()
-    parsed = urlsplit(base_url)
-    origin = f"{parsed.scheme}://{parsed.netloc}"
-    health = ready = None
     with httpx.Client(timeout=httpx.Timeout(30, connect=10), follow_redirects=False, trust_env=False) as client:
-        for attempt in range(5):
-            try:
-                health = client.get(f"{origin}/health")
-                ready = client.get(f"{origin}/ready")
-            except httpx.HTTPError:
-                if attempt == 4:
-                    raise RuntimeError("Render staging did not respond within five bounded health attempts") from None
-            else:
-                if health.status_code == 200 and ready.status_code == 200:
-                    break
-            if attempt < 4:
-                time.sleep(5)
-    if health is None or ready is None or health.status_code != 200 or ready.status_code != 200:
-        health_status = health.status_code if health is not None else "no response"
-        ready_status = ready.status_code if ready is not None else "no response"
-        raise RuntimeError(
-            f"Staging health/readiness checks failed after five bounded attempts (HTTP {health_status}/{ready_status})"
-        )
-    health_data = health.json()
-    if health_data.get("deployment") != "staging":
-        raise RuntimeError("The configured service is not marked as staging")
-    if health_data.get("revision") != expected_commit:
-        raise RuntimeError("Render is not serving the requested commit; deploy the intended SHA manually first")
+        verify_staging_deployment(client, base_url, expected_commit)
     print("Staging is healthy, database-ready, and serving the requested commit.")
 
 
 def api_smoke() -> None:
+    preflight()
     email = os.environ["PROVISION_STAGING_TEST_EMAIL"]
     password = os.environ["PROVISION_STAGING_TEST_PASSWORD"]
     household_id = int(os.environ["PROVISION_STAGING_TEST_HOUSEHOLD_ID"])
     run_id = uuid.uuid4().hex
     second_email = f"provision-e2e+{run_id}@example.com"
     second_password = secrets.token_urlsafe(32)
-    product_id: int | None = None
-    shopping_id: int | None = None
 
+    product_name = f"Synthetic pantry item {run_id}"
+    second_registered = False
     with httpx.Client(timeout=20, follow_redirects=False, trust_env=False) as client:
         first_token = _login(client, email, password)
-        second_user = _register(client, second_email, second_password)
-        second_token = _login(client, second_email, second_password)
-        first_headers = {
-            "Authorization": f"Bearer {first_token}",
-            "X-Household-ID": str(household_id),
-        }
-        second_headers = {
-            "Authorization": f"Bearer {second_token}",
-            "X-Household-ID": str(second_user["default_household_id"]),
-        }
-        product_name = f"Synthetic pantry item {run_id}"
+        primary_households = _request(
+            client, "GET", "/households/", headers={"Authorization": f"Bearer {first_token}"}
+        ).json()
+        _expect(
+            len(primary_households) == 1
+            and primary_households[0]["id"] == household_id
+            and primary_households[0]["is_default"],
+            "The registered account did not retain its isolated default household",
+        )
         try:
+            _remember_account(second_email, second_password, slot="2")
+            second_user = _register(client, second_email, second_password)
+            second_registered = True
+            _remember_account(
+                second_email,
+                second_password,
+                slot="2",
+                household_id=second_user["default_household_id"],
+            )
+            second_token = _login(client, second_email, second_password)
+            first_headers = {
+                "Authorization": f"Bearer {first_token}",
+                "X-Household-ID": str(household_id),
+            }
+            second_headers = {
+                "Authorization": f"Bearer {second_token}",
+                "X-Household-ID": str(second_user["default_household_id"]),
+            }
+            current_household = _request(
+                client, "GET", "/households/current", headers=first_headers
+            ).json()
+            _expect(current_household.get("id") == household_id, "Household selection returned the wrong household")
+
             recommendations = _request(
                 client,
                 "POST",
@@ -178,8 +188,10 @@ def api_smoke() -> None:
                 headers=first_headers,
                 json={"mode": "all", "priority": "pantry_first"},
             ).json()
-            if recommendations.get("provider_enabled") is not False:
-                raise RuntimeError("Cook with Pip recommendations unexpectedly enabled a provider")
+            _expect(
+                recommendations.get("provider_enabled") is False,
+                "Cook with Pip recommendations unexpectedly enabled a provider",
+            )
 
             safety = _request(
                 client,
@@ -192,15 +204,27 @@ def api_smoke() -> None:
                     "requirements": [{"display_name": "milk", "amount": "1", "unit": "cup"}],
                 },
             ).json()
-            if safety.get("decision") != "review_required":
-                raise RuntimeError("Food safety did not require review when allergy information was absent")
+            _expect(
+                safety.get("decision") == "review_required",
+                "Food safety did not require review when allergy information was absent",
+            )
+
+            ingredient_lookup = _request(
+                client, "GET", "/ingredients/?query=garlic", headers=first_headers
+            ).json()
+            ingredient = next(
+                (item for item in ingredient_lookup.get("results", []) if item.get("canonical_name") == "garlic"),
+                None,
+            )
+            _expect(ingredient is not None, "The staging ingredient catalog did not return garlic")
+            ingredient_id = ingredient["id"]
 
             created = _request(
                 client,
                 "POST",
                 "/products/",
                 headers=first_headers,
-                json={"name": product_name, "category": "E2E test"},
+                json={"name": product_name, "category": "E2E test", "unit": "g"},
             ).json()
             product_id = created["id"]
             updated_name = f"{product_name} edited"
@@ -211,9 +235,74 @@ def api_smoke() -> None:
                 headers=first_headers,
                 json={"name": updated_name},
             ).json()
-            assert updated["name"] == updated_name
+            _expect(updated["name"] == updated_name, "Product edit did not persist")
             listed = _request(client, "GET", "/products/", headers=first_headers).json()
-            assert any(item["id"] == product_id and item["name"] == updated_name for item in listed)
+            _expect(
+                any(item["id"] == product_id and item["name"] == updated_name for item in listed),
+                "Product readback did not return the edited product",
+            )
+
+            mapping = _request(
+                client,
+                "PUT",
+                f"/ingredients/products/{product_id}/mapping",
+                headers=first_headers,
+                json={
+                    "mode": "DIRECT",
+                    "ingredient_id": ingredient_id,
+                    "verified": True,
+                    "unknown_composition": False,
+                    "method": "Synthetic staging label review",
+                },
+            ).json()
+            _expect(mapping.get("version") == 1, "Product ingredient mapping did not persist")
+            product_detail = _request(
+                client, "GET", f"/products/{product_id}", headers=first_headers
+            ).json()
+            label = _request(
+                client,
+                "PUT",
+                f"/food-safety/products/{product_id}/label",
+                headers=first_headers,
+                json={
+                    "expected_mapping_version": mapping["version"],
+                    "expected_product_updated_at": product_detail["updated_at"],
+                    "reviewed": True,
+                    "composition_known": True,
+                    "declared_allergens": [],
+                    "possible_allergens": [],
+                    "custom_allergens": [],
+                    "source_reference": "Synthetic staging label fixture: garlic",
+                },
+            ).json()
+            _expect(label.get("current_for_product") is True, "Reviewed product label did not persist")
+
+            expiration_date = (date.today() + timedelta(days=30)).isoformat()
+            batch = _request(
+                client,
+                "POST",
+                "/batches/",
+                headers=first_headers,
+                json={
+                    "product_id": product_id,
+                    "original_quantity": "8",
+                    "unit_price": "1.25",
+                    "expiration_date": expiration_date,
+                },
+            ).json()
+            _expect(
+                batch.get("expiration_date") == expiration_date
+                and Decimal(str(batch.get("remaining_quantity"))) == Decimal("8"),
+                "Inventory quantity or expiration date did not persist",
+            )
+            listed_batches = _request(
+                client, "GET", f"/batches/?product_id={product_id}", headers=first_headers
+            ).json()
+            _expect(
+                any(item.get("id") == batch["id"] and item.get("expiration_date") == expiration_date
+                    for item in listed_batches),
+                "Inventory readback did not return the batch expiration date",
+            )
 
             denied = client.get(
                 f"{_api_base_url()}/products/",
@@ -223,60 +312,162 @@ def api_smoke() -> None:
                 },
                 timeout=20,
             )
-            assert denied.status_code == 403, "A second test user accessed the first household"
+            _expect(denied.status_code == 403, "A second test user accessed the first household")
+            second_households = _request(
+                client, "GET", "/households/", headers={"Authorization": f"Bearer {second_token}"}
+            ).json()
+            _expect(
+                len(second_households) == 1
+                and second_households[0]["id"] == second_user["default_household_id"],
+                "Household listing exposed another test user's household",
+            )
 
-            shopping_name = f"Synthetic shopping item {run_id}"
-            shopping = _request(
+            recipe = _request(
                 client,
                 "POST",
-                "/shopping-list/",
+                "/recipes/",
                 headers=first_headers,
-                json={"name": shopping_name, "quantity": "0.750000", "unit": "count"},
+                json={
+                    "title": f"Synthetic garlic rice {run_id}",
+                    "cuisine": "Filipino",
+                    "content_permission": "OWNED_OR_PERMISSION_GRANTED",
+                    "ph_regions": ["region_unknown"],
+                    "servings": "1",
+                    "instructions": ["Mix the synthetic ingredients."],
+                    "ingredients": [{"ingredient_id": ingredient_id, "amount": "10", "unit": "g"}],
+                },
             ).json()
-            shopping_id = shopping["id"]
-            assert float(shopping["quantity"]) == 0.75
-            read_back = _request(client, "GET", "/shopping-list/", headers=first_headers).json()
-            assert any(
-                item["id"] == shopping_id and float(item["quantity"]) == 0.75
-                for item in read_back
+            detail = _request(
+                client, "GET", f"/recipes/{recipe['id']}", headers=first_headers
+            ).json()
+            _expect(
+                detail.get("revision") == recipe.get("revision")
+                and detail.get("ingredients", [{}])[0].get("ingredient_id") == ingredient_id,
+                "Recipe detail did not persist the synthetic recipe",
             )
-            _request(client, "PATCH", f"/shopping-list/{shopping_id}", headers=first_headers,
-                     json={"quantity": "0.500000"})
-            updated_list = _request(client, "GET", "/shopping-list/", headers=first_headers).json()
-            assert any(
-                item["id"] == shopping_id and float(item["quantity"]) == 0.5
-                for item in updated_list
+            evaluation = _request(
+                client,
+                "POST",
+                f"/recipes/{recipe['id']}/evaluate",
+                headers=first_headers,
+                json={"expected_recipe_revision": recipe["revision"], "servings": "1"},
+            ).json()
+            requirement = evaluation.get("result", {}).get("availability", {}).get("requirements", [{}])[0]
+            _expect(
+                Decimal(str(requirement.get("shortfall"))) == Decimal("2"),
+                "Recipe evaluation did not reflect the persisted pantry quantity",
+            )
+
+            _request(client, "GET", "/food-profiles/me", headers=first_headers)
+            declared = _request(
+                client,
+                "PUT",
+                "/food-profiles/me",
+                headers=first_headers,
+                json={
+                    "allergy_status": "DECLARED",
+                    "allergies": [{"allergen_code": "egg", "severity": "severe"}],
+                },
+            ).json()
+            egg_safety = _request(
+                client,
+                "POST",
+                "/food-safety/evaluate",
+                headers=first_headers,
+                json={
+                    "recipe_servings": "1",
+                    "servings": "1",
+                    "requirements": [{"display_name": "egg", "amount": "1", "unit": "piece"}],
+                },
+            ).json()
+            _expect(egg_safety.get("decision") == "blocked", "A declared egg allergy did not block evaluation")
+            _request(
+                client,
+                "PUT",
+                "/food-profiles/me",
+                headers=first_headers,
+                json={
+                    "expected_revision": declared["revision"],
+                    "allergy_status": "NONE_DECLARED",
+                    "allergies": [],
+                },
+            )
+
+            preview = _request(
+                client,
+                "POST",
+                "/recipe-shopping/preview",
+                headers=first_headers,
+                json={
+                    "recipe_id": recipe["id"],
+                    "expected_recipe_revision": recipe["revision"],
+                    "servings": "1",
+                    "include_optional": False,
+                },
+            ).json()
+            _expect(preview.get("safety", {}).get("decision") == "eligible", "Shopping preview was not safety eligible")
+            _expect(
+                Decimal(str(preview.get("lines", [{}])[0].get("shortage"))) == Decimal("2"),
+                "Shopping preview did not preserve the exact inventory shortage",
+            )
+            confirm_payload = {
+                "preview_id": preview["preview_id"],
+                "idempotency_key": f"provision-staging-{run_id}",
+                "expected_revision": preview["shopping_revision"],
+                "accepted_lines": [
+                    {
+                        "ingredient_id": ingredient_id,
+                        "target_quantity": "2",
+                        "consolidate_existing": False,
+                    }
+                ],
+            }
+            confirmed = _request(
+                client, "POST", "/recipe-shopping/confirm", headers=first_headers, json=confirm_payload
+            ).json()
+            replay = _request(
+                client, "POST", "/recipe-shopping/confirm", headers=first_headers, json=confirm_payload
+            ).json()
+            _expect(confirmed == replay, "Retrying a confirmed shopping preview was not idempotent")
+            _expect(
+                len(confirmed.get("created", [])) == 1
+                and Decimal(str(confirmed["created"][0].get("quantity"))) == Decimal("2"),
+                "Shopping confirmation did not create the exact accepted quantity",
+            )
+            shopping_items = _request(client, "GET", "/shopping-list/", headers=first_headers).json()
+            _expect(
+                len(shopping_items) == 1
+                and Decimal(str(shopping_items[0].get("quantity"))) == Decimal("2")
+                and shopping_items[0].get("origin_recipe_id") == recipe["id"],
+                "Confirmed shopping quantity did not persist through the API",
             )
         finally:
-            if shopping_id is not None:
-                client.delete(
-                    f"{_api_base_url()}/shopping-list/{shopping_id}",
-                    headers=first_headers,
-                    timeout=20,
-                )
-            if product_id is not None:
-                client.delete(
-                    f"{_api_base_url()}/products/{product_id}",
-                    headers=first_headers,
-                    timeout=20,
-                )
-            _cleanup_account(client, second_email, second_password)
+            if second_registered:
+                _cleanup_account(client, second_email, second_password)
 
     print(
-        "Staging API smoke passed: registration/login, household authorization, provider-disabled Cook with Pip "
-        "recommendations, default allergy review, product create/edit/read/delete, and exact shopping quantity persistence."
+        "Staging API smoke passed: registration/login, household selection and isolation, product mapping and label "
+        "review, inventory expiration and quantity, recipe detail and availability, allergy review and blocking, "
+        "provider-disabled recommendations, and explicit idempotent shopping confirmation."
     )
 
 
 def cleanup() -> None:
-    email = os.environ.get("PROVISION_STAGING_TEST_EMAIL")
-    password = os.environ.get("PROVISION_STAGING_TEST_PASSWORD")
-    if not email or not password:
+    accounts = []
+    for number in range(1, 11):
+        suffix = "" if number == 1 else f"_{number}"
+        email = os.environ.get(f"PROVISION_STAGING_TEST_EMAIL{suffix}")
+        password = os.environ.get(f"PROVISION_STAGING_TEST_PASSWORD{suffix}")
+        if email and password:
+            accounts.append((email, password))
+    if not accounts:
         print("No staging E2E account was created; nothing to clean up.")
         return
+    preflight()
     with httpx.Client(timeout=20, follow_redirects=False, trust_env=False) as client:
-        _cleanup_account(client, email, password)
-    print("The owned, empty synthetic staging household was cleaned up.")
+        for email, password in accounts:
+            _cleanup_account(client, email, password)
+    print("Run-owned synthetic staging households were cleaned up.")
 
 
 if __name__ == "__main__":

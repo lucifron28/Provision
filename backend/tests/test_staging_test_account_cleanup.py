@@ -5,9 +5,12 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.security import create_access_token, hash_password
+from app.models.batch import InventoryBatch
 from app.models.deepseek_budget import HouseholdDeepSeekBudget
+from app.models.event import EventType, InventoryEvent
 from app.models.household import Household, HouseholdMembership, HouseholdRole
 from app.models.privacy import ProcessingConsent
+from app.models.preferences import FoodAllergy, FoodPreference
 from app.models.product import Product
 from app.models.user import User
 
@@ -104,16 +107,84 @@ def test_staging_cleanup_deletes_only_an_empty_synthetic_household(
     assert db.get(Household, household.id) is None
 
 
-def test_staging_cleanup_preserves_household_records(unauthed_client, db, monkeypatch):
+def test_staging_cleanup_removes_only_the_run_owned_household_graph(
+    unauthed_client, db, monkeypatch
+):
     _enable_staging_cleanup(monkeypatch)
     user, household = _staging_test_user(db)
-    product = Product(name="Synthetic pantry item", household_id=household.id)
-    db.add(product)
+    other_user, other_household = _staging_test_user(db)
+
+    profile = FoodPreference(
+        household_id=household.id,
+        member_user_id=user.id,
+        revision=1,
+        preferences={},
+        allergy_status="DECLARED",
+    )
+    other_product = Product(name="Other household item", household_id=other_household.id)
+    product = Product(name="Synthetic item", household_id=household.id)
+    db.add_all([profile, other_product, product])
+    db.flush()
+    allergy = FoodAllergy(profile_id=profile.id, allergen_code="egg")
+    batch = InventoryBatch(
+        household_id=household.id,
+        product_id=product.id,
+        original_quantity=5,
+        remaining_quantity=5,
+    )
+    consent = ProcessingConsent(
+        household_id=household.id,
+        user_id=user.id,
+        purpose="deepseek_recipes_v1",
+        policy_version="test-policy",
+        granted=True,
+    )
+    budget = HouseholdDeepSeekBudget(household_id=household.id, used=1)
+    db.add_all([allergy, batch, consent, budget])
+    db.flush()
+    event = InventoryEvent(batch_id=batch.id, event_type=EventType.PURCHASED, quantity=5)
+    db.add(event)
+    db.commit()
+
+    response = _delete_request(unauthed_client, user)
+
+    assert response.status_code == 204
+    assert db.get(User, user.id) is None
+    assert db.get(Household, household.id) is None
+    assert db.get(FoodPreference, profile.id) is None
+    assert db.get(FoodAllergy, allergy.id) is None
+    assert db.get(InventoryBatch, batch.id) is None
+    assert db.get(InventoryEvent, event.id) is None
+    assert db.get(ProcessingConsent, consent.id) is None
+    assert db.get(HouseholdDeepSeekBudget, household.id) is None
+    assert db.scalar(select(Product).where(Product.household_id == other_household.id)).id == other_product.id
+    assert db.get(User, other_user.id) is not None
+
+
+def test_staging_cleanup_refuses_a_household_with_another_member(
+    unauthed_client, db, monkeypatch
+):
+    _enable_staging_cleanup(monkeypatch)
+    user, household = _staging_test_user(db)
+    other_user, _ = _staging_test_user(db)
+    product = Product(name="Shared household item", household_id=household.id)
+    db.add_all(
+        [
+            HouseholdMembership(
+                household_id=household.id,
+                user_id=other_user.id,
+                role=HouseholdRole.MEMBER.value,
+                is_default=False,
+            ),
+            product,
+        ]
+    )
     db.commit()
 
     response = _delete_request(unauthed_client, user)
 
     assert response.status_code == 409
     assert db.get(User, user.id) is not None
+    assert db.get(User, other_user.id) is not None
     assert db.get(Household, household.id) is not None
-    assert db.scalar(select(Product).where(Product.household_id == household.id)) is not None
+    assert db.scalar(select(Product).where(Product.household_id == household.id)).id == product.id
