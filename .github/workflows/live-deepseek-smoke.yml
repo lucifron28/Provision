@@ -36,6 +36,7 @@ jobs:
         with:
           ref: ${{ inputs.expected_render_commit }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Verify the requested source revision
         shell: bash
@@ -48,6 +49,10 @@ jobs:
           expected="${PROVISION_EXPECTED_RENDER_COMMIT,,}"
           [[ "$actual" == "$expected" ]] || {
             echo "Checked out $actual, expected $expected." >&2
+            exit 1
+          }
+          git merge-base --is-ancestor "$actual" refs/remotes/origin/main || {
+            echo "The live smoke only accepts commits reachable from approved main." >&2
             exit 1
           }
 

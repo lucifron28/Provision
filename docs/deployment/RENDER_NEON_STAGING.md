@@ -89,7 +89,7 @@ Create a GitHub Actions environment named `staging` and add:
 - Variable `PROVISION_STAGING_API_BASE_URL`, set to the Render HTTPS URL ending in `/api/v1`.
 - Secret `PROVISION_STAGING_FIXTURE_TOKEN`, set to the same random fixture token stored in Render.
 
-GitHub only accepts `workflow_dispatch` for workflows present on the repository's default branch. Because this PR does not merge itself, the two manual workflows become runnable after an approved merge to the default branch. The workflow can then be dispatched against a selected commit SHA. [GitHub manual workflow requirements](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)
+GitHub only accepts `workflow_dispatch` for workflows present on the repository's default branch. Because this PR does not merge itself, the two manual workflows become runnable after an approved merge to the default branch. A run must select a full commit SHA reachable from `main`; the job verifies that before exposing any staging secret, then checks Render is serving that same SHA. [GitHub manual workflow requirements](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)
 
 The standard PR workflow does not contact Render or Neon. Run **Provision staging E2E** manually with the full commit SHA currently deployed to Render. It checks the commit and health, registers run-unique synthetic households through the normal API, validates authenticated product edits, cross-household denial, and exact shopping-quantity persistence, then performs iPhone 17 Simulator login and Keychain relaunch recovery. The workflow removes only the empty household it created. It uploads the staging `.xcresult` and exported screenshots for 14 days.
 
