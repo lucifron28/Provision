@@ -21,6 +21,8 @@ docker build --pull --file Dockerfile --tag provision-backend:local .
 
 Run the image with runtime settings from a local PostgreSQL database. Do not pass secrets as Docker build arguments or commit them in files. `DATABASE_URL` must use the `postgresql+psycopg` driver. The image binds to `$PORT` or port `10000`, and runs as UID `10001`.
 
+Render terminates public TLS at its edge. The current API uses bearer authentication and does not build URLs or make authorization decisions from the forwarded client IP or scheme, so Uvicorn ignores `X-Forwarded-*` headers. Do not enable wildcard proxy trust. If the app later needs forwarded metadata, configure only verified proxy addresses first.
+
 The routine GitHub Actions workflow builds the image, verifies startup fails without required production settings, then checks `/health`, database-backed `/ready`, non-root execution, and that test files and `.env` files are absent. The existing root `compose.yaml` remains the local PostgreSQL workflow.
 
 ## Create isolated Neon staging

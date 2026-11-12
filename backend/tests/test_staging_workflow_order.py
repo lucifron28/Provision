@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from pydantic import SecretStr
 from sqlalchemy import func, select
@@ -10,6 +12,35 @@ from test_food_safety import catalog as allergen_catalog
 
 
 RENDER_API_URL = "https://provision-staging.onrender.com/api/v1"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.mark.parametrize(
+    ("workflow", "cleanup_step"),
+    [
+        ("staging-e2e.yml", "Remove the run-owned synthetic households"),
+        ("live-deepseek-smoke.yml", "Remove the run-owned synthetic household"),
+    ],
+)
+def test_workflow_cleanup_runs_after_partial_fixture_creation(workflow, cleanup_step):
+    lines = (REPOSITORY_ROOT / ".github" / "workflows" / workflow).read_text(
+        encoding="utf-8"
+    ).splitlines()
+    step_index = next(
+        index for index, line in enumerate(lines) if line.strip() == f"- name: {cleanup_step}"
+    )
+
+    assert lines[step_index + 1].strip() == "if: always()"
+
+
+def test_cleanup_is_a_no_op_when_fixture_creation_registered_no_account(monkeypatch, capsys):
+    for suffix in ("", *(f"_{number}" for number in range(2, 11))):
+        monkeypatch.delenv(f"PROVISION_STAGING_TEST_EMAIL{suffix}", raising=False)
+        monkeypatch.delenv(f"PROVISION_STAGING_TEST_PASSWORD{suffix}", raising=False)
+
+    staging_e2e_smoke.cleanup()
+
+    assert "No staging E2E account was created" in capsys.readouterr().out
 
 
 def test_prepare_preflights_and_persists_cleanup_credentials_before_registration(

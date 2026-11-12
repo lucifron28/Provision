@@ -97,7 +97,7 @@ jobs:
         run: uv run --no-sync python scripts/staging_live_deepseek_smoke.py
 
       - name: Remove the run-owned synthetic household
-        if: always() && steps.staging-fixture.outcome == 'success'
+        if: always()
         working-directory: backend
         env:
           PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}

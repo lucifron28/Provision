@@ -119,7 +119,7 @@ jobs:
           retention-days: 14
 
       - name: Remove the run-owned synthetic households
-        if: always() && steps.staging-fixture.outcome == 'success'
+        if: always()
         working-directory: backend
         env:
           PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}

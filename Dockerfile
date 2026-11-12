@@ -32,5 +32,7 @@ COPY --from=builder --chown=10001:10001 /app/alembic.ini ./alembic.ini
 USER 10001:10001
 EXPOSE 10000
 
+# Render terminates public TLS. This API does not need forwarded client metadata,
+# so never let client-supplied X-Forwarded-* headers change request state.
 # exec lets Uvicorn receive SIGTERM directly during Render shutdowns.
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port \"${PORT:-10000}\" --proxy-headers"]
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port \"${PORT:-10000}\" --no-proxy-headers"]

@@ -1,8 +1,28 @@
+import json
+from pathlib import Path
+
 from pydantic import SecretStr, ValidationError
 import pytest
 
 from app.core.config import LOCAL_DATABASE_URL, Settings
 from app.core.database import engine_options_for_url
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_render_container_uses_port_and_ignores_untrusted_forwarded_headers():
+    dockerfile = (REPOSITORY_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    command_line = next(
+        line.removeprefix("CMD ")
+        for line in dockerfile.splitlines()
+        if line.startswith("CMD ")
+    )
+    command = json.loads(command_line)
+    shell_command = command[2]
+
+    assert "${PORT:-10000}" in shell_command
+    assert "--no-proxy-headers" in shell_command
+    assert "--forwarded-allow-ips=*" not in shell_command
 
 
 def settings_for(**values) -> Settings:
