@@ -82,7 +82,7 @@ jobs:
           PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
         run: uv run --no-sync python scripts/staging_e2e_smoke.py api-smoke
 
-      - name: Run staging login and Keychain relaunch test on iPhone 17
+      - name: Run staging login, offline recovery, and Keychain relaunch tests on iPhone 17
         id: ios-staging
         run: |
           mkdir -p artifacts
@@ -91,6 +91,8 @@ jobs:
             -scheme frontend \
             -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
             -only-testing:frontendUITests/CookWithPipUITests/testStagingLoginAndRelaunch \
+            -only-testing:frontendUITests/CookWithPipUITests/testCookWithPipLoadingEmptyAndOfflineRecovery \
+            -only-testing:frontendUITests/CookWithPipUITests/testShoppingOfflineRetryAndStalePreviewRecovery \
             -resultBundlePath artifacts/staging-e2e.xcresult \
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGN_IDENTITY=-

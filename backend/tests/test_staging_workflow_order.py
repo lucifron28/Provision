@@ -33,6 +33,25 @@ def test_workflow_cleanup_runs_after_partial_fixture_creation(workflow, cleanup_
     assert lines[step_index + 1].strip() == "if: always()"
 
 
+def test_staging_workflow_runs_authenticated_and_offline_recovery_ui_smokes():
+    workflow = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "staging-e2e.yml"
+    ).read_text(encoding="utf-8")
+
+    assert (
+        "-only-testing:frontendUITests/CookWithPipUITests/"
+        "testStagingLoginAndRelaunch"
+    ) in workflow
+    assert (
+        "-only-testing:frontendUITests/CookWithPipUITests/"
+        "testCookWithPipLoadingEmptyAndOfflineRecovery"
+    ) in workflow
+    assert (
+        "-only-testing:frontendUITests/CookWithPipUITests/"
+        "testShoppingOfflineRetryAndStalePreviewRecovery"
+    ) in workflow
+
+
 def test_cleanup_is_a_no_op_when_fixture_creation_registered_no_account(monkeypatch, capsys):
     for suffix in ("", *(f"_{number}" for number in range(2, 11))):
         monkeypatch.delenv(f"PROVISION_STAGING_TEST_EMAIL{suffix}", raising=False)
