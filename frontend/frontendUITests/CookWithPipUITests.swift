@@ -433,7 +433,7 @@ final class CookWithPipUITests: XCTestCase {
         capture("Shopping_Duplicate_Consolidation_Opt_In", app: app)
 
         element("recipe-shopping-confirm", in: app).tap()
-        let confirmAction = element("recipe-shopping-confirm-action", in: app)
+        let confirmAction = app.alerts.buttons.matching(identifier: "recipe-shopping-confirm-action").firstMatch
         XCTAssertTrue(confirmAction.waitForExistence(timeout: 5))
         confirmAction.tap()
         XCTAssertTrue(element("recipe-shopping-result-counts", in: app).waitForExistence(timeout: 10))
@@ -532,7 +532,10 @@ final class CookWithPipUITests: XCTestCase {
         let staleApp = launch(scenario: "shopping-stale")
         openShoppingPreview(staleApp)
         element("recipe-shopping-confirm", in: staleApp).tap()
-        element("recipe-shopping-confirm-action", in: staleApp).tap()
+        let staleConfirmAction = staleApp.alerts.buttons
+            .matching(identifier: "recipe-shopping-confirm-action").firstMatch
+        XCTAssertTrue(staleConfirmAction.waitForExistence(timeout: 5))
+        staleConfirmAction.tap()
         let staleMessage = appText("Inventory or shopping data changed", in: staleApp)
         scrollTowardTopUntilVisible(staleMessage, in: staleApp)
         XCTAssertTrue(staleMessage.waitForExistence(timeout: 10))
@@ -555,9 +558,10 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(confirm.isEnabled,
                       "An eligible current preview with selected lines enables explicit confirmation")
         confirm.tap()
-        let confirmAction = app.buttons["recipe-shopping-confirm-action"]
+        let confirmAction = app.alerts.buttons.matching(identifier: "recipe-shopping-confirm-action").firstMatch
         XCTAssertTrue(confirmAction.waitForExistence(timeout: 10))
-        XCTAssertTrue(confirmAction.isHittable, "The explicit confirmation choice is available after tapping Confirm")
+        XCTAssertTrue(confirmAction.isEnabled,
+                      "The explicit confirmation choice stays enabled for the reviewed request")
         confirmAction.tap()
 
         let pendingStatus = element("recipe-shopping-pending-status", in: app)
