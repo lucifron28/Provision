@@ -145,20 +145,30 @@ def test_staging_cleanup_removes_only_the_run_owned_household_graph(
     event = InventoryEvent(batch_id=batch.id, event_type=EventType.PURCHASED, quantity=5)
     db.add(event)
     db.commit()
+    user_id = user.id
+    household_id = household.id
+    other_household_id = other_household.id
+    other_user_id = other_user.id
+    profile_id = profile.id
+    allergy_id = allergy.id
+    batch_id = batch.id
+    event_id = event.id
+    consent_id = consent.id
+    other_product_id = other_product.id
 
     response = _delete_request(unauthed_client, user)
 
     assert response.status_code == 204
-    assert db.get(User, user.id) is None
-    assert db.get(Household, household.id) is None
-    assert db.get(FoodPreference, profile.id) is None
-    assert db.get(FoodAllergy, allergy.id) is None
-    assert db.get(InventoryBatch, batch.id) is None
-    assert db.get(InventoryEvent, event.id) is None
-    assert db.get(ProcessingConsent, consent.id) is None
-    assert db.get(HouseholdDeepSeekBudget, household.id) is None
-    assert db.scalar(select(Product).where(Product.household_id == other_household.id)).id == other_product.id
-    assert db.get(User, other_user.id) is not None
+    assert db.get(User, user_id) is None
+    assert db.get(Household, household_id) is None
+    assert db.get(FoodPreference, profile_id) is None
+    assert db.get(FoodAllergy, allergy_id) is None
+    assert db.get(InventoryBatch, batch_id) is None
+    assert db.get(InventoryEvent, event_id) is None
+    assert db.get(ProcessingConsent, consent_id) is None
+    assert db.get(HouseholdDeepSeekBudget, household_id) is None
+    assert db.scalar(select(Product).where(Product.household_id == other_household_id)).id == other_product_id
+    assert db.get(User, other_user_id) is not None
 
 
 def test_staging_cleanup_refuses_a_household_with_another_member(
