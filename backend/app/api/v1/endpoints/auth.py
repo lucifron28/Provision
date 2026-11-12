@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi import Header, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from sqlalchemy import delete, exists, or_, select
+from sqlalchemy import and_, delete, exists, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
@@ -41,7 +41,7 @@ def _household_scope_filter(table, household_id: int, visited: frozenset[str] = 
             )
     if not filters:
         return None
-    return filters[0] if len(filters) == 1 else or_(*filters)
+    return filters[0] if len(filters) == 1 else and_(*filters)
 
 
 def get_current_user(

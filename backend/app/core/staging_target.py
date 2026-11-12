@@ -76,9 +76,12 @@ def verify_staging_deployment(
 
     try:
         health_data = health.json()
+        ready_data = ready.json()
     except (TypeError, ValueError):
-        raise RuntimeError("Render health response was not valid JSON") from None
+        raise RuntimeError("Render health or readiness response was not valid JSON") from None
     if not isinstance(health_data, dict) or health_data.get("deployment") != "staging":
         raise RuntimeError("The configured service is not marked as staging")
     if str(health_data.get("revision") or "").lower() != expected:
         raise RuntimeError("Render is not serving the requested commit; deploy the intended SHA manually first")
+    if not isinstance(ready_data, dict) or ready_data.get("status") != "ready":
+        raise RuntimeError("Render staging database readiness check did not report ready")

@@ -188,3 +188,28 @@ def test_staging_cleanup_refuses_a_household_with_another_member(
     assert db.get(User, other_user.id) is not None
     assert db.get(Household, household.id) is not None
     assert db.scalar(select(Product).where(Product.household_id == household.id)).id == product.id
+
+
+def test_staging_cleanup_refuses_user_references_in_another_household(
+    unauthed_client, db, monkeypatch
+):
+    _enable_staging_cleanup(monkeypatch)
+    user, household = _staging_test_user(db)
+    _, other_household = _staging_test_user(db)
+    consent = ProcessingConsent(
+        household_id=other_household.id,
+        user_id=user.id,
+        purpose="deepseek_recipes_v1",
+        policy_version="test-policy",
+        granted=False,
+    )
+    db.add(consent)
+    db.commit()
+
+    response = _delete_request(unauthed_client, user)
+
+    assert response.status_code == 409
+    assert db.get(User, user.id) is not None
+    assert db.get(Household, household.id) is not None
+    assert db.get(Household, other_household.id) is not None
+    assert db.get(ProcessingConsent, consent.id) is not None

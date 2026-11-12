@@ -18,7 +18,7 @@ def _api_base_url() -> str:
     value = os.environ.get("PROVISION_STAGING_API_BASE_URL", "").strip()
     try:
         return validate_staging_api_base_url(value)
-    except ValueError as exc:
+    except ValueError:
         raise RuntimeError("PROVISION_STAGING_API_BASE_URL must be an HTTPS Render /api/v1 URL") from None
 
 

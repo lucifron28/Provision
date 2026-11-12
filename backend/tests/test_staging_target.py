@@ -82,3 +82,30 @@ def test_preflight_rejects_wrong_revision_before_credentials_are_used():
             attempts=1,
             sleep=lambda _: None,
         )
+
+
+def test_preflight_rejects_database_that_is_not_ready():
+    commit = "a" * 40
+
+    class Response:
+        def __init__(self, body):
+            self.status_code = 200
+            self.body = body
+
+        def json(self):
+            return self.body
+
+    class Client:
+        def get(self, url):
+            if url.endswith("/health"):
+                return Response({"deployment": "staging", "revision": commit})
+            return Response({"status": "not_ready"})
+
+    with pytest.raises(RuntimeError, match="database readiness"):
+        verify_staging_deployment(
+            Client(),
+            "https://provision-staging.onrender.com/api/v1",
+            commit,
+            attempts=1,
+            sleep=lambda _: None,
+        )
