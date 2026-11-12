@@ -10,6 +10,7 @@
     "Shopping_Preview_Review_Required",
     "Shopping_Preview_Blocked",
     "Shopping_Offline_Error_Retry",
+    "Shopping_Confirmation_Retry_Pending",
     "Shopping_Stale_Preview_Refresh"
   ]
 }

@@ -5,7 +5,7 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_routine_visual_smoke_requires_11_scenarios_from_the_full_gallery():
+def test_routine_visual_smoke_requires_12_scenarios_from_the_full_gallery():
     scripts = REPOSITORY_ROOT / ".github" / "scripts"
     smoke = json.loads(
         (scripts / "required_ios_smoke_screenshots.json").read_text(encoding="utf-8")
@@ -14,7 +14,7 @@ def test_routine_visual_smoke_requires_11_scenarios_from_the_full_gallery():
         (scripts / "required_ios_screenshots.json").read_text(encoding="utf-8")
     )["requiredScreenshots"]
 
-    assert len(smoke) == 11
+    assert len(smoke) == 12
     assert len(smoke) == len(set(smoke))
     assert set(smoke) <= set(full_gallery)
 
@@ -36,6 +36,10 @@ def test_pull_request_workflow_runs_representative_screenshots_only():
     assert (
         "-only-testing:frontendUITests/CookWithPipUITests/"
         "testShoppingOfflineRetryAndStalePreviewRecovery"
+    ) in workflow
+    assert (
+        "-only-testing:frontendUITests/CookWithPipUITests/"
+        "testAmbiguousShoppingConfirmationSurvivesAppRelaunch"
     ) in workflow
     assert "--required .github/scripts/required_ios_smoke_screenshots.json" in workflow
     assert "name: cook-with-pip-xcresult" not in workflow

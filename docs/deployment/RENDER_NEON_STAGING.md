@@ -7,7 +7,7 @@ This guide prepares a separate Provision staging service. It does not deploy pro
 - Render runs the FastAPI backend from the root `Dockerfile`.
 - Neon provides an isolated PostgreSQL 18 staging project in Singapore.
 - The iOS app keeps its normal local API default. Debug and UI-test launches can opt into a validated Render HTTPS URL.
-- GitHub Actions keeps routine PostgreSQL 18 and iOS tests local. The PR visual smoke captures 11 representative screens; a separate manual workflow retains the full screenshot gallery and `.xcresult`. Other manual workflows check staging and, after explicit confirmation, make one DeepSeek request.
+- GitHub Actions keeps routine PostgreSQL 18 and iOS tests local. The PR visual smoke captures 12 representative screens; a separate manual workflow retains the full screenshot gallery and `.xcresult`. Other manual workflows check staging and, after explicit confirmation, make one DeepSeek request.
 
 The Blueprint in `render.yaml` names the service `provision-staging`, uses the free web plan, selects Singapore, disables auto deploys, and checks `/ready`. Its current Render plan proposes `provision-staging-04dt` on the Free plan. The plan has no database resource declaration, so applying it will not create or alter a Neon database. Render free services have limits and can spin down while idle. Keep this service for synthetic staging only. [Render free plan limits](https://render.com/docs/free)
 
@@ -23,7 +23,7 @@ Run the image with runtime settings from a local PostgreSQL database. Do not pas
 
 Render terminates public TLS at its edge. The current API uses bearer authentication and does not build URLs or make authorization decisions from the forwarded client IP or scheme, so Uvicorn ignores `X-Forwarded-*` headers. Do not enable wildcard proxy trust. If the app later needs forwarded metadata, configure only verified proxy addresses first.
 
-The routine GitHub Actions workflow builds the image, verifies startup fails without required production settings, then checks `/health`, database-backed `/ready`, non-root execution, and that test files and `.env` files are absent. It also runs all Swift unit tests and a focused UI smoke covering navigation, safety blocks, offline retry, and stale-shopping recovery. The PR requires 11 named screenshots. **Cook with Pip full screenshot gallery** runs the complete existing UI suite on demand and uploads all scenarios plus the full `.xcresult`. The existing root `compose.yaml` remains the local PostgreSQL workflow.
+The routine GitHub Actions workflow builds the image, verifies startup fails without required production settings, then checks `/health`, database-backed `/ready`, non-root execution, and that test files and `.env` files are absent. It also runs all Swift unit tests and a focused UI smoke covering navigation, allergy blocks, offline retry, stale-shopping recovery, and Keychain-backed pending-confirmation recovery. The PR requires 12 named screenshots. **Cook with Pip full screenshot gallery** runs the complete existing UI suite on demand and uploads all scenarios plus the full `.xcresult`. The existing root `compose.yaml` remains the local PostgreSQL workflow.
 
 ## Isolated Neon staging
 
@@ -114,7 +114,7 @@ This workflow is not a Pip Chat test. Pip Chat is not part of this deployment-pr
 
 ## Inspect results and recover
 
-The 11 PR smoke screenshots appear in the routine workflow artifacts. The full screenshot set and `.xcresult` appear on **Cook with Pip full screenshot gallery** runs; staging artifacts appear on the manual staging run. Download them from the relevant GitHub Actions run page and open the `.xcresult` on a Mac with Xcode. Simulator runs do not verify physical camera, barcode scanner, or receipt-capture hardware.
+The 12 PR smoke screenshots appear in the routine workflow artifacts. The full screenshot set and `.xcresult` appear on **Cook with Pip full screenshot gallery** runs; staging artifacts appear on the manual staging run. Download them from the relevant GitHub Actions run page and open the `.xcresult` on a Mac with Xcode. Simulator runs do not verify physical camera, barcode scanner, or receipt-capture hardware.
 
 If a deploy fails, Render keeps the previous successful deploy running. With auto deploy disabled, inspect the failed build and service logs, correct configuration or deploy a known-good commit manually, and recheck `/health` and `/ready`. Do not run destructive migrations to recover. [Render deploy failure behavior](https://render.com/docs/deploys)
 

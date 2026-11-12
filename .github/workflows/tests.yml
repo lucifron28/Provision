@@ -21,7 +21,7 @@ jobs:
           python-version: "3.13"
       - name: Prepare iOS test artifact folder
         run: mkdir -p artifacts/raw-cook-with-pip-screenshots artifacts/cook-with-pip-screenshots
-      - name: Run Swift XCTest and the 11-screenshot UI smoke
+      - name: Run Swift XCTest and the 12-screenshot UI smoke
         id: ios-tests
         run: >-
           xcodebuild test
@@ -32,6 +32,7 @@ jobs:
           -only-testing:frontendUITests/CookWithPipUITests/testHomeNavigationAndCaptureRecipeScreens
           -only-testing:frontendUITests/CookWithPipUITests/testShoppingReviewRequiredAndBlockedStates
           -only-testing:frontendUITests/CookWithPipUITests/testShoppingOfflineRetryAndStalePreviewRecovery
+          -only-testing:frontendUITests/CookWithPipUITests/testAmbiguousShoppingConfirmationSurvivesAppRelaunch
           -resultBundlePath artifacts/frontend.xcresult
           CODE_SIGNING_ALLOWED=YES
           CODE_SIGN_IDENTITY=-
