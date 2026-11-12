@@ -1,6 +1,11 @@
 import Combine
 import Foundation
 
+public enum ProductLabelReviewStatusContext: Equatable {
+    case ingredientMapping
+    case packageLabel
+}
+
 @MainActor
 public final class ProductLabelReviewViewModel: ObservableObject {
     @Published public private(set) var product: Product?
@@ -23,6 +28,7 @@ public final class ProductLabelReviewViewModel: ObservableObject {
     @Published public private(set) var hasLoaded = false
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var statusMessage: String?
+    @Published public private(set) var statusContext: ProductLabelReviewStatusContext?
 
     private let productID: Int
     private let scope: HouseholdScope
@@ -50,6 +56,7 @@ public final class ProductLabelReviewViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         statusMessage = nil
+        statusContext = nil
         do {
             let currentProduct = try await service.fetchProductForCookWithPip(id: productID, scope: scope)
             product = currentProduct
@@ -112,6 +119,8 @@ public final class ProductLabelReviewViewModel: ObservableObject {
 
     @discardableResult
     public func saveMapping() async -> Bool {
+        statusMessage = nil
+        statusContext = nil
         guard isValidMappingSelection else {
             errorMessage = mappingMode == .direct
                 ? "Choose exactly one matching ingredient for a direct mapping."
@@ -120,7 +129,6 @@ public final class ProductLabelReviewViewModel: ObservableObject {
         }
         isSaving = true
         errorMessage = nil
-        statusMessage = nil
         let ids = selectedIngredientIDs.sorted()
         do {
             mapping = try await service.saveProductMapping(
@@ -136,6 +144,7 @@ public final class ProductLabelReviewViewModel: ObservableObject {
                 scope: scope
             )
             statusMessage = "Ingredient mapping saved. Review the package against this mapping before recording allergens."
+            statusContext = .ingredientMapping
             do {
                 label = try await service.fetchProductLabel(productID: productID, scope: scope)
             } catch {
@@ -153,6 +162,8 @@ public final class ProductLabelReviewViewModel: ObservableObject {
 
     @discardableResult
     public func saveLabel() async -> Bool {
+        statusMessage = nil
+        statusContext = nil
         guard canReviewLabel, let mapping, let product, let updatedAt = product.updated_at else {
             errorMessage = "A current product and verified complete ingredient mapping are required before recording a label review."
             return false
@@ -169,7 +180,6 @@ public final class ProductLabelReviewViewModel: ObservableObject {
         }
         isSaving = true
         errorMessage = nil
-        statusMessage = nil
         do {
             label = try await service.saveProductLabel(
                 productID: productID,
@@ -186,6 +196,7 @@ public final class ProductLabelReviewViewModel: ObservableObject {
                 scope: scope
             )
             statusMessage = "Package label review recorded. It is not a safety certification."
+            statusContext = .packageLabel
             isSaving = false
             return true
         } catch {

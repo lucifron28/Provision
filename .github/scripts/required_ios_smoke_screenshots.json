@@ -1,0 +1,14 @@
+{
+  "requiredScreenshots": [
+    "Home_Cook_with_Pip",
+    "Cook_with_Pip",
+    "Recipe_Detail",
+    "Recipe_Detail_Blocked_Long_Filipino",
+    "Preferences_Allergy_Declared",
+    "Product_Label_Saved_Keyboard_Dismissed",
+    "Product_Label_Review_Dark_Mode",
+    "Product_Label_Review_Large_Text",
+    "Shopping_Confirmation_Retry_Pending",
+    "Shopping_Preview_Blocked"
+  ]
+}

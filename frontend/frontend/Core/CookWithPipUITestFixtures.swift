@@ -471,10 +471,16 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
             let defaults = UserDefaults.standard
             let requestKey = "cook-with-pip-ui-server-request-\(fixtureID)"
             let mutationCountKey = "cook-with-pip-ui-server-mutations-\(fixtureID)"
+            let shoppingItemsKey = "cook-with-pip-ui-server-items-\(fixtureID)"
             if let data = defaults.data(forKey: requestKey) {
                 guard let previous = try? JSONDecoder().decode(RecipeShoppingConfirmation.self, from: data),
+                      previous.idempotency_key == confirmation.idempotency_key,
                       previous == confirmation,
-                      defaults.integer(forKey: mutationCountKey) == 1 else {
+                      defaults.integer(forKey: mutationCountKey) == 1,
+                      let itemsData = defaults.data(forKey: shoppingItemsKey),
+                      let items = try? JSONDecoder().decode([ShoppingItem].self, from: itemsData),
+                      items.count == confirmation.accepted_lines.count,
+                      Set(items.map(\.id)).count == items.count else {
                     throw APIError.invalidResponse(502, "The fixture server rejected a non-identical retry")
                 }
                 return await confirmationResult(for: confirmation)
@@ -482,7 +488,18 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
             guard let data = try? JSONEncoder().encode(confirmation) else {
                 throw APIError.invalidResponse(502, "The fixture server could not save the confirmation")
             }
+            let result = await confirmationResult(for: confirmation)
+            let items = result.created.map { change in
+                ShoppingItem(id: change.id, name: change.name,
+                             quantity: NSDecimalNumber(decimal: change.quantity.value).doubleValue,
+                             unit: change.unit, is_bought: change.is_bought, notes: change.notes)
+            }
+            guard let itemsData = try? JSONEncoder().encode(items),
+                  Set(items.map(\.id)).count == items.count else {
+                throw APIError.invalidResponse(502, "The fixture server could not persist unique shopping rows")
+            }
             defaults.set(data, forKey: requestKey)
+            defaults.set(itemsData, forKey: shoppingItemsKey)
             defaults.set(1, forKey: mutationCountKey)
             throw APIError.networkError(URLError(.timedOut))
         }
@@ -514,6 +531,14 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
     }
 
     func fetchShoppingListFromServer(scope: HouseholdScope) async throws -> [ShoppingItem] {
+        if scenario == "shopping-restart" {
+            let fixtureID = Self.launchArgument("-pip-ui-fixture-id") ?? "missing-fixture"
+            let shoppingItemsKey = "cook-with-pip-ui-server-items-\(fixtureID)"
+            if let data = UserDefaults.standard.data(forKey: shoppingItemsKey),
+               let items = try? JSONDecoder().decode([ShoppingItem].self, from: data) {
+                return items
+            }
+        }
         let lines = await counter.confirmedLines()
         return lines.map { line in
             let name: String
@@ -574,8 +599,9 @@ struct CookWithPipUITestHost: View {
         VStack(spacing: 0) {
             Text("UI TEST FIXTURES")
                 .font(.caption.weight(.bold))
+                .dynamicTypeSize(.xSmall ... .xxxLarge)
                 .foregroundStyle(ProvisionTheme.textPrimary)
-                .frame(maxWidth: .infinity, minHeight: 30)
+                .frame(maxWidth: .infinity, minHeight: 30, maxHeight: 30)
                 .background(ProvisionTheme.provisionGreenLight)
                 .overlay(alignment: .bottom) {
                     Rectangle().fill(ProvisionTheme.border).frame(height: 1)

@@ -63,7 +63,8 @@ final class CookWithPipWorkflowTests: XCTestCase {
                        Decimal(string: "100.123456"))
         XCTAssertEqual(pending.confirmation.accepted_lines.first(where: { $0.ingredient_id == 914 })?.consolidate_existing,
                        true)
-        XCTAssertTrue(viewModel.errorMessage?.contains("Network connection failed") == true)
+        XCTAssertEqual(viewModel.errorMessage,
+                       "We couldn't confirm the result. The request is saved. Retry it without editing to avoid duplicate items.")
         XCTAssertEqual(store.readPendingRecipeShopping(scope: HouseholdScope(
             userID: 41, householdID: 53, serverID: "https://provision.test/api/v1"
         )), .missing)
@@ -75,6 +76,8 @@ final class CookWithPipWorkflowTests: XCTestCase {
         XCTAssertEqual(store.readPendingRecipeShopping(scope: scope), .missing)
         let requests = await service.recordedConfirmations()
         XCTAssertEqual(requests.count, 2)
+        XCTAssertEqual(requests[0].idempotency_key, requests[1].idempotency_key)
+        XCTAssertEqual(requests[0].preview_id, requests[1].preview_id)
         XCTAssertEqual(requests[0], requests[1])
     }
 
