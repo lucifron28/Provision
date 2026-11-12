@@ -120,7 +120,9 @@ public enum APIEnvironment {
         guard var components = URLComponents(string: trimmed),
               components.scheme?.lowercased() == "https",
               let host = components.host,
-              !host.isEmpty,
+              host.lowercased().hasSuffix(".onrender.com"),
+              host.lowercased() != "onrender.com",
+              components.port == nil || components.port == 443,
               components.user == nil,
               components.password == nil,
               components.query == nil,
@@ -130,6 +132,7 @@ public enum APIEnvironment {
         }
         components.scheme = "https"
         components.host = host.lowercased()
+        components.port = nil
         components.path = "/api/v1"
         return components.url
     }
@@ -149,7 +152,7 @@ public enum APIEnvironment {
         #if DEBUG
         if let configuredURL = ProcessInfo.processInfo.environment[stagingBaseURLEnvironmentKey] {
             guard let stagingURL = validateStagingBaseURL(configuredURL) else {
-                preconditionFailure("PROVISION_API_BASE_URL must be an HTTPS URL ending in /api/v1.")
+                preconditionFailure("PROVISION_API_BASE_URL must be an HTTPS Render URL ending in /api/v1.")
             }
             return stagingURL
         }

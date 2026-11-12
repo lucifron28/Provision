@@ -573,5 +573,33 @@ extension CookWithPipUITests {
         app.launch()
         XCTAssertTrue(inventoryTab.waitForExistence(timeout: 40), "The verified staging session did not recover after relaunch")
         capture("Staging_Relaunch_Recovery", app: app)
+
+        let accountSettings = app.buttons["settings-account-button"]
+        XCTAssertTrue(accountSettings.waitForExistence(timeout: 20))
+        accountSettings.tap()
+        let logOut = app.buttons["account-logout"]
+        if !logOut.waitForExistence(timeout: 5) {
+            app.scrollViews.firstMatch.swipeUp()
+        }
+        XCTAssertTrue(logOut.waitForExistence(timeout: 10), "Account settings did not expose Log Out")
+        logOut.tap()
+        XCTAssertTrue(emailField.waitForExistence(timeout: 20), "Log Out did not return the app to login")
+        app.terminate()
+        app.launchArguments = []
+        app.launch()
+        XCTAssertTrue(emailField.waitForExistence(timeout: 20), "The logged-out state did not survive relaunch")
+        capture("Staging_Logged_Out", app: app)
+
+        emailField.tap()
+        emailField.typeText(email)
+        passwordField.tap()
+        passwordField.typeText(password)
+        signIn.tap()
+        XCTAssertTrue(inventoryTab.waitForExistence(timeout: 40), "The synthetic staging account could not log in again")
+        app.terminate()
+        app.launchArguments = []
+        app.launch()
+        XCTAssertTrue(inventoryTab.waitForExistence(timeout: 40), "The new staging session did not survive relaunch")
+        capture("Staging_Relogin_Relaunch_Recovery", app: app)
     }
 }

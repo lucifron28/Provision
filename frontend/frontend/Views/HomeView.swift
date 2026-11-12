@@ -273,6 +273,7 @@ public struct HomeView: View {
                     .accessibleTouchTarget()
             }
             .accessibilityLabel("Settings and Account")
+            .accessibilityIdentifier("settings-account-button")
         }
         .padding(.top, 8)
     }
@@ -855,6 +856,7 @@ public struct HomeView: View {
                         .foregroundStyle(ProvisionTheme.redAlert)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
+                    .accessibilityIdentifier("account-logout")
                     .padding(.top, 8)
                     .padding(.bottom, 16)
                 }
