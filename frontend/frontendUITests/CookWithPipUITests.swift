@@ -215,6 +215,10 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(technicalDetails, in: app)
         XCTAssertTrue(technicalDetails.isHittable)
         technicalDetails.tap()
+        let revisionDetailsExpanded = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value CONTAINS %@", "Expanded"), object: technicalDetails
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [revisionDetailsExpanded], timeout: 5), .completed)
         let reviewRevision = element("pip-label-review-revision", in: app)
         XCTAssertTrue(reviewRevision.waitForExistence(timeout: 5))
         scrollTo(reviewRevision, in: app)
@@ -295,6 +299,10 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertFalse(serverVersion.exists, "Technical metadata starts collapsed below the product details")
         capture("Product_Label_Review_Large_Text", app: largeLabel)
         technicalDetails.tap()
+        let technicalDetailsExpanded = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value CONTAINS %@", "Expanded"), object: technicalDetails
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [technicalDetailsExpanded], timeout: 5), .completed)
         XCTAssertTrue(serverVersion.waitForExistence(timeout: 5))
         scrollTo(serverVersion, in: largeLabel)
         XCTAssertTrue(serverVersion.label.contains("2026-11-09T00:00:00Z"))
