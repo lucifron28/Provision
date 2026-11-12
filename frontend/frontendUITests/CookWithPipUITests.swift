@@ -421,11 +421,11 @@ final class CookWithPipUITests: XCTestCase {
         return app
     }
 
-    private func openCookWithPip(_ app: XCUIApplication) {
+    private func openCookWithPip(_ app: XCUIApplication, timeout: TimeInterval = 10) {
         let entry = element("cook-with-pip-entry", in: app)
-        XCTAssertTrue(entry.waitForExistence(timeout: 10))
+        XCTAssertTrue(entry.waitForExistence(timeout: timeout))
         entry.tap()
-        XCTAssertTrue(element("cook-with-pip-introduction", in: app).waitForExistence(timeout: 10))
+        XCTAssertTrue(element("cook-with-pip-introduction", in: app).waitForExistence(timeout: timeout))
     }
 
     private func openCookNowRecipe(_ app: XCUIApplication) {
@@ -437,14 +437,17 @@ final class CookWithPipUITests: XCTestCase {
     }
 
     private func openShoppingPreview(_ app: XCUIApplication, timeout: TimeInterval = 10) {
-        openCookWithPip(app)
-        element("cook-mode-myRecipes", in: app).tap()
+        openCookWithPip(app, timeout: timeout)
+        let myRecipes = element("cook-mode-myRecipes", in: app)
+        XCTAssertTrue(myRecipes.waitForExistence(timeout: timeout))
+        myRecipes.tap()
         let recipe = element("recipe-card-305", in: app)
-        XCTAssertTrue(recipe.waitForExistence(timeout: 10))
+        XCTAssertTrue(recipe.waitForExistence(timeout: timeout))
         XCTAssertTrue(recipe.label.contains("Test Recipe: Ginataang Kangkong"))
         recipe.tap()
-        XCTAssertTrue(element("recipe-detail-title", in: app).waitForExistence(timeout: 10))
+        XCTAssertTrue(element("recipe-detail-title", in: app).waitForExistence(timeout: timeout))
         let previewLink = element("recipe-shopping-preview-link", in: app)
+        XCTAssertTrue(previewLink.waitForExistence(timeout: timeout))
         scrollTo(previewLink, in: app)
         previewLink.tap()
         let ready = element("recipe-shopping-safety-status", in: app)
