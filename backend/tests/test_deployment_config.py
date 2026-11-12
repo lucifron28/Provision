@@ -25,11 +25,11 @@ def test_render_container_uses_port_and_ignores_untrusted_forwarded_headers():
     assert "--forwarded-allow-ips=*" not in shell_command
 
 
-def test_render_free_staging_blueprint_configures_graceful_shutdown_delay():
+def test_render_free_staging_blueprint_omits_unsupported_shutdown_override():
     blueprint = (REPOSITORY_ROOT / "render.yaml").read_text(encoding="utf-8")
 
     assert "plan: free" in blueprint
-    assert "maxShutdownDelaySeconds: 60" in blueprint
+    assert "maxShutdownDelaySeconds" not in blueprint
 
 
 def settings_for(**values) -> Settings:
