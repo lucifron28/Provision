@@ -171,6 +171,30 @@ def api_smoke() -> None:
         }
         product_name = f"Synthetic pantry item {run_id}"
         try:
+            recommendations = _request(
+                client,
+                "POST",
+                "/recipes/recommendations",
+                headers=first_headers,
+                json={"mode": "all", "priority": "pantry_first"},
+            ).json()
+            if recommendations.get("provider_enabled") is not False:
+                raise RuntimeError("Cook with Pip recommendations unexpectedly enabled a provider")
+
+            safety = _request(
+                client,
+                "POST",
+                "/food-safety/evaluate",
+                headers=first_headers,
+                json={
+                    "recipe_servings": "1",
+                    "servings": "1",
+                    "requirements": [{"display_name": "milk", "amount": "1", "unit": "cup"}],
+                },
+            ).json()
+            if safety.get("decision") != "review_required":
+                raise RuntimeError("Food safety did not require review when allergy information was absent")
+
             created = _request(
                 client,
                 "POST",
@@ -239,8 +263,8 @@ def api_smoke() -> None:
             _cleanup_account(client, second_email, second_password)
 
     print(
-        "Staging API smoke passed: registration/login, household authorization, product create/edit/read/delete, "
-        "and exact shopping quantity persistence."
+        "Staging API smoke passed: registration/login, household authorization, provider-disabled Cook with Pip "
+        "recommendations, default allergy review, product create/edit/read/delete, and exact shopping quantity persistence."
     )
 
 
