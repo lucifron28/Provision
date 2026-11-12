@@ -57,7 +57,7 @@ jobs:
             exit 1
           }
           actual="$(git rev-parse HEAD)"
-          expected="${PROVISION_EXPECTED_RENDER_COMMIT,,}"
+          expected="$(printf '%s' "$PROVISION_EXPECTED_RENDER_COMMIT" | tr '[:upper:]' '[:lower:]')"
           [[ "$actual" == "$expected" ]] || {
             echo "Checked out $actual, expected $expected." >&2
             exit 1
@@ -97,7 +97,7 @@ jobs:
         run: uv run --no-sync python scripts/staging_live_deepseek_smoke.py
 
       - name: Remove the run-owned synthetic household
-        if: always()
+        if: always() && steps.staging-fixture.outcome != 'skipped'
         working-directory: backend
         env:
           PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}

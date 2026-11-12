@@ -22,15 +22,34 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
         ("live-deepseek-smoke.yml", "Remove the run-owned synthetic household"),
     ],
 )
-def test_workflow_cleanup_runs_after_partial_fixture_creation(workflow, cleanup_step):
-    lines = (REPOSITORY_ROOT / ".github" / "workflows" / workflow).read_text(
+def test_workflow_cleanup_runs_after_attempted_fixture_creation(workflow, cleanup_step):
+    workflow_text = (REPOSITORY_ROOT / ".github" / "workflows" / workflow).read_text(
         encoding="utf-8"
-    ).splitlines()
+    )
+    lines = workflow_text.splitlines()
     step_index = next(
         index for index, line in enumerate(lines) if line.strip() == f"- name: {cleanup_step}"
     )
 
-    assert lines[step_index + 1].strip() == "if: always()"
+    fixture_step_index = next(
+        index for index, line in enumerate(lines) if line.strip() == "id: staging-fixture"
+    )
+
+    assert fixture_step_index < step_index
+    assert (
+        lines[step_index + 1].strip()
+        == "if: always() && steps.staging-fixture.outcome != 'skipped'"
+    )
+
+
+@pytest.mark.parametrize("workflow", ["staging-e2e.yml", "live-deepseek-smoke.yml"])
+def test_workflow_revision_check_uses_bash_3_2_compatible_case_normalization(workflow):
+    workflow_text = (
+        REPOSITORY_ROOT / ".github" / "workflows" / workflow
+    ).read_text(encoding="utf-8")
+
+    assert "tr '[:upper:]' '[:lower:]'" in workflow_text
+    assert "${PROVISION_EXPECTED_RENDER_COMMIT,,}" not in workflow_text
 
 
 def test_staging_workflow_runs_authenticated_and_offline_recovery_ui_smokes():
