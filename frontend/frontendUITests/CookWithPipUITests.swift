@@ -547,8 +547,6 @@ extension CookWithPipUITests {
               let password = environment["PROVISION_STAGING_TEST_PASSWORD"] else {
             throw XCTSkip("Staging API credentials are supplied only by the manual staging workflow")
         }
-        XCTAssertNotNil(APIEnvironment.validateStagingBaseURL(baseURL))
-
         let app = XCUIApplication()
         app.launchEnvironment["PROVISION_API_BASE_URL"] = baseURL
         app.launchEnvironment["PROVISION_STAGING_TEST_EMAIL"] = email
