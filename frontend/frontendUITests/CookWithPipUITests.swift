@@ -552,10 +552,12 @@ final class CookWithPipUITests: XCTestCase {
         openShoppingPreview(app)
         let confirm = app.navigationBars.buttons["recipe-shopping-confirm"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 10))
-        XCTAssertTrue(confirm.isHittable, "The shopping confirmation action stays in the navigation toolbar")
+        XCTAssertTrue(confirm.isEnabled,
+                      "An eligible current preview with selected lines enables explicit confirmation")
         confirm.tap()
-        let confirmAction = element("recipe-shopping-confirm-action", in: app)
+        let confirmAction = app.buttons["recipe-shopping-confirm-action"]
         XCTAssertTrue(confirmAction.waitForExistence(timeout: 10))
+        XCTAssertTrue(confirmAction.isHittable, "The explicit confirmation choice is available after tapping Confirm")
         confirmAction.tap()
 
         let pendingStatus = element("recipe-shopping-pending-status", in: app)
@@ -835,7 +837,8 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [loadExpectation], timeout: timeout), .completed)
         if settings.exists {
             XCTAssertTrue(ready.waitForExistence(timeout: 10))
-            scrollTo(ready, in: app)
+            let reviewForm = element("recipe-shopping-review-form", in: app)
+            scrollTargetIntoView(ready, inside: reviewForm, in: app)
         }
     }
 
