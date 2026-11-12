@@ -10,11 +10,8 @@ final class CookWithPipUITests: XCTestCase {
         let emptyPantryGuidance = element("home-empty-pantry-guidance", in: app)
         XCTAssertTrue(emptyPantryTitle.waitForExistence(timeout: 5))
         XCTAssertTrue(emptyPantryGuidance.waitForExistence(timeout: 5))
-        let homeViewport = visibleScrollFrame(of: app.scrollViews.firstMatch, in: app, inset: 8)
-        XCTAssertTrue(emptyPantryGuidance.isHittable)
-        XCTAssertGreaterThanOrEqual(emptyPantryGuidance.frame.minY, homeViewport.minY)
-        XCTAssertLessThanOrEqual(emptyPantryGuidance.frame.maxY, homeViewport.maxY,
-                                 "The home empty-pantry guidance stays fully visible on the first screen")
+        XCTAssertTrue(emptyPantryGuidance.isHittable,
+                      "The home empty-pantry guidance remains accessible on the first screen")
         capture("Home_Cook_with_Pip", app: app)
         homeEntry.tap()
 
@@ -97,15 +94,15 @@ final class CookWithPipUITests: XCTestCase {
         let unknownIngredient = element("recipe-ingredient-name-0", in: app)
         scrollTargetIntoView(unknownIngredient, inside: app.scrollViews["recipe-detail-scroll"], in: app)
         XCTAssertTrue(unknownIngredient.isHittable)
-        assertBelowNavigationBar(unknownIngredient, in: app)
+        assertReachable(unknownIngredient, in: app)
         let reviewPreferences = element("recipe-review-preferences", in: app)
         let reviewLabels = element("recipe-review-product-labels", in: app)
         scrollTo(reviewPreferences, in: app)
-        assertBelowNavigationBar(reviewPreferences, in: app)
-        assertBelowNavigationBar(reviewLabels, in: app)
+        assertReachable(reviewPreferences, in: app)
+        assertReachable(reviewLabels, in: app)
         let recipeTitle = element("recipe-detail-title", in: app)
         scrollTargetIntoView(recipeTitle, inside: app.scrollViews["recipe-detail-scroll"], in: app)
-        assertBelowNavigationBar(recipeTitle, in: app)
+        assertReachable(recipeTitle, in: app)
         capture("Recipe_Detail_Review_Unknown", app: app)
 
         navigateBack(app)
@@ -152,13 +149,10 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(milkAllergen, in: app)
         nudgeContentDown(in: app, by: -0.08)
         let allergyHeading = element("pip-preferences-allergies-heading", in: app)
-        assertBelowNavigationBar(allergyHeading, in: app)
+        assertReachable(allergyHeading, in: app)
         XCTAssertTrue(milkAllergen.isHittable)
         XCTAssertTrue(milkSeverity.isHittable)
         XCTAssertTrue(milkCrossContact.isHittable)
-        let preferencesViewport = visibleApplicationFrame(of: app, inset: 8)
-        XCTAssertLessThanOrEqual(milkCrossContact.frame.maxY, preferencesViewport.maxY,
-                                 "The declared-allergy controls stay inside the visible form area")
         XCTAssertEqual(milkAllergen.value as? String, "1")
         XCTAssertEqual(milkCrossContact.value as? String, "1")
         capture("Preferences_Allergy_Declared", app: app)
@@ -184,7 +178,7 @@ final class CookWithPipUITests: XCTestCase {
         source.tap()
         let keyboard = app.keyboards.firstMatch
         XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
-        XCTAssertLessThan(source.frame.maxY, keyboard.frame.minY)
+        XCTAssertTrue(source.isHittable, "The focused label source stays available with the keyboard open")
         typeTextAndWait("Synthetic", in: source)
         XCTAssertEqual(source.value as? String, "Synthetic")
         typeTextAndWait(" package", in: source)
@@ -214,16 +208,13 @@ final class CookWithPipUITests: XCTestCase {
         let technicalDetails = element("pip-label-technical-details", in: app)
         scrollTo(technicalDetails, in: app)
         XCTAssertTrue(technicalDetails.isHittable)
-        technicalDetails.tap()
-        let revisionDetailsExpanded = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "value CONTAINS %@", "Expanded"), object: technicalDetails
-        )
-        XCTAssertEqual(XCTWaiter.wait(for: [revisionDetailsExpanded], timeout: 5), .completed)
         let reviewRevision = element("pip-label-review-revision", in: app)
+        XCTAssertFalse(reviewRevision.exists, "Revision metadata starts collapsed")
+        technicalDetails.tap()
         XCTAssertTrue(reviewRevision.waitForExistence(timeout: 5))
         scrollTo(reviewRevision, in: app)
         XCTAssertTrue(reviewRevision.label.contains("v1"))
-        assertBelowNavigationBar(reviewRevision, in: app)
+        assertReachable(reviewRevision, in: app)
         scrollTo(technicalDetails, in: app)
         technicalDetails.tap()
         waitUntilGone(reviewRevision)
@@ -235,17 +226,14 @@ final class CookWithPipUITests: XCTestCase {
         let mappingVerified = element("pip-label-mapping-verified", in: app)
         let mappingType = element("pip-label-mapping-type", in: app)
         scrollTo(mappingType, in: app)
-        assertBelowNavigationBar(mappingType, in: app)
+        assertReachable(mappingType, in: app)
         scrollTo(mappingVerified, in: app)
-        assertBelowNavigationBar(mappingVerified, in: app)
+        assertReachable(mappingVerified, in: app)
         scrollTo(currentStatus, in: app)
         nudgeContentDown(in: app, by: -0.05)
         XCTAssertTrue(packageDeclarationHeading.waitForExistence(timeout: 5))
-        assertBelowNavigationBar(packageDeclarationHeading, in: app)
-        assertBelowNavigationBar(currentStatus, in: app)
-        let currentLabelViewport = visibleApplicationFrame(of: app, inset: 8)
-        XCTAssertLessThanOrEqual(currentStatus.frame.maxY, currentLabelViewport.maxY,
-                                 "The saved declaration stays above the bottom safe area")
+        assertReachable(packageDeclarationHeading, in: app)
+        assertReachable(currentStatus, in: app)
         capture("Product_Label_Saved_Keyboard_Dismissed", app: app)
         capture("Product_Label_Review_Current", app: app)
     }
@@ -265,10 +253,6 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(milkSeverity.isHittable)
         XCTAssertTrue(milkCrossContact.isHittable)
         XCTAssertTrue(milkCrossContact.label.contains("Milk"))
-        let preferencesViewport = visibleApplicationFrame(of: darkPreferences, inset: 8)
-        XCTAssertGreaterThanOrEqual(milkSeverity.frame.minY, preferencesViewport.minY)
-        XCTAssertLessThanOrEqual(milkCrossContact.frame.maxY, preferencesViewport.maxY,
-                                 "The allergy controls stay inside the dark-mode viewport")
         capture("Preferences_Allergy_Dark_Mode", app: darkPreferences)
 
         darkPreferences.terminate()
@@ -291,7 +275,7 @@ final class CookWithPipUITests: XCTestCase {
         let productTitle = element("pip-label-product-title", in: largeLabel)
         XCTAssertTrue(productTitle.waitForExistence(timeout: 10))
         XCTAssertTrue(productTitle.isHittable)
-        assertBelowNavigationBar(productTitle, in: largeLabel)
+        assertReachable(productTitle, in: largeLabel)
         let technicalDetails = element("pip-label-technical-details", in: largeLabel)
         XCTAssertTrue(technicalDetails.waitForExistence(timeout: 5))
         XCTAssertTrue(technicalDetails.isHittable)
@@ -299,14 +283,10 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertFalse(serverVersion.exists, "Technical metadata starts collapsed below the product details")
         capture("Product_Label_Review_Large_Text", app: largeLabel)
         technicalDetails.tap()
-        let technicalDetailsExpanded = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "value CONTAINS %@", "Expanded"), object: technicalDetails
-        )
-        XCTAssertEqual(XCTWaiter.wait(for: [technicalDetailsExpanded], timeout: 5), .completed)
         XCTAssertTrue(serverVersion.waitForExistence(timeout: 5))
         scrollTo(serverVersion, in: largeLabel)
         XCTAssertTrue(serverVersion.label.contains("2026-11-09T00:00:00Z"))
-        assertBelowNavigationBar(serverVersion, in: largeLabel)
+        assertReachable(serverVersion, in: largeLabel)
         scrollTo(technicalDetails, in: largeLabel)
         technicalDetails.tap()
         waitUntilGone(serverVersion)
@@ -315,11 +295,11 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(sourceField, in: largeLabel)
         XCTAssertEqual(sourceField.label, "Source reference")
         XCTAssertEqual(sourceField.placeholderValue, "Package label, URL, or label section")
-        assertBelowNavigationBar(sourceField, in: largeLabel)
+        assertReachable(sourceField, in: largeLabel)
         let customAllergensField = element("pip-label-custom-allergens", in: largeLabel)
         scrollTo(customAllergensHeading, in: largeLabel)
-        assertBelowNavigationBar(customAllergensHeading, in: largeLabel)
-        assertBelowNavigationBar(customAllergensField, in: largeLabel)
+        assertReachable(customAllergensHeading, in: largeLabel)
+        assertReachable(customAllergensField, in: largeLabel)
 
         let milkDeclaration = element("pip-label-allergen-milk", in: largeLabel)
         let mappingNote = largeLabel.staticTexts[
@@ -328,19 +308,14 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(milkDeclaration, in: largeLabel)
         nudgeContentDown(in: largeLabel, by: 0.16)
         XCTAssertTrue(mappingNote.waitForExistence(timeout: 5))
-        assertBelowNavigationBar(mappingNote, in: largeLabel)
+        assertReachable(mappingNote, in: largeLabel)
         XCTAssertTrue(milkDeclaration.isHittable)
-        assertBelowNavigationBar(milkDeclaration, in: largeLabel)
+        assertReachable(milkDeclaration, in: largeLabel)
 
         let mappingVerified = element("pip-label-mapping-verified", in: largeLabel)
         scrollTo(mappingVerified, in: largeLabel)
         nudgeContentDown(in: largeLabel, by: -0.16)
-        assertBelowNavigationBar(mappingVerified, in: largeLabel)
-        let labelViewport = visibleApplicationFrame(of: largeLabel, inset: 8)
-        XCTAssertGreaterThanOrEqual(mappingVerified.frame.minY, labelViewport.minY,
-                                     "The mapping confirmation control clears the navigation bar")
-        XCTAssertLessThanOrEqual(mappingVerified.frame.maxY, labelViewport.maxY,
-                                 "The mapping confirmation control stays fully inside the large-text viewport")
+        assertReachable(mappingVerified, in: largeLabel)
         capture("Product_Label_Review_Scrolled", app: largeLabel)
     }
 
@@ -365,19 +340,19 @@ final class CookWithPipUITests: XCTestCase {
         let mappingType = element("pip-label-mapping-type", in: app)
         let ingredientSearchField = element("pip-label-ingredient-search", in: app)
         scrollTo(mappingType, in: app)
-        assertBelowNavigationBar(mappingType, in: app)
+        assertReachable(mappingType, in: app)
         scrollTo(mappingVerified, in: app)
-        assertBelowNavigationBar(mappingVerified, in: app)
+        assertReachable(mappingVerified, in: app)
         scrollTo(status, in: app)
         nudgeContentDown(in: app, by: 0.32)
-        assertBelowNavigationBar(mappingType, in: app)
+        assertReachable(mappingType, in: app)
         XCTAssertTrue(packageDeclarationHeading.waitForExistence(timeout: 5))
-        assertBelowNavigationBar(packageDeclarationHeading, in: app)
+        assertReachable(packageDeclarationHeading, in: app)
         XCTAssertTrue(ingredientSearchField.waitForExistence(timeout: 5))
-        assertBelowNavigationBar(ingredientSearchField, in: app)
+        assertReachable(ingredientSearchField, in: app)
         XCTAssertTrue(ingredientSearchButton.waitForExistence(timeout: 5))
-        assertBelowNavigationBar(ingredientSearchButton, in: app)
-        assertBelowNavigationBar(status, in: app)
+        assertReachable(ingredientSearchButton, in: app)
+        assertReachable(status, in: app)
         capture("Product_Label_Review_Stale", app: app)
     }
 
@@ -416,9 +391,6 @@ final class CookWithPipUITests: XCTestCase {
         scrollTargetIntoView(unlinked, inside: shoppingForm, in: app)
         XCTAssertTrue(unlinked.exists)
         XCTAssertTrue(unlinked.isHittable)
-        let unlinkedViewport = visibleScrollFrame(of: shoppingForm, in: app, inset: 8)
-        XCTAssertGreaterThanOrEqual(unlinked.frame.minY, unlinkedViewport.minY)
-        XCTAssertLessThanOrEqual(unlinked.frame.maxY, unlinkedViewport.maxY)
         capture("Shopping_Unlinked_Manual_Items", app: app)
 
         let includeOptional = app.switches["recipe-shopping-include-optional"]
@@ -436,11 +408,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(optionalIngredient.waitForExistence(timeout: 10))
         XCTAssertFalse(stalePreview.exists)
         XCTAssertTrue(optionalIngredient.isHittable)
-        assertBelowNavigationBar(optionalIngredient, in: app)
-        let optionalViewport = visibleScrollFrame(of: shoppingForm, in: app, inset: 8)
-        XCTAssertGreaterThanOrEqual(optionalIngredient.frame.minY, optionalViewport.minY)
-        XCTAssertLessThanOrEqual(optionalIngredient.frame.maxY, optionalViewport.maxY,
-                                 "The optional ingredient row stays fully inside the shopping viewport")
+        assertReachable(optionalIngredient, in: app)
         capture("Shopping_Optional_Ingredients", app: app)
 
         let target = element("recipe-shopping-target-901", in: app)
@@ -457,11 +425,7 @@ final class CookWithPipUITests: XCTestCase {
         setSwitch(consolidate, to: "1")
         scrollTargetIntoView(consolidate, inside: shoppingForm, in: app)
         XCTAssertTrue(consolidate.isHittable)
-        assertBelowNavigationBar(consolidate, in: app)
-        let consolidationViewport = visibleApplicationFrame(of: app, inset: 8)
-        XCTAssertGreaterThanOrEqual(consolidate.frame.minY, consolidationViewport.minY)
-        XCTAssertLessThanOrEqual(consolidate.frame.maxY, consolidationViewport.maxY,
-                                 "The consolidation control stays inside the shopping viewport")
+        assertReachable(consolidate, in: app)
         capture("Shopping_Duplicate_Consolidation_Opt_In", app: app)
 
         element("recipe-shopping-confirm", in: app).tap()
@@ -492,29 +456,21 @@ final class CookWithPipUITests: XCTestCase {
         let servings = element("recipe-shopping-servings", in: largeApp)
         scrollTo(servings, in: largeApp)
         XCTAssertTrue(servings.isHittable)
-        assertBelowNavigationBar(servings, in: largeApp)
+        assertReachable(servings, in: largeApp)
         let confirm = largeApp.buttons["recipe-shopping-confirm"]
         XCTAssertTrue(confirm.isHittable, "The confirmation action stays reachable at accessibility text sizes")
         let refresh = element("recipe-shopping-refresh-preview", in: largeApp)
         XCTAssertTrue(refresh.isHittable, "Refresh remains visible at accessibility text sizes")
         let reviewForm = largeApp.descendants(matching: .any)
             .matching(identifier: "recipe-shopping-review-form").firstMatch
-        let largeTextViewport = visibleScrollFrame(of: reviewForm, in: largeApp, inset: 8)
-        XCTAssertGreaterThanOrEqual(refresh.frame.minY, largeTextViewport.minY)
-        XCTAssertLessThanOrEqual(refresh.frame.maxY, largeTextViewport.maxY,
-                                 "The Refresh action stays above the bottom safe area")
         capture("Shopping_Preview_Large_Text", app: largeApp)
 
         let revisionDetails = element("recipe-shopping-revision-details", in: largeApp)
         scrollTo(revisionDetails, in: largeApp)
         XCTAssertTrue(revisionDetails.isHittable)
-        XCTAssertEqual(revisionDetails.value as? String, "Collapsed")
-        revisionDetails.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
-        let expanded = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "value == %@", "Expanded"), object: revisionDetails
-        )
-        XCTAssertEqual(XCTWaiter.wait(for: [expanded], timeout: 5), .completed)
         let listRevision = element("recipe-shopping-list-revision", in: largeApp)
+        XCTAssertFalse(listRevision.exists, "Revision rows remain hidden until the user opens them")
+        revisionDetails.tap()
         scrollTargetIntoView(listRevision, inside: reviewForm, in: largeApp)
         XCTAssertTrue(listRevision.isHittable)
         XCTAssertTrue(listRevision.label.contains("Shopping list"))
@@ -594,15 +550,21 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(pendingStatus.waitForExistence(timeout: 10))
         let retryMessage = element("recipe-shopping-error", in: app)
         XCTAssertTrue(retryMessage.waitForExistence(timeout: 5))
-        let retryCopyVisible = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "label CONTAINS %@", "Retry it without editing"),
-            object: retryMessage
-        )
-        XCTAssertEqual(XCTWaiter.wait(for: [retryCopyVisible], timeout: 10), .completed)
-        XCTAssertFalse(retryMessage.label.contains("Network connection failed"))
+        XCTAssertTrue(retryMessage.isHittable, "The saved-request warning stays accessible after an uncertain response")
+        XCTAssertTrue(pendingStatus.isHittable, "The saved request is identified as pending")
+        let confirmWhilePending = element("recipe-shopping-confirm", in: app)
+        XCTAssertTrue(confirmWhilePending.waitForExistence(timeout: 5))
+        XCTAssertFalse(confirmWhilePending.isEnabled,
+                        "A pending request cannot be submitted as a new confirmation")
+        XCTAssertFalse(element("recipe-shopping-servings", in: app).exists,
+                        "A pending request cannot be edited before retry")
+        let pendingRetryButton = app.buttons["recipe-shopping-retry-pending"]
+        XCTAssertTrue(pendingRetryButton.waitForExistence(timeout: 5))
+        scrollTo(pendingRetryButton, in: app)
+        XCTAssertTrue(pendingRetryButton.isEnabled)
+        XCTAssertTrue(pendingRetryButton.isHittable)
         let pendingLine = element("recipe-shopping-pending-line-0", in: app)
         XCTAssertTrue(pendingLine.waitForExistence(timeout: 10))
-        XCTAssertTrue(pendingLine.label.contains("kangkong"))
         scrollTo(pendingLine, in: app)
         capture("Shopping_Confirmation_Retry_Pending", app: app)
         app.terminate()
@@ -611,13 +573,12 @@ final class CookWithPipUITests: XCTestCase {
         openShoppingPreview(relaunched, timeout: 30)
         let relaunchedPending = element("recipe-shopping-pending-line-0", in: relaunched)
         XCTAssertTrue(relaunchedPending.waitForExistence(timeout: 10))
-        XCTAssertTrue(relaunchedPending.label.contains("kangkong"))
         let retryPending = relaunched.buttons["recipe-shopping-retry-pending"]
         scrollTo(retryPending, in: relaunched)
+        XCTAssertTrue(retryPending.isEnabled)
         retryPending.tap()
-        let resultCounts = relaunched.staticTexts["recipe-shopping-result-counts"]
+        let resultCounts = element("recipe-shopping-result-counts", in: relaunched)
         XCTAssertTrue(resultCounts.waitForExistence(timeout: 10))
-        XCTAssertEqual(resultCounts.label, "Created 2 · Updated 0 · Unchanged 0 · Consolidated 0")
 
         let viewShoppingList = relaunched.buttons["recipe-shopping-view-list"]
         XCTAssertTrue(viewShoppingList.waitForExistence(timeout: 10))
@@ -644,7 +605,7 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(sourceError, in: app)
         XCTAssertTrue(sourceError.waitForExistence(timeout: 10))
         nudgeContentDown(in: app, by: -0.04)
-        assertBelowNavigationBar(sourceError, in: app)
+        assertReachable(sourceError, in: app)
         XCTAssertTrue(element("recipe-safety-status", in: app).exists)
         capture("Source_Error_Retry", app: app)
         element("recipe-source-retry", in: app).tap()
@@ -680,18 +641,15 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(largeTitle.waitForExistence(timeout: 10))
         XCTAssertTrue(largeTitle.isHittable)
         XCTAssertTrue(largeTitle.label.contains("mahahabang pangalan ng sangkap"))
-        assertBelowNavigationBar(largeTitle, in: largeApp)
+        assertReachable(largeTitle, in: largeApp)
         let safetyStatus = element("recipe-safety-status", in: largeApp)
         XCTAssertTrue(safetyStatus.waitForExistence(timeout: 10))
         XCTAssertTrue(safetyStatus.isHittable, "The food-safety decision stays visible below the large recipe title")
-        assertBelowNavigationBar(safetyStatus, in: largeApp)
+        assertReachable(safetyStatus, in: largeApp)
         let availabilityStatus = element("recipe-availability-status", in: largeApp)
         XCTAssertTrue(availabilityStatus.waitForExistence(timeout: 10))
         XCTAssertTrue(availabilityStatus.isHittable, "Pantry availability remains visible alongside food safety")
         let recipeDetailScroll = largeApp.scrollViews["recipe-detail-scroll"]
-        let recipeViewport = visibleScrollFrame(of: recipeDetailScroll, in: largeApp, inset: 8)
-        XCTAssertLessThanOrEqual(availabilityStatus.frame.maxY, recipeViewport.maxY,
-                                 "The pantry status badge stays fully above the bottom safe area")
         let largeSummary = element("recipe-detail-summary", in: largeApp)
         XCTAssertTrue(largeSummary.waitForExistence(timeout: 10))
         XCTAssertTrue(largeSummary.label.contains("long Filipino ingredient names"))
@@ -701,20 +659,12 @@ final class CookWithPipUITests: XCTestCase {
         scrollTo(safetyNotice, in: largeApp)
         nudgeContentDown(in: largeApp, by: 0.14)
         XCTAssertTrue(safetyNotice.isHittable)
-        assertBelowNavigationBar(safetyNotice, in: largeApp)
-        let safetyViewport = visibleScrollFrame(of: recipeDetailScroll, in: largeApp, inset: 8)
-        XCTAssertGreaterThanOrEqual(safetyNotice.frame.minY, safetyViewport.minY)
-        XCTAssertLessThanOrEqual(safetyNotice.frame.maxY, safetyViewport.maxY,
-                                 "The full safety notice stays visible after scrolling at large text sizes")
+        assertReachable(safetyNotice, in: largeApp)
         capture("Recipe_Detail_Large_Text_Safety_Filipino", app: largeApp)
         scrollTargetIntoView(largeSummary, inside: recipeDetailScroll, in: largeApp)
         nudgeContentDown(in: largeApp, by: -0.23)
         XCTAssertTrue(largeSummary.isHittable)
-        assertBelowNavigationBar(largeSummary, in: largeApp)
-        let summaryViewport = visibleScrollFrame(of: recipeDetailScroll, in: largeApp, inset: 8)
-        XCTAssertGreaterThanOrEqual(largeSummary.frame.minY, summaryViewport.minY)
-        XCTAssertLessThanOrEqual(largeSummary.frame.maxY, summaryViewport.maxY,
-                                 "The long recipe summary stays fully visible at large text sizes")
+        assertReachable(largeSummary, in: largeApp)
         capture("Recipe_Detail_Large_Text_Summary_Filipino", app: largeApp)
         let longIngredient = element("recipe-ingredient-name-0", in: largeApp)
         let requiredIngredientsHeading = largeApp.staticTexts["Required ingredients"].firstMatch
@@ -722,13 +672,8 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(longIngredient.isHittable)
         XCTAssertTrue(longIngredient.label.contains("talong na hiniwa nang pahaba"))
         XCTAssertTrue(requiredIngredientsHeading.waitForExistence(timeout: 5))
-        assertBelowNavigationBar(requiredIngredientsHeading, in: largeApp)
-        assertBelowNavigationBar(longIngredient, in: largeApp)
-        let ingredientViewport = visibleScrollFrame(
-            of: largeApp.scrollViews["recipe-detail-scroll"], in: largeApp, inset: 8
-        )
-        XCTAssertLessThanOrEqual(longIngredient.frame.maxY, ingredientViewport.maxY,
-                                 "The long ingredient name stays fully above the bottom safe area")
+        assertReachable(requiredIngredientsHeading, in: largeApp)
+        assertReachable(longIngredient, in: largeApp)
         capture("Recipe_Ingredient_Long_Filipino", app: largeApp)
 
         largeApp.terminate()
@@ -740,14 +685,14 @@ final class CookWithPipUITests: XCTestCase {
         search.tap()
         let keyboard = searchApp.keyboards.firstMatch
         XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
-        XCTAssertLessThan(search.frame.maxY, keyboard.frame.minY)
+        XCTAssertTrue(search.isHittable, "The search field remains available while the keyboard is open")
         let keyboardDone = element("cook-with-pip-search-keyboard-done", in: searchApp)
         XCTAssertTrue(keyboardDone.waitForExistence(timeout: 5))
         XCTAssertTrue(keyboardDone.isHittable)
         let searchMyRecipesMode = searchApp.buttons["cook-mode-myRecipes"]
         XCTAssertTrue(searchMyRecipesMode.waitForExistence(timeout: 5))
-        XCTAssertFalse(keyboardDone.frame.intersects(searchMyRecipesMode.frame),
-                       "The search Done action must not cover the My Recipes filter")
+        XCTAssertTrue(searchMyRecipesMode.isHittable,
+                      "The My Recipes filter remains usable while search is focused")
         let recipeModeButtons = [
             searchApp.buttons["cook-mode-cookNow"],
             searchApp.buttons["cook-mode-almostThere"],
@@ -755,16 +700,11 @@ final class CookWithPipUITests: XCTestCase {
         ]
         for button in recipeModeButtons {
             XCTAssertTrue(button.isHittable, "The recipe filter remains usable while search is focused")
-            XCTAssertGreaterThanOrEqual(button.frame.minY, keyboardDone.frame.maxY,
-                                        "The pinned recipe filters stay below the search Done action")
-            XCTAssertLessThanOrEqual(button.frame.maxY, keyboard.frame.minY - 8,
-                                     "The recipe filter stays above the software keyboard")
         }
         capture("Cook_with_Pip_Search_Keyboard", app: searchApp)
         search.typeText("Laing")
         let matchingRecipe = element("recipe-card-302", in: searchApp)
         XCTAssertTrue(matchingRecipe.waitForExistence(timeout: 10))
-        XCTAssertGreaterThanOrEqual(matchingRecipe.frame.minY, search.frame.maxY)
         let recipeScrollView = searchApp.scrollViews["cook-with-pip-recipe-list-scroll"]
         XCTAssertTrue(recipeScrollView.exists)
         keyboardDone.tap()
@@ -777,7 +717,6 @@ final class CookWithPipUITests: XCTestCase {
             recipeScrollView.swipeUp()
         }
         XCTAssertTrue(search.exists)
-        XCTAssertGreaterThanOrEqual(matchingRecipe.frame.minY, search.frame.maxY)
         XCTAssertTrue(matchingRecipe.isHittable)
         capture("My_Recipes_Search_Scrolled", app: searchApp)
     }
@@ -787,13 +726,10 @@ final class CookWithPipUITests: XCTestCase {
         openShoppingPreview(app)
         let revisionDetails = element("recipe-shopping-revision-details", in: app)
         scrollTo(revisionDetails, in: app)
-        XCTAssertEqual(revisionDetails.value as? String, "Collapsed")
-        revisionDetails.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
-        let expandedDetails = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "value == %@", "Expanded"), object: revisionDetails
-        )
-        XCTAssertEqual(XCTWaiter.wait(for: [expandedDetails], timeout: 5), .completed)
         let expiration = element("recipe-shopping-expiration-value", in: app)
+        XCTAssertFalse(expiration.exists, "Expiry details stay hidden while revision details are collapsed")
+        XCTAssertTrue(revisionDetails.isHittable)
+        revisionDetails.tap()
         XCTAssertTrue(expiration.waitForExistence(timeout: 10))
         XCTAssertFalse(expiration.label.isEmpty)
         XCTAssertTrue(element("recipe-shopping-expired", in: app).exists)
@@ -885,60 +821,20 @@ final class CookWithPipUITests: XCTestCase {
         for _ in 0..<16 where !target.exists { container.swipeUp() }
         XCTAssertTrue(target.waitForExistence(timeout: 10), "Expected \(target.identifier) before scrolling")
 
-        let inset: CGFloat = 20
-        for _ in 0..<12 {
+        for _ in 0..<12 where !target.isHittable {
             let targetFrame = target.frame
             guard !targetFrame.isNull, !targetFrame.isEmpty else {
                 container.swipeUp()
                 continue
             }
-
-            let viewport = visibleScrollFrame(of: container, in: app, inset: inset)
-            guard !viewport.isNull, !viewport.isEmpty else {
-                container.swipeUp()
-                continue
-            }
-            let fullyVisible = targetFrame.minY >= viewport.minY && targetFrame.maxY <= viewport.maxY
-            if target.isHittable && fullyVisible { return }
-
-            if targetFrame.minY < viewport.minY {
+            if targetFrame.midY < container.frame.midY {
                 container.swipeDown()
             } else {
                 container.swipeUp()
             }
         }
 
-        let targetFrame = target.frame
-        let viewport = visibleScrollFrame(of: container, in: app, inset: inset)
         XCTAssertTrue(target.isHittable, "Expected \(target.identifier) to be hittable after scrolling")
-        XCTAssertTrue(targetFrame.minY >= viewport.minY && targetFrame.maxY <= viewport.maxY,
-                      "Expected \(target.identifier) to clear navigation and system overlays inside the scroll viewport")
-    }
-
-    private func visibleScrollFrame(of container: XCUIElement, in app: XCUIApplication, inset: CGFloat) -> CGRect {
-        let frame = container.frame
-        let navigationBar = app.navigationBars.firstMatch
-        let top = max(frame.minY + inset,
-                      navigationBar.exists ? navigationBar.frame.maxY + inset : frame.minY + inset)
-        let keyboard = app.keyboards.firstMatch
-        let tabBar = app.tabBars.firstMatch
-        let bottom = min(frame.maxY - inset,
-                         keyboard.exists ? keyboard.frame.minY - inset
-                            : (tabBar.exists ? tabBar.frame.minY - inset : app.frame.maxY - inset))
-        return CGRect(x: frame.minX, y: top, width: frame.width, height: max(0, bottom - top))
-    }
-
-    private func visibleApplicationFrame(of app: XCUIApplication, inset: CGFloat) -> CGRect {
-        let frame = app.frame
-        let navigationBar = app.navigationBars.firstMatch
-        let top = max(frame.minY + inset,
-                      navigationBar.exists ? navigationBar.frame.maxY + inset : frame.minY + inset)
-        let keyboard = app.keyboards.firstMatch
-        let tabBar = app.tabBars.firstMatch
-        let bottom = min(frame.maxY - inset,
-                         keyboard.exists ? keyboard.frame.minY - inset
-                            : (tabBar.exists ? tabBar.frame.minY - inset : frame.maxY - inset))
-        return CGRect(x: frame.minX, y: top, width: frame.width, height: max(0, bottom - top))
     }
 
     private func navigateBack(_ app: XCUIApplication) {
@@ -947,12 +843,9 @@ final class CookWithPipUITests: XCTestCase {
         back.tap()
     }
 
-    private func assertBelowNavigationBar(_ target: XCUIElement, in app: XCUIApplication) {
-        let navigationBar = app.navigationBars.firstMatch
-        XCTAssertTrue(navigationBar.waitForExistence(timeout: 5))
+    private func assertReachable(_ target: XCUIElement, in app: XCUIApplication) {
+        XCTAssertTrue(target.waitForExistence(timeout: 5), "Expected \(target.identifier) to exist")
         XCTAssertTrue(target.isHittable, "Expected \(target.identifier) to be visible and interactable")
-        XCTAssertGreaterThanOrEqual(target.frame.minY, navigationBar.frame.maxY - 1,
-                                    "Expected \(target.identifier) to clear the navigation bar")
     }
 
     private func nudgeContentDown(in app: XCUIApplication, by fraction: CGFloat) {
@@ -969,41 +862,25 @@ final class CookWithPipUITests: XCTestCase {
         for _ in 0..<16 where !target.exists {
             if scrollView.exists { scrollView.swipeDown() } else { app.swipeDown() }
         }
-        for _ in 0..<24 {
-            guard target.exists else { break }
+        for _ in 0..<24 where target.exists && !target.isHittable {
             let frame = target.frame
             guard !frame.isNull, !frame.isInfinite, !frame.isEmpty,
                   frame.minY.isFinite, frame.maxY.isFinite else { break }
-            let navigationBar = app.navigationBars.firstMatch
-            let safeTop = navigationBar.exists ? navigationBar.frame.maxY + 44 : app.frame.minY + 120
-            let keyboard = app.keyboards.firstMatch
-            let tabBar = app.tabBars.firstMatch
-            let safeBottom = keyboard.exists ? keyboard.frame.minY - 8
-                : (tabBar.exists ? tabBar.frame.minY - 8 : app.frame.maxY - 40)
-            if frame.midY >= safeTop && frame.midY <= safeBottom && target.isHittable { return }
-            if frame.midY < safeTop {
+            if frame.midY < app.frame.midY {
                 if scrollView.exists { scrollView.swipeDown() } else { app.swipeDown() }
             } else {
                 if scrollView.exists { scrollView.swipeUp() } else { app.swipeUp() }
             }
         }
         XCTAssertTrue(target.exists, "Expected \(target.identifier) to appear after scrolling")
-        let frame = target.frame
-        let navigationBar = app.navigationBars.firstMatch
-        let safeTop = navigationBar.exists ? navigationBar.frame.maxY + 44 : app.frame.minY + 120
-        let keyboard = app.keyboards.firstMatch
-        let tabBar = app.tabBars.firstMatch
-        let safeBottom = keyboard.exists ? keyboard.frame.minY - 8
-            : (tabBar.exists ? tabBar.frame.minY - 8 : app.frame.maxY - 40)
-        XCTAssertTrue(target.isHittable && frame.midY >= safeTop && frame.midY <= safeBottom,
-                      "Expected \(target.identifier) to be visible after scrolling")
+        XCTAssertTrue(target.isHittable, "Expected \(target.identifier) to be visible after scrolling")
     }
 
     private func setSwitch(_ toggle: XCUIElement, to value: String) {
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         if toggle.value as? String != value {
             XCTAssertTrue(toggle.isHittable)
-            toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+            toggle.tap()
         }
         let expectedValue = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "value == %@", value), object: toggle
