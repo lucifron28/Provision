@@ -4,7 +4,6 @@ services:
     runtime: docker
     plan: free
     region: singapore
-    branch: main
     dockerfilePath: ./Dockerfile
     dockerContext: .
     autoDeployTrigger: off
@@ -19,11 +18,11 @@ services:
       - key: MIGRATION_DATABASE_URL
         sync: false
       - key: JWT_SECRET_KEY
-        sync: false
+        generateValue: true
       - key: STAGING_TEST_FIXTURES_ENABLED
         value: "false"
       - key: STAGING_TEST_FIXTURE_TOKEN
-        sync: false
+        generateValue: true
       - key: DEEPSEEK_ENABLED
         value: "false"
       - key: DEEPSEEK_REQUESTS_PER_MINUTE

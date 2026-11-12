@@ -32,6 +32,22 @@ def test_render_free_staging_blueprint_omits_unsupported_shutdown_override():
     assert "maxShutdownDelaySeconds" not in blueprint
 
 
+def test_render_staging_service_uses_blueprint_branch_for_root_dockerfile():
+    blueprint = (REPOSITORY_ROOT / "render.yaml").read_text(encoding="utf-8")
+
+    assert "branch: main" not in blueprint
+    assert "dockerfilePath: ./Dockerfile" in blueprint
+
+
+def test_render_staging_generates_app_secrets_and_keeps_neon_urls_manual():
+    blueprint = (REPOSITORY_ROOT / "render.yaml").read_text(encoding="utf-8")
+
+    assert "- key: DATABASE_URL\n        sync: false" in blueprint
+    assert "- key: MIGRATION_DATABASE_URL\n        sync: false" in blueprint
+    assert "- key: JWT_SECRET_KEY\n        generateValue: true" in blueprint
+    assert "- key: STAGING_TEST_FIXTURE_TOKEN\n        generateValue: true" in blueprint
+
+
 def settings_for(**values) -> Settings:
     values.setdefault("JWT_SECRET_KEY", "development-test-secret")
     return Settings(_env_file=None, **values)
