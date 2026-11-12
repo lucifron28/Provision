@@ -684,7 +684,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(safetyNotice.waitForExistence(timeout: 5))
         capture("Recipe_Detail_Large_Text_Filipino", app: largeApp)
         scrollTo(safetyNotice, in: largeApp)
-        nudgeContentDown(in: largeApp, by: 0.04)
+        nudgeContentDown(in: largeApp, by: 0.07)
         XCTAssertTrue(safetyNotice.isHittable)
         assertBelowNavigationBar(safetyNotice, in: largeApp)
         let safetyViewport = visibleScrollFrame(of: recipeDetailScroll, in: largeApp, inset: 8)
@@ -702,11 +702,10 @@ final class CookWithPipUITests: XCTestCase {
                                  "The long recipe summary stays fully visible at large text sizes")
         capture("Recipe_Detail_Large_Text_Summary_Filipino", app: largeApp)
         let longIngredient = element("recipe-ingredient-name-0", in: largeApp)
-        scrollTargetIntoView(longIngredient, inside: largeApp.scrollViews["recipe-detail-scroll"], in: largeApp)
-        nudgeContentDown(in: largeApp, by: -0.15)
+        let requiredIngredientsHeading = largeApp.staticTexts["Required ingredients"].firstMatch
+        scrollTargetIntoView(requiredIngredientsHeading, inside: recipeDetailScroll, in: largeApp)
         XCTAssertTrue(longIngredient.isHittable)
         XCTAssertTrue(longIngredient.label.contains("talong na hiniwa nang pahaba"))
-        let requiredIngredientsHeading = largeApp.staticTexts["Required ingredients"].firstMatch
         XCTAssertTrue(requiredIngredientsHeading.waitForExistence(timeout: 5))
         assertBelowNavigationBar(requiredIngredientsHeading, in: largeApp)
         assertBelowNavigationBar(longIngredient, in: largeApp)
