@@ -30,6 +30,9 @@ jobs:
           -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
           -only-testing:frontendTests
           -only-testing:frontendUITests/CookWithPipUITests/testHomeNavigationAndCaptureRecipeScreens
+          -only-testing:frontendUITests/CookWithPipUITests/testSafetyAndAvailabilityStatesWithLongFilipinoNames
+          -only-testing:frontendUITests/CookWithPipUITests/testPreferencesAndPackageLabelReviewScreens
+          -only-testing:frontendUITests/CookWithPipUITests/testFormsStayReadableInDarkModeAndLargeText
           -only-testing:frontendUITests/CookWithPipUITests/testShoppingReviewRequiredAndBlockedStates
           -only-testing:frontendUITests/CookWithPipUITests/testShoppingOfflineRetryAndStalePreviewRecovery
           -only-testing:frontendUITests/CookWithPipUITests/testAmbiguousShoppingConfirmationSurvivesAppRelaunch

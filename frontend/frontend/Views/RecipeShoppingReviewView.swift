@@ -11,6 +11,7 @@ public struct RecipeShoppingReviewView: View {
     private let onNavigateToShopping: () -> Void
     private let hasAppliedSubstitutions: Bool
     @State private var showingConfirmation = false
+    @State private var showingRevisionDetails = false
     @FocusState private var focusedField: QuantityField?
 
     public init(recipe: HouseholdRecipe, scope: HouseholdScope,
@@ -34,6 +35,8 @@ public struct RecipeShoppingReviewView: View {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(ProvisionTheme.redAlert)
                         .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(error)
                         .accessibilityIdentifier("recipe-shopping-error")
                 }
             }
@@ -76,7 +79,7 @@ public struct RecipeShoppingReviewView: View {
                 }
             } else {
                 Section {
-                    Text("No current preview is available. Load one from the server before confirming any changes.")
+                    Text("No current preview is available. Load one before confirming any changes.")
                         .foregroundStyle(ProvisionTheme.textSecondary)
                     Button("Load fresh preview") { Task { await viewModel.refreshPreview() } }
                         .accessibilityIdentifier("recipe-shopping-load-preview")
@@ -85,6 +88,7 @@ public struct RecipeShoppingReviewView: View {
 
         }
         .scrollContentBackground(.hidden)
+        .accessibilityIdentifier("recipe-shopping-review-form")
         .background(ProvisionTheme.background)
         .navigationTitle("Shopping Preview")
         .navigationBarTitleDisplayMode(.inline)
@@ -115,12 +119,20 @@ public struct RecipeShoppingReviewView: View {
     @ViewBuilder
     private func previewControls(_ preview: RecipeShoppingPreview) -> some View {
         Section("Preview settings") {
-            LabeledContent("Servings (people)") {
-                TextField("Number of people", text: $viewModel.servingsText)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Servings (people)")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                TextField("Number of people", text: $viewModel.servingsText,
+                          prompt: Text("Number of people").foregroundStyle(ProvisionTheme.textSecondary))
                     .keyboardType(.decimalPad)
                     .focused($focusedField, equals: .servings)
+                    .accessibilityLabel("Servings (people)")
                     .accessibilityIdentifier("recipe-shopping-servings")
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 4)
             Toggle("Include optional ingredients", isOn: $viewModel.includeOptional)
                 .accessibilityIdentifier("recipe-shopping-include-optional")
             if !viewModel.isPreviewCurrent {
@@ -129,15 +141,25 @@ public struct RecipeShoppingReviewView: View {
                     .foregroundStyle(ProvisionTheme.amberWarning)
                     .accessibilityIdentifier("recipe-shopping-stale-preview")
             }
-            LabeledContent("Shopping-list revision", value: String(preview.shopping_revision))
-            LabeledContent("Pantry revision", value: String(preview.inventory_revision))
-            if let expirationDate = viewModel.expirationDate {
-                LabeledContent("Preview expires", value: expirationDate.formatted(date: .abbreviated, time: .shortened))
-                    .accessibilityIdentifier("recipe-shopping-expiration-value")
-            } else {
-                LabeledContent("Preview expires", value: "Unavailable")
-                    .accessibilityIdentifier("recipe-shopping-expiration-value")
+            DisclosureGroup(isExpanded: $showingRevisionDetails) {
+                revisionDetailRow("Shopping list", value: String(preview.shopping_revision),
+                                  identifier: "recipe-shopping-list-revision")
+                revisionDetailRow("Pantry", value: String(preview.inventory_revision),
+                                  identifier: "recipe-shopping-pantry-revision")
+                if let expirationDate = viewModel.expirationDate {
+                    LabeledContent("Preview expires", value: expirationDate.formatted(date: .abbreviated, time: .shortened))
+                        .accessibilityIdentifier("recipe-shopping-expiration-value")
+                } else {
+                    LabeledContent("Preview expires", value: "Unavailable")
+                        .accessibilityIdentifier("recipe-shopping-expiration-value")
+                }
+            } label: {
+                Text("Revision details")
             }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("recipe-shopping-revision-details")
+            .accessibilityValue(showingRevisionDetails ? "Expanded" : "Collapsed")
+            .accessibilityHint(showingRevisionDetails ? "Hide revision details" : "Show revision details")
             if viewModel.isExpired {
                 Label("This preview has expired. Refresh it before confirming.", systemImage: "clock.badge.exclamationmark")
                     .foregroundStyle(ProvisionTheme.amberWarning)
@@ -160,6 +182,23 @@ public struct RecipeShoppingReviewView: View {
             .disabled(viewModel.isLoading || viewModel.isConfirming || viewModel.pendingRecord != nil)
             .accessibilityIdentifier("recipe-shopping-refresh-preview")
         }
+    }
+
+    @ViewBuilder
+    private func revisionDetailRow(_ title: String, value: String, identifier: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.subheadline)
+                .foregroundStyle(ProvisionTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(value)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(ProvisionTheme.textPrimary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title), revision \(value)")
+        .accessibilityIdentifier(identifier)
     }
 
     private func safetySection(_ preview: RecipeShoppingPreview) -> some View {
@@ -208,6 +247,7 @@ public struct RecipeShoppingReviewView: View {
                                     .font(.headline)
                                     .foregroundStyle(ProvisionTheme.textPrimary)
                                     .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityIdentifier("recipe-shopping-name-\(line.ingredient_id ?? -1)")
                             }
                             .accessibilityIdentifier("recipe-shopping-line-\(id)")
                         } else {
@@ -215,6 +255,7 @@ public struct RecipeShoppingReviewView: View {
                                 .font(.headline)
                                 .foregroundStyle(ProvisionTheme.textPrimary)
                                 .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("recipe-shopping-name-\(line.ingredient_id ?? -1)")
                         }
                     }
                     let isCovered = line.status == "ready" && (line.additional_quantity?.value ?? 0) == 0
@@ -225,12 +266,20 @@ public struct RecipeShoppingReviewView: View {
                     quantitySummary(line)
                     if let id = line.ingredient_id,
                        viewModel.selectedIngredientIDs.contains(id), line.target_quantity != nil {
-                        LabeledContent("Target quantity (\(line.unit ?? "server unit"))") {
-                            TextField("Quantity", text: targetBinding(id))
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Target quantity (\(line.unit ?? "server unit"))")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(ProvisionTheme.textPrimary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            TextField("Quantity", text: targetBinding(id),
+                                      prompt: Text("Quantity").foregroundStyle(ProvisionTheme.textSecondary))
                                 .keyboardType(.decimalPad)
                                 .focused($focusedField, equals: .target(id))
+                                .accessibilityLabel("Target quantity (\(line.unit ?? "server unit"))")
                                 .accessibilityIdentifier("recipe-shopping-target-\(id)")
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 4)
                         if line.pending_item_ids.count > 1 {
                             Toggle("Consolidate \(line.pending_item_ids.count) linked pending items", isOn: consolidationBinding(id))
                                 .accessibilityIdentifier("recipe-shopping-consolidate-\(id)")
@@ -256,21 +305,50 @@ public struct RecipeShoppingReviewView: View {
     @ViewBuilder
     private func quantitySummary(_ line: RecipeShoppingLine) -> some View {
         let unit = line.unit ?? "unit not specified"
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Quantity breakdown")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(ProvisionTheme.textPrimary)
             quantityLine("Required", line.required_quantity, unit)
             quantityLine("Counted on hand", line.pantry_quantity, unit)
             quantityLine("Short", line.shortage, unit)
             quantityLine("Already on shopping list", line.pending_quantity, unit)
             quantityLine("Additional needed", line.additional_quantity, unit)
         }
-        .font(.footnote)
-        .foregroundStyle(ProvisionTheme.textSecondary)
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(ProvisionTheme.surfaceSecondary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     @ViewBuilder
     private func quantityLine(_ label: String, _ quantity: ExactQuantity?, _ unit: String) -> some View {
         if let quantity {
-            Text("\(label): \(NSDecimalNumber(decimal: quantity.value).stringValue) \(unit)")
+            let value = "\(NSDecimalNumber(decimal: quantity.value).stringValue) \(unit)"
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(label)
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Text(value)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(ProvisionTheme.textPrimary)
+                        .multilineTextAlignment(.trailing)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(label)
+                        .font(.subheadline)
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                    Text(value)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(ProvisionTheme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .font(.subheadline)
+            .padding(.vertical, 3)
+            .accessibilityElement(children: .combine)
         }
     }
 
@@ -296,6 +374,8 @@ public struct RecipeShoppingReviewView: View {
             Label("Result not confirmed", systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
                 .font(.headline)
                 .foregroundStyle(ProvisionTheme.amberWarning)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Result not confirmed")
                 .accessibilityIdentifier("recipe-shopping-pending-status")
             Text(record.recipeTitle)
                 .font(.subheadline.weight(.semibold))
@@ -303,7 +383,7 @@ public struct RecipeShoppingReviewView: View {
                 Text("\(entry.element.name): \(NSDecimalNumber(decimal: entry.element.targetQuantity.value).stringValue) \(entry.element.unit ?? "unit not specified")")
                     .accessibilityIdentifier("recipe-shopping-pending-line-\(entry.offset)")
             }
-            Text("Retry sends the exact saved request and idempotency key. Do not edit it while the outcome is unknown.")
+            Text("Retry reuses this exact request and key. Keep it unchanged while the result is unknown.")
                 .font(.footnote)
                 .foregroundStyle(ProvisionTheme.textSecondary)
             Button {

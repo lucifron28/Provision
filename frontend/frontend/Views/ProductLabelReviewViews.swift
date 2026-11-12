@@ -82,14 +82,24 @@ public struct ProductLabelReviewListView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(ProvisionTheme.background, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
-        .searchable(text: $searchText, prompt: "Search household products")
+        .searchable(
+            text: $searchText,
+            prompt: Text("Search household products").foregroundStyle(ProvisionTheme.textSecondary)
+        )
         .task { if viewModel.products.isEmpty { await viewModel.load() } }
     }
 }
 
 public struct ProductLabelReviewView: View {
+    private enum InputField: Hashable {
+        case ingredientSearch
+        case customAllergens
+        case sourceReference
+    }
+
     @StateObject private var viewModel: ProductLabelReviewViewModel
     private let onReviewUpdated: () async -> Void
+    @FocusState private var focusedField: InputField?
 
     public init(productID: Int, scope: HouseholdScope, service: any CookWithPipWorkflowService = APIClient.shared,
                 onReviewUpdated: @escaping () async -> Void = {}) {
@@ -109,27 +119,40 @@ public struct ProductLabelReviewView: View {
                         .accessibilityIdentifier("pip-label-retry")
                 }
             }
-            if let status = viewModel.statusMessage {
-                Section {
-                    Text(status)
-                        .font(.subheadline)
-                        .foregroundStyle(ProvisionTheme.provisionGreen)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
             if let product = viewModel.product {
                 Section("Product") {
-                    Text(product.name).font(.headline).accessibilityIdentifier("pip-label-product-title")
+                    Text(product.name)
+                        .font(.headline)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("pip-label-product-title")
                     if let brand = product.brand, !brand.isEmpty { LabeledContent("Brand", value: brand) }
                     if let category = product.category, !category.isEmpty { LabeledContent("Category", value: category) }
                     if let unit = product.unit, !unit.isEmpty { LabeledContent("Inventory unit", value: unit) }
-                    if let updated = product.updated_at {
-                        LabeledContent("Server version", value: updated)
-                            .font(.caption.monospaced())
-                    } else {
+                    if product.updated_at == nil {
                         Label("Product is missing a server update timestamp", systemImage: "exclamationmark.triangle")
                             .foregroundStyle(ProvisionTheme.amberWarning)
+                    }
+                    if product.updated_at != nil || viewModel.label != nil {
+                        DisclosureGroup("Technical details") {
+                            if let updated = product.updated_at {
+                                LabeledContent("Server version") {
+                                    Text(updated)
+                                        .accessibilityIdentifier("pip-label-server-version")
+                                }
+                                    .font(.footnote.monospaced())
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityElement(children: .contain)
+                            }
+                            if let label = viewModel.label {
+                                LabeledContent("Label review revision") {
+                                    Text("v\(label.revision)")
+                                        .accessibilityIdentifier("pip-label-review-revision")
+                                }
+                                    .font(.footnote.monospaced())
+                                    .accessibilityElement(children: .contain)
+                            }
+                        }
+                        .accessibilityIdentifier("pip-label-technical-details")
                     }
                 }
             }
@@ -149,6 +172,7 @@ public struct ProductLabelReviewView: View {
                     Text("One ingredient").tag(IngredientMappingMode.direct)
                     Text("Composite product").tag(IngredientMappingMode.composite)
                 }
+                .accessibilityIdentifier("pip-label-mapping-type")
                 .onChange(of: viewModel.mappingMode) { _, mode in
                     if mode == .unknown {
                         viewModel.selectedIngredientIDs = []
@@ -157,15 +181,24 @@ public struct ProductLabelReviewView: View {
                     }
                 }
                 if viewModel.mappingMode != .unknown {
-                    TextField("Search canonical ingredients", text: $viewModel.searchText)
-                        .accessibilityIdentifier("pip-label-ingredient-search")
+                    LabeledContent("Search ingredients") {
+                        TextField(
+                            "Canonical or Filipino name",
+                            text: $viewModel.searchText,
+                            prompt: Text("Canonical or Filipino name")
+                                .foregroundStyle(ProvisionTheme.textSecondary)
+                        )
+                            .focused($focusedField, equals: .ingredientSearch)
+                            .accessibilityIdentifier("pip-label-ingredient-search")
+                    }
                     Button {
-                        Task { await viewModel.searchIngredients() }
+                        Task { await searchIngredients() }
                     } label: {
                         if viewModel.isSearching { ProgressView() }
                         else { Label("Search ingredients", systemImage: "magnifyingglass") }
                     }
                     .disabled(viewModel.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isSearching)
+                    .accessibilityIdentifier("pip-label-search-ingredients")
                     ForEach(viewModel.searchResults) { ingredient in
                         Toggle(isOn: ingredientBinding(ingredient.id)) {
                             VStack(alignment: .leading, spacing: 2) {
@@ -179,16 +212,20 @@ public struct ProductLabelReviewView: View {
                         .accessibilityIdentifier("pip-label-ingredient-\(ingredient.id)")
                     }
                     Toggle("I checked this mapping against the package", isOn: $viewModel.mappingVerified)
+                        .accessibilityIdentifier("pip-label-mapping-verified")
                     Toggle("All ingredients are identified", isOn: $viewModel.mappingCompositionKnown)
                     Text("Unknown or incomplete composition must stay marked unknown. Package factors and unit conversions are not inferred here.")
                         .font(.footnote)
                         .foregroundStyle(ProvisionTheme.textSecondary)
                 }
                 Button("Save ingredient mapping") {
-                    Task { if await viewModel.saveMapping() { await onReviewUpdated() } }
+                    Task { await saveIngredientMapping() }
                 }
                     .disabled(!viewModel.canSaveMapping || viewModel.isSaving || viewModel.isLoading)
                     .accessibilityIdentifier("pip-label-save-mapping")
+                if viewModel.statusContext == .ingredientMapping, let status = viewModel.statusMessage {
+                    statusMessageView(status)
+                }
             } header: {
                 Text("Ingredient mapping")
             } footer: {
@@ -197,38 +234,67 @@ public struct ProductLabelReviewView: View {
 
             Section {
                 if let label = viewModel.label {
-                    Label(label.current_for_product ? "Current label review · v\(label.revision)" : "Review is no longer current · v\(label.revision)",
+                    let status = label.current_for_product ? "Current label review" : "Review is no longer current"
+                    Label(status,
                           systemImage: label.current_for_product ? "checkmark.circle" : "exclamationmark.triangle")
                         .foregroundStyle(label.current_for_product ? ProvisionTheme.provisionGreen : ProvisionTheme.amberWarning)
                         .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(label.current_for_product ? "Current label review · v\(label.revision)" : "Review is no longer current · v\(label.revision)")
+                        .accessibilityLabel(status)
                         .accessibilityIdentifier("pip-label-current-status")
                 } else {
                     Text("No package label review is recorded.")
                         .foregroundStyle(ProvisionTheme.textSecondary)
                 }
                 ForEach(FoodAllergenCode.allCases) { code in
-                    Picker(code.title, selection: dispositionBinding(code)) {
-                        Text("Not listed").tag("none")
-                        Text("Declared on label").tag("declared")
-                        Text("May contain").tag("possible")
-                    }
-                    .accessibilityIdentifier("pip-label-allergen-\(code.rawValue)")
+                    allergenDeclarationMenu(code)
                 }
-                TextField("Custom allergens, separated by commas", text: $viewModel.customAllergenText)
-                    .accessibilityIdentifier("pip-label-custom-allergens")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Custom allergens")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(ProvisionTheme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("pip-label-custom-allergens-heading")
+                    TextField(
+                        "Custom allergens",
+                        text: $viewModel.customAllergenText,
+                        prompt: Text("Comma-separated")
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                    )
+                        .focused($focusedField, equals: .customAllergens)
+                        .accessibilityLabel("Custom allergens")
+                        .accessibilityIdentifier("pip-label-custom-allergens")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 4)
                 Toggle("Package composition is known", isOn: $viewModel.labelCompositionKnown)
-                TextField("Source reference (package label, URL, or label section)", text: $viewModel.sourceReference, axis: .vertical)
-                    .lineLimit(2...4)
-                    .accessibilityIdentifier("pip-label-source-reference")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Source reference")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(ProvisionTheme.textPrimary)
+                    TextField(
+                        "Source reference",
+                        text: $viewModel.sourceReference,
+                        prompt: Text("Package label, URL, or label section")
+                            .foregroundStyle(ProvisionTheme.textSecondary),
+                        axis: .vertical
+                    )
+                        .lineLimit(2...4)
+                        .focused($focusedField, equals: .sourceReference)
+                        .accessibilityLabel("Source reference")
+                        .accessibilityIdentifier("pip-label-source-reference")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 Text("This records what a household member read. It is not a certification that a product or recipe is safe.")
                     .font(.footnote)
                     .foregroundStyle(ProvisionTheme.textSecondary)
                 Button("Record label review") {
-                    Task { if await viewModel.saveLabel() { await onReviewUpdated() } }
+                    Task { await saveLabelReview() }
                 }
                     .disabled(!viewModel.canReviewLabel || viewModel.isSaving || viewModel.isLoading)
                     .accessibilityIdentifier("pip-label-save-review")
+                if viewModel.statusContext == .packageLabel, let status = viewModel.statusMessage {
+                    statusMessageView(status)
+                }
             } header: {
                 Text("Package label declaration")
             } footer: {
@@ -238,11 +304,23 @@ public struct ProductLabelReviewView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .accessibilityIdentifier("pip-label-review-form")
         .background(ProvisionTheme.background)
         .navigationTitle("Review Package Label")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(ProvisionTheme.background, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
+        .scrollEdgeEffectStyle(.hard, for: .top)
+        .scrollDismissesKeyboard(.interactively)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                if focusedField != nil {
+                    Spacer()
+                    Button("Done") { focusedField = nil }
+                        .accessibilityIdentifier("pip-label-keyboard-done")
+                }
+            }
+        }
         .task { if !viewModel.hasLoaded { await reload() } }
         .refreshable { await reload() }
     }
@@ -257,18 +335,80 @@ public struct ProductLabelReviewView: View {
         )
     }
 
-    private func dispositionBinding(_ code: FoodAllergenCode) -> Binding<String> {
-        Binding(
-            get: {
-                if viewModel.declaredAllergens.contains(code.rawValue) { return "declared" }
-                if viewModel.possibleAllergens.contains(code.rawValue) { return "possible" }
-                return "none"
-            },
+    private func statusMessageView(_ message: String) -> some View {
+        Text(message)
+            .font(.subheadline)
+            .foregroundStyle(ProvisionTheme.provisionGreen)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("pip-label-status-message")
+    }
+
+    private func currentDisposition(for code: FoodAllergenCode) -> String {
+        if viewModel.declaredAllergens.contains(code.rawValue) { return "declared" }
+        if viewModel.possibleAllergens.contains(code.rawValue) { return "possible" }
+        return "none"
+    }
+
+    private func allergenDeclarationMenu(_ code: FoodAllergenCode) -> some View {
+        let disposition = currentDisposition(for: code)
+        let label = dispositionTitle(disposition)
+        let color = disposition == "declared"
+            ? ProvisionTheme.provisionGreen
+            : (disposition == "possible" ? ProvisionTheme.amberWarning : ProvisionTheme.textSecondary)
+
+        return Picker(selection: Binding(
+            get: { currentDisposition(for: code) },
             set: { viewModel.setAllergen(code, disposition: $0) }
-        )
+        )) {
+            Text("Not listed")
+                .tag("none")
+                .accessibilityIdentifier("pip-label-disposition-none")
+            Text("Declared on label")
+                .tag("declared")
+                .accessibilityIdentifier("pip-label-disposition-declared")
+            Text("May contain")
+                .tag("possible")
+                .accessibilityIdentifier("pip-label-disposition-possible")
+        } label: {
+            Text(code.title)
+                .foregroundStyle(ProvisionTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .pickerStyle(.menu)
+        .tint(color)
+        .accessibilityLabel("\(code.title) label declaration")
+        .accessibilityValue(label)
+        .accessibilityIdentifier("pip-label-allergen-\(code.rawValue)")
+    }
+
+    private func dispositionTitle(_ value: String) -> String {
+        switch value {
+        case "declared": "Declared on label"
+        case "possible": "May contain"
+        default: "Not listed"
+        }
     }
 
     private func reload() async {
         await viewModel.load()
+    }
+
+    private func searchIngredients() async {
+        await viewModel.searchIngredients()
+        focusedField = nil
+    }
+
+    private func saveIngredientMapping() async {
+        if await viewModel.saveMapping() {
+            focusedField = nil
+            await onReviewUpdated()
+        }
+    }
+
+    private func saveLabelReview() async {
+        if await viewModel.saveLabel() {
+            focusedField = nil
+            await onReviewUpdated()
+        }
     }
 }

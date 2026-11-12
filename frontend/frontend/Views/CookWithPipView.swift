@@ -1,6 +1,7 @@
 import SwiftUI
 
 public struct CookWithPipView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @StateObject private var viewModel: CookWithPipViewModel
     private let scope: HouseholdScope
     private let service: any CookWithPipService
@@ -31,7 +32,11 @@ public struct CookWithPipView: View {
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(ProvisionTheme.textSecondary)
-                    TextField("Search household recipes", text: $viewModel.searchQuery)
+                    TextField(
+                        "Search household recipes",
+                        text: $viewModel.searchQuery,
+                        prompt: Text("Search household recipes").foregroundStyle(ProvisionTheme.textSecondary)
+                    )
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .submitLabel(.search)
@@ -57,6 +62,23 @@ public struct CookWithPipView: View {
                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(ProvisionTheme.border, lineWidth: 1))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
+                if searchFieldFocused {
+                    HStack {
+                        Spacer()
+                        Button("Done") { searchFieldFocused = false }
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .accessibilityIdentifier("cook-with-pip-search-keyboard-done")
+                    }
+                    .padding(.horizontal, 16)
+                }
+            }
+
+            if searchFieldFocused {
+                modePicker
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
             }
 
             ScrollView {
@@ -71,7 +93,9 @@ public struct CookWithPipView: View {
                             .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
                     }
                     .accessibilityIdentifier("cook-with-pip-management")
-                    modePicker
+                    if !searchFieldFocused {
+                        modePicker
+                    }
 
                     if viewModel.hasExcludedCandidates && viewModel.mode != .myRecipes {
                         excludedCandidatesNote
@@ -108,6 +132,7 @@ public struct CookWithPipView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .refreshable { await viewModel.refresh() }
+            .accessibilityIdentifier("cook-with-pip-recipe-list-scroll")
         }
         .background(ProvisionTheme.background.ignoresSafeArea())
         .navigationTitle("Cook with Pip")
@@ -158,29 +183,41 @@ public struct CookWithPipView: View {
     }
 
     private var modePicker: some View {
-        HStack(spacing: 8) {
-            ForEach(CookWithPipMode.allCases) { mode in
-                Button {
-                    Task { await viewModel.select(mode) }
-                } label: {
-                    Text(mode.title)
-                        .font(.subheadline.weight(viewModel.mode == mode ? .semibold : .medium))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                        .foregroundStyle(viewModel.mode == mode ? ProvisionTheme.onAccent : ProvisionTheme.textPrimary)
-                        .frame(maxWidth: .infinity, minHeight: 46)
-                        .background(viewModel.mode == mode ? ProvisionTheme.provisionGreen : ProvisionTheme.surface)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(ProvisionTheme.border, lineWidth: 1))
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: 8) {
+                    modeButtons
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("cook-mode-\(mode.rawValue)")
-                .accessibilityValue(viewModel.mode == mode ? "Selected" : "")
-                .accessibilityAddTraits(viewModel.mode == mode ? .isSelected : [])
+            } else {
+                HStack(spacing: 8) {
+                    modeButtons
+                }
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Recipe sections")
+    }
+
+    @ViewBuilder
+    private var modeButtons: some View {
+        ForEach(CookWithPipMode.allCases) { mode in
+            Button {
+                Task { await viewModel.select(mode) }
+            } label: {
+                Text(mode.title)
+                    .font(.subheadline.weight(viewModel.mode == mode ? .semibold : .medium))
+                    .foregroundStyle(viewModel.mode == mode ? ProvisionTheme.onAccent : ProvisionTheme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, minHeight: 46)
+                    .background(viewModel.mode == mode ? ProvisionTheme.provisionGreen : ProvisionTheme.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(ProvisionTheme.border, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("cook-mode-\(mode.rawValue)")
+            .accessibilityValue(viewModel.mode == mode ? "Selected" : "")
+            .accessibilityAddTraits(viewModel.mode == mode ? .isSelected : [])
+        }
     }
 
     private var excludedCandidatesNote: some View {
