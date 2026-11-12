@@ -304,6 +304,7 @@ public struct ProductLabelReviewView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .accessibilityIdentifier("pip-label-review-form")
         .background(ProvisionTheme.background)
         .navigationTitle("Review Package Label")
         .navigationBarTitleDisplayMode(.inline)

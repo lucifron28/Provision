@@ -276,47 +276,50 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(productTitle.waitForExistence(timeout: 10))
         XCTAssertTrue(productTitle.isHittable)
         assertReachable(productTitle, in: largeLabel)
+        let labelForm = element("pip-label-review-form", in: largeLabel)
+        XCTAssertTrue(labelForm.waitForExistence(timeout: 5))
         let technicalDetails = element("pip-label-technical-details", in: largeLabel)
         XCTAssertTrue(technicalDetails.waitForExistence(timeout: 5))
-        XCTAssertTrue(technicalDetails.isHittable)
+        scrollTargetIntoView(technicalDetails, inside: labelForm, in: largeLabel)
         let serverVersion = element("pip-label-server-version", in: largeLabel)
         XCTAssertFalse(serverVersion.exists, "Technical metadata starts collapsed below the product details")
         capture("Product_Label_Review_Large_Text", app: largeLabel)
         technicalDetails.tap()
         XCTAssertTrue(serverVersion.waitForExistence(timeout: 5))
-        scrollTo(serverVersion, in: largeLabel)
+        scrollTargetIntoView(serverVersion, inside: labelForm, in: largeLabel)
         XCTAssertTrue(serverVersion.label.contains("2026-11-09T00:00:00Z"))
         assertReachable(serverVersion, in: largeLabel)
-        scrollTo(technicalDetails, in: largeLabel)
+        scrollTargetIntoView(technicalDetails, inside: labelForm, in: largeLabel)
         technicalDetails.tap()
         waitUntilGone(serverVersion)
-        let sourceField = element("pip-label-source-reference", in: largeLabel)
-        let customAllergensHeading = element("pip-label-custom-allergens-heading", in: largeLabel)
-        scrollTo(sourceField, in: largeLabel)
-        XCTAssertEqual(sourceField.label, "Source reference")
-        XCTAssertEqual(sourceField.placeholderValue, "Package label, URL, or label section")
-        assertReachable(sourceField, in: largeLabel)
-        let customAllergensField = element("pip-label-custom-allergens", in: largeLabel)
-        scrollTo(customAllergensHeading, in: largeLabel)
-        assertReachable(customAllergensHeading, in: largeLabel)
-        assertReachable(customAllergensField, in: largeLabel)
+        let mappingVerified = element("pip-label-mapping-verified", in: largeLabel)
+        scrollTargetIntoView(mappingVerified, inside: labelForm, in: largeLabel)
+        assertReachable(mappingVerified, in: largeLabel)
+        capture("Product_Label_Review_Scrolled", app: largeLabel)
 
-        let milkDeclaration = element("pip-label-allergen-milk", in: largeLabel)
         let mappingNote = largeLabel.staticTexts[
             "A verified, complete mapping is required before a package label review can be recorded."
         ]
-        scrollTo(milkDeclaration, in: largeLabel)
-        nudgeContentDown(in: largeLabel, by: 0.16)
-        XCTAssertTrue(mappingNote.waitForExistence(timeout: 5))
+        scrollTargetIntoView(mappingNote, inside: labelForm, in: largeLabel)
         assertReachable(mappingNote, in: largeLabel)
-        XCTAssertTrue(milkDeclaration.isHittable)
+
+        let milkDeclaration = element("pip-label-allergen-milk", in: largeLabel)
+        scrollTargetIntoView(milkDeclaration, inside: labelForm, in: largeLabel)
+        XCTAssertTrue(milkDeclaration.label.hasSuffix("Milk label declaration"),
+                      "The picker label preserves the allergen declaration description")
         assertReachable(milkDeclaration, in: largeLabel)
 
-        let mappingVerified = element("pip-label-mapping-verified", in: largeLabel)
-        scrollTo(mappingVerified, in: largeLabel)
-        nudgeContentDown(in: largeLabel, by: -0.16)
-        assertReachable(mappingVerified, in: largeLabel)
-        capture("Product_Label_Review_Scrolled", app: largeLabel)
+        let customAllergensHeading = element("pip-label-custom-allergens-heading", in: largeLabel)
+        let customAllergensField = element("pip-label-custom-allergens", in: largeLabel)
+        scrollTargetIntoView(customAllergensHeading, inside: labelForm, in: largeLabel)
+        assertReachable(customAllergensHeading, in: largeLabel)
+        assertReachable(customAllergensField, in: largeLabel)
+
+        let sourceField = element("pip-label-source-reference", in: largeLabel)
+        scrollTargetIntoView(sourceField, inside: labelForm, in: largeLabel)
+        XCTAssertEqual(sourceField.label, "Source reference")
+        XCTAssertEqual(sourceField.placeholderValue, "Package label, URL, or label section")
+        assertReachable(sourceField, in: largeLabel)
     }
 
     func testStaleProductLabelReviewIsShownAsStale() {
@@ -488,12 +491,20 @@ final class CookWithPipUITests: XCTestCase {
         let reviewApp = launch(scenario: "shopping-review-required")
         openShoppingPreview(reviewApp)
         XCTAssertEqual(element("recipe-shopping-safety-status", in: reviewApp).label, "Review required")
-        let reviewConfirm = reviewApp.buttons["recipe-shopping-confirm"]
+        let reviewConfirm = reviewApp.navigationBars.buttons["recipe-shopping-confirm"]
         XCTAssertFalse(reviewConfirm.isEnabled)
         capture("Shopping_Preview_Review_Required", app: reviewApp)
         let acknowledgement = reviewApp.switches["recipe-shopping-safety-acknowledgement"]
-        scrollTo(acknowledgement, in: reviewApp)
-        setSwitch(acknowledgement, to: "1")
+        let reviewForm = element("recipe-shopping-review-form", in: reviewApp)
+        scrollTargetIntoView(acknowledgement, inside: reviewForm, in: reviewApp)
+        XCTAssertEqual(acknowledgement.value as? String, "0",
+                       "Safety review stays Off until the user taps the switch")
+        acknowledgement.coordinate(withNormalizedOffset: CGVector(dx: 0.90, dy: 0.5)).tap()
+        let acknowledged = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "1"), object: acknowledgement
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [acknowledged], timeout: 5), .completed,
+                       "The visible switch changes from Off to On after a direct tap")
         XCTAssertTrue(reviewConfirm.isEnabled)
 
         reviewApp.terminate()
@@ -538,7 +549,7 @@ final class CookWithPipUITests: XCTestCase {
         let fixtureID = Int.random(in: 10_000...90_000)
         let app = launch(scenario: "shopping-restart", fixtureID: fixtureID, useKeychain: true)
         openShoppingPreview(app)
-        let confirm = app.buttons["recipe-shopping-confirm"]
+        let confirm = app.navigationBars.buttons["recipe-shopping-confirm"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 10))
         XCTAssertTrue(confirm.isHittable, "The shopping confirmation action stays in the navigation toolbar")
         confirm.tap()
@@ -550,9 +561,11 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(pendingStatus.waitForExistence(timeout: 10))
         let retryMessage = element("recipe-shopping-error", in: app)
         XCTAssertTrue(retryMessage.waitForExistence(timeout: 5))
-        XCTAssertTrue(retryMessage.isHittable, "The saved-request warning stays accessible after an uncertain response")
-        XCTAssertTrue(pendingStatus.isHittable, "The saved request is identified as pending")
-        let confirmWhilePending = element("recipe-shopping-confirm", in: app)
+        XCTAssertTrue(retryMessage.label.contains("request is saved"))
+        let shoppingForm = element("recipe-shopping-review-form", in: app)
+        assertReachable(pendingStatus, in: app)
+        XCTAssertEqual(pendingStatus.label, "Result not confirmed")
+        let confirmWhilePending = app.navigationBars.buttons["recipe-shopping-confirm"]
         XCTAssertTrue(confirmWhilePending.waitForExistence(timeout: 5))
         XCTAssertFalse(confirmWhilePending.isEnabled,
                         "A pending request cannot be submitted as a new confirmation")
@@ -560,22 +573,31 @@ final class CookWithPipUITests: XCTestCase {
                         "A pending request cannot be edited before retry")
         let pendingRetryButton = app.buttons["recipe-shopping-retry-pending"]
         XCTAssertTrue(pendingRetryButton.waitForExistence(timeout: 5))
-        scrollTo(pendingRetryButton, in: app)
+        scrollTargetIntoView(pendingRetryButton, inside: shoppingForm, in: app)
         XCTAssertTrue(pendingRetryButton.isEnabled)
         XCTAssertTrue(pendingRetryButton.isHittable)
         let pendingLine = element("recipe-shopping-pending-line-0", in: app)
         XCTAssertTrue(pendingLine.waitForExistence(timeout: 10))
-        scrollTo(pendingLine, in: app)
+        scrollTargetIntoView(pendingLine, inside: shoppingForm, in: app)
         capture("Shopping_Confirmation_Retry_Pending", app: app)
         app.terminate()
 
         let relaunched = launch(scenario: "shopping-restart", fixtureID: fixtureID, useKeychain: true)
         openShoppingPreview(relaunched, timeout: 30)
-        let relaunchedPending = element("recipe-shopping-pending-line-0", in: relaunched)
-        XCTAssertTrue(relaunchedPending.waitForExistence(timeout: 10))
+        let relaunchedStatus = element("recipe-shopping-pending-status", in: relaunched)
+        XCTAssertTrue(relaunchedStatus.waitForExistence(timeout: 10))
+        let relaunchedForm = element("recipe-shopping-review-form", in: relaunched)
+        assertReachable(relaunchedStatus, in: relaunched)
+        XCTAssertEqual(relaunchedStatus.label, "Result not confirmed")
+        let relaunchedConfirm = relaunched.navigationBars.buttons["recipe-shopping-confirm"]
+        XCTAssertTrue(relaunchedConfirm.waitForExistence(timeout: 5))
+        XCTAssertFalse(relaunchedConfirm.isEnabled,
+                       "A saved pending request still blocks new confirmation after relaunch")
         let retryPending = relaunched.buttons["recipe-shopping-retry-pending"]
-        scrollTo(retryPending, in: relaunched)
+        scrollTargetIntoView(retryPending, inside: relaunchedForm, in: relaunched)
+        XCTAssertEqual(retryPending.label, "Retry exact confirmation")
         XCTAssertTrue(retryPending.isEnabled)
+        XCTAssertTrue(retryPending.isHittable)
         retryPending.tap()
         let resultCounts = element("recipe-shopping-result-counts", in: relaunched)
         XCTAssertTrue(resultCounts.waitForExistence(timeout: 10))

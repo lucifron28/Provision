@@ -374,6 +374,8 @@ public struct RecipeShoppingReviewView: View {
             Label("Result not confirmed", systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
                 .font(.headline)
                 .foregroundStyle(ProvisionTheme.amberWarning)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Result not confirmed")
                 .accessibilityIdentifier("recipe-shopping-pending-status")
             Text(record.recipeTitle)
                 .font(.subheadline.weight(.semibold))
