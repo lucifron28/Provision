@@ -247,6 +247,7 @@ public struct RecipeShoppingReviewView: View {
                                     .font(.headline)
                                     .foregroundStyle(ProvisionTheme.textPrimary)
                                     .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityIdentifier("recipe-shopping-name-\(line.ingredient_id ?? -1)")
                             }
                             .accessibilityIdentifier("recipe-shopping-line-\(id)")
                         } else {
@@ -254,6 +255,7 @@ public struct RecipeShoppingReviewView: View {
                                 .font(.headline)
                                 .foregroundStyle(ProvisionTheme.textPrimary)
                                 .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("recipe-shopping-name-\(line.ingredient_id ?? -1)")
                         }
                     }
                     let isCovered = line.status == "ready" && (line.additional_quantity?.value ?? 0) == 0

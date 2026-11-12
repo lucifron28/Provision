@@ -278,9 +278,18 @@ final class CookWithPipUITests: XCTestCase {
         assertBelowNavigationBar(productTitle, in: largeLabel)
         let technicalDetails = element("pip-label-technical-details", in: largeLabel)
         XCTAssertTrue(technicalDetails.waitForExistence(timeout: 5))
-        XCTAssertEqual(technicalDetails.value as? String, "Collapsed",
-                       "Raw timestamps and review revisions stay in a secondary detail row")
+        XCTAssertTrue(technicalDetails.isHittable)
+        let serverVersion = element("pip-label-server-version", in: largeLabel)
+        let reviewRevision = element("pip-label-review-revision", in: largeLabel)
+        XCTAssertFalse(serverVersion.exists, "Technical metadata starts collapsed below the product details")
+        XCTAssertFalse(reviewRevision.exists, "Review revisions start collapsed below the product details")
         capture("Product_Label_Review_Large_Text", app: largeLabel)
+        technicalDetails.tap()
+        XCTAssertTrue(serverVersion.waitForExistence(timeout: 5))
+        XCTAssertTrue(reviewRevision.waitForExistence(timeout: 5))
+        technicalDetails.tap()
+        waitUntilGone(serverVersion)
+        waitUntilGone(reviewRevision)
         let sourceField = element("pip-label-source-reference", in: largeLabel)
         let customAllergensHeading = element("pip-label-custom-allergens-heading", in: largeLabel)
         scrollTo(sourceField, in: largeLabel)
@@ -305,7 +314,7 @@ final class CookWithPipUITests: XCTestCase {
 
         let mappingVerified = element("pip-label-mapping-verified", in: largeLabel)
         scrollTo(mappingVerified, in: largeLabel)
-        nudgeContentDown(in: largeLabel, by: 0.12)
+        nudgeContentDown(in: largeLabel, by: -0.12)
         assertBelowNavigationBar(mappingVerified, in: largeLabel)
         let labelViewport = visibleApplicationFrame(of: largeLabel, inset: 8)
         XCTAssertGreaterThanOrEqual(mappingVerified.frame.minY, labelViewport.minY,
@@ -428,14 +437,19 @@ final class CookWithPipUITests: XCTestCase {
         let consolidate = app.switches["recipe-shopping-consolidate-914"]
         scrollTo(consolidate, in: app)
         setSwitch(consolidate, to: "1")
-        let consolidationRow = element("recipe-shopping-row-914", in: app)
-        scrollTargetIntoView(consolidationRow, inside: shoppingForm, in: app)
+        let consolidationName = element("recipe-shopping-name-914", in: app)
+        scrollTo(consolidationName, in: app)
+        XCTAssertTrue(consolidationName.waitForExistence(timeout: 5))
+        assertBelowNavigationBar(consolidationName, in: app)
         XCTAssertTrue(consolidate.isHittable)
         assertBelowNavigationBar(consolidate, in: app)
-        let consolidationViewport = visibleScrollFrame(of: shoppingForm, in: app, inset: 8)
-        XCTAssertGreaterThanOrEqual(consolidationRow.frame.minY, consolidationViewport.minY)
-        XCTAssertLessThanOrEqual(consolidationRow.frame.maxY, consolidationViewport.maxY,
-                                 "The ingredient name and consolidation control share a complete visible row")
+        let consolidationViewport = visibleApplicationFrame(of: app, inset: 8)
+        XCTAssertGreaterThanOrEqual(consolidationName.frame.minY, consolidationViewport.minY)
+        XCTAssertLessThanOrEqual(consolidationName.frame.maxY, consolidationViewport.maxY,
+                                 "The ingredient name stays inside the shopping viewport")
+        XCTAssertGreaterThanOrEqual(consolidate.frame.minY, consolidationViewport.minY)
+        XCTAssertLessThanOrEqual(consolidate.frame.maxY, consolidationViewport.maxY,
+                                 "The consolidation control stays inside the shopping viewport")
         capture("Shopping_Duplicate_Consolidation_Opt_In", app: app)
 
         element("recipe-shopping-confirm", in: app).tap()
