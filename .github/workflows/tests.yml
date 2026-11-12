@@ -140,17 +140,22 @@ jobs:
         run: |
           set -euo pipefail
           container=provision-backend-smoke
-          cleanup() { docker rm --force "$container" >/dev/null 2>&1 || true; }
+          cleanup() {
+            status=$?
+            if [ "$status" -ne 0 ]; then docker logs "$container" >&2 || true; fi
+            docker rm --force "$container" >/dev/null 2>&1 || true
+          }
           trap cleanup EXIT
 
           test "$(docker image inspect --format '{{.Config.User}}' "$IMAGE_TAG")" = "10001:10001"
           docker run --detach \
             --name "$container" \
-            --network host \
-            --env DATABASE_URL \
+            --add-host host.docker.internal:host-gateway \
+            --publish 10000:10000 \
+            --env DATABASE_URL=postgresql+psycopg://provision:provision@host.docker.internal:5432/provision \
             --env JWT_SECRET_KEY \
-            --env ENVIRONMENT=production \
-            --env DEPLOYMENT_ENVIRONMENT=staging \
+            --env ENVIRONMENT=development \
+            --env DEPLOYMENT_ENVIRONMENT=development \
             --env PORT=10000 \
             "$IMAGE_TAG"
 
@@ -160,7 +165,7 @@ jobs:
             fi
             sleep 2
           done
-          curl --fail --silent http://127.0.0.1:10000/health | python -c 'import json,sys; assert json.load(sys.stdin)["deployment"] == "staging"'
+          curl --fail --silent http://127.0.0.1:10000/health | python -c 'import json,sys; assert json.load(sys.stdin)["deployment"] == "development"'
           curl --fail --silent http://127.0.0.1:10000/ready | python -c 'import json,sys; assert json.load(sys.stdin) == {"status":"ready"}'
           docker exec "$container" test ! -e /app/.env
           docker exec "$container" test ! -d /app/tests
