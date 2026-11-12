@@ -1,0 +1,87 @@
+name: Cook with Pip full screenshot gallery
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  screenshot-gallery:
+    name: Full iOS screenshot and XCTest gallery
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show Xcode and simulator runtimes
+        run: xcodebuild -version && xcrun simctl list devices available
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Prepare screenshot artifact folders
+        run: mkdir -p artifacts/raw-cook-with-pip-screenshots artifacts/cook-with-pip-screenshots
+      - name: Run the complete iOS XCTest and screenshot suite
+        id: ios-tests
+        run: >-
+          xcodebuild test
+          -project frontend/frontend.xcodeproj
+          -scheme frontend
+          -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
+          -resultBundlePath artifacts/frontend.xcresult
+          CODE_SIGNING_ALLOWED=YES
+          CODE_SIGN_IDENTITY=-
+      - name: Export simulator screenshots
+        if: always()
+        run: |
+          if [ -d artifacts/frontend.xcresult ]; then
+            xcrun xcresulttool export attachments \
+              --path artifacts/frontend.xcresult \
+              --output-path artifacts/raw-cook-with-pip-screenshots
+          else
+            echo "No xcresult bundle was produced." >&2
+            exit 1
+          fi
+      - name: Organize and verify every screenshot scenario
+        if: always()
+        run: >-
+          python .github/scripts/organize_ios_screenshots.py
+          --input artifacts/raw-cook-with-pip-screenshots
+          --output artifacts/cook-with-pip-screenshots
+          --required .github/scripts/required_ios_screenshots.json
+          --commit-sha "$GITHUB_SHA"
+          --test-outcome "${{ steps.ios-tests.outcome }}"
+      - name: Package full screenshot gallery
+        if: always()
+        run: |
+          if [ -d artifacts/cook-with-pip-screenshots ]; then
+            ditto -c -k --sequesterRsrc --keepParent \
+              artifacts/cook-with-pip-screenshots \
+              artifacts/cook-with-pip-full-gallery.zip
+          else
+            echo "Organized screenshot folder is missing." >&2
+            exit 1
+          fi
+      - name: Upload full screenshot gallery
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cook-with-pip-full-gallery
+          path: artifacts/cook-with-pip-full-gallery.zip
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload complete screenshot set and scenario manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cook-with-pip-all-screenshots
+          path: artifacts/cook-with-pip-screenshots
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload full iOS test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cook-with-pip-full-xcresult
+          path: artifacts/frontend.xcresult
+          if-no-files-found: warn
+          retention-days: 14

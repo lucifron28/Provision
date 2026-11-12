@@ -1,0 +1,15 @@
+{
+  "requiredScreenshots": [
+    "Home_Cook_with_Pip",
+    "Cook_with_Pip",
+    "Cook_Now",
+    "Almost_There",
+    "My_Recipes",
+    "Recipe_Detail",
+    "Recipe_Detail_Instructions",
+    "Shopping_Preview_Review_Required",
+    "Shopping_Preview_Blocked",
+    "Shopping_Offline_Error_Retry",
+    "Shopping_Stale_Preview_Refresh"
+  ]
+}
