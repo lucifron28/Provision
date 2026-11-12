@@ -137,17 +137,19 @@ public struct ProductLabelReviewView: View {
                             if let updated = product.updated_at {
                                 LabeledContent("Server version") {
                                     Text(updated)
-                                        .accessibilityIdentifier("pip-label-server-version")
                                 }
                                     .font(.footnote.monospaced())
                                     .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityElement(children: .combine)
+                                    .accessibilityIdentifier("pip-label-server-version")
                             }
                             if let label = viewModel.label {
                                 LabeledContent("Label review revision") {
                                     Text("v\(label.revision)")
-                                        .accessibilityIdentifier("pip-label-review-revision")
                                 }
                                     .font(.footnote.monospaced())
+                                    .accessibilityElement(children: .combine)
+                                    .accessibilityIdentifier("pip-label-review-revision")
                             }
                         }
                         .accessibilityIdentifier("pip-label-technical-details")
