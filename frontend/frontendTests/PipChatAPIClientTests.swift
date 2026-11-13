@@ -5,10 +5,12 @@ import XCTest
 private final class PipChatRequestProtocol: URLProtocol {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var lastRequest: URLRequest?
+    nonisolated(unsafe) private static var lastRequestBody: Data?
 
     static func reset() {
         lock.lock()
         lastRequest = nil
+        lastRequestBody = nil
         lock.unlock()
     }
 
@@ -18,15 +20,23 @@ private final class PipChatRequestProtocol: URLProtocol {
         return lastRequest
     }
 
+    static func capturedRequestBody() -> Data? {
+        lock.lock()
+        defer { lock.unlock() }
+        return lastRequestBody
+    }
+
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
+        let body = Self.bodyData(for: request)
         Self.lock.lock()
         Self.lastRequest = request
+        Self.lastRequestBody = body
         Self.lock.unlock()
 
-        let body = #"{"reply":"Try a household recipe.","language":"english","facts":[],"actions":[],"model":"fake","usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7},"local_guidance":false,"safety_notice":"Verify safety in Cook with Pip."}"#
+        let responseBody = #"{"reply":"Try a household recipe.","language":"english","facts":[],"actions":[],"model":"fake","usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7},"local_guidance":false,"safety_notice":"Verify safety in Cook with Pip."}"#
         let response = HTTPURLResponse(
             url: request.url!,
             statusCode: 200,
@@ -34,8 +44,29 @@ private final class PipChatRequestProtocol: URLProtocol {
             headerFields: ["Content-Type": "application/json"]
         )!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data(body.utf8))
+        client?.urlProtocol(self, didLoad: Data(responseBody.utf8))
         client?.urlProtocolDidFinishLoading(self)
+    }
+
+    private static func bodyData(for request: URLRequest) -> Data? {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return nil }
+
+        stream.open()
+        defer { stream.close() }
+
+        let capacity = 1024
+        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: capacity)
+        defer { buffer.deallocate() }
+
+        var data = Data()
+        while true {
+            let count = stream.read(buffer, maxLength: capacity)
+            if count < 0 { return nil }
+            if count == 0 { break }
+            data.append(buffer, count: count)
+        }
+        return data
     }
 
     override func stopLoading() {}
@@ -80,7 +111,7 @@ final class PipChatAPIClientTests: XCTestCase {
         XCTAssertEqual(request.url?.path, "/api/v1/pip/chat")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer synthetic-token")
         XCTAssertEqual(request.value(forHTTPHeaderField: "X-Household-ID"), "22")
-        let body = try XCTUnwrap(request.httpBody)
+        let body = try XCTUnwrap(PipChatRequestProtocol.capturedRequestBody())
         let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
         XCTAssertEqual(payload["message"] as? String, "Let's make dinner")
         let encodedHistory = try XCTUnwrap(payload["history"] as? [[String: String]])
