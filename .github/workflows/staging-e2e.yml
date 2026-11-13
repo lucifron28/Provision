@@ -67,20 +67,20 @@ jobs:
 
       - name: Verify Render commit, staging designation, and database readiness
         working-directory: backend
-        run: uv run --no-sync python scripts/staging_e2e_smoke.py preflight
+        run: uv run --no-sync python -m scripts.staging_e2e_smoke preflight
 
       - name: Create a unique synthetic household for this run
         id: staging-fixture
         working-directory: backend
         env:
           PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
-        run: uv run --no-sync python scripts/staging_e2e_smoke.py prepare
+        run: uv run --no-sync python -m scripts.staging_e2e_smoke prepare
 
       - name: Verify authenticated persistence and household isolation
         working-directory: backend
         env:
           PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
-        run: uv run --no-sync python scripts/staging_e2e_smoke.py api-smoke
+        run: uv run --no-sync python -m scripts.staging_e2e_smoke api-smoke
 
       - name: Run staging login, offline recovery, and Keychain relaunch tests on iPhone 17
         id: ios-staging
@@ -125,4 +125,4 @@ jobs:
         working-directory: backend
         env:
           PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
-        run: uv run --no-sync python scripts/staging_e2e_smoke.py cleanup
+        run: uv run --no-sync python -m scripts.staging_e2e_smoke cleanup

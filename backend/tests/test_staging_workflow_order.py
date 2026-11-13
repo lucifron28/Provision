@@ -52,6 +52,39 @@ def test_workflow_revision_check_uses_bash_3_2_compatible_case_normalization(wor
     assert "${PROVISION_EXPECTED_RENDER_COMMIT,,}" not in workflow_text
 
 
+@pytest.mark.parametrize(
+    ("workflow", "commands"),
+    [
+        (
+            "staging-e2e.yml",
+            (
+                "python -m scripts.staging_e2e_smoke preflight",
+                "python -m scripts.staging_e2e_smoke prepare",
+                "python -m scripts.staging_e2e_smoke api-smoke",
+                "python -m scripts.staging_e2e_smoke cleanup",
+            ),
+        ),
+        (
+            "live-deepseek-smoke.yml",
+            (
+                "python -m scripts.staging_e2e_smoke preflight",
+                "python -m scripts.staging_e2e_smoke prepare",
+                "python -m scripts.staging_live_deepseek_smoke",
+                "python -m scripts.staging_e2e_smoke cleanup",
+            ),
+        ),
+    ],
+)
+def test_staging_workflows_invoke_backend_scripts_as_modules(workflow, commands):
+    workflow_text = (
+        REPOSITORY_ROOT / ".github" / "workflows" / workflow
+    ).read_text(encoding="utf-8")
+
+    for command in commands:
+        assert command in workflow_text
+    assert "python scripts/" not in workflow_text
+
+
 def test_staging_workflow_runs_authenticated_and_offline_recovery_ui_smokes():
     workflow = (
         REPOSITORY_ROOT / ".github" / "workflows" / "staging-e2e.yml"
