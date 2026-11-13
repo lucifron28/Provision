@@ -83,22 +83,22 @@ jobs:
 
       - name: Verify Render staging target and deployed commit
         working-directory: backend
-        run: uv run --no-sync python scripts/staging_e2e_smoke.py preflight
+        run: uv run --no-sync python -m scripts.staging_e2e_smoke preflight
 
       - name: Create a unique synthetic, consentable household
         id: staging-fixture
         working-directory: backend
         env:
           PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
-        run: uv run --no-sync python scripts/staging_e2e_smoke.py prepare
+        run: uv run --no-sync python -m scripts.staging_e2e_smoke prepare
 
       - name: Run one live request and validate its response
         working-directory: backend
-        run: uv run --no-sync python scripts/staging_live_deepseek_smoke.py
+        run: uv run --no-sync python -m scripts.staging_live_deepseek_smoke
 
       - name: Remove the run-owned synthetic household
         if: always() && steps.staging-fixture.outcome != 'skipped'
         working-directory: backend
         env:
           PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
-        run: uv run --no-sync python scripts/staging_e2e_smoke.py cleanup
+        run: uv run --no-sync python -m scripts.staging_e2e_smoke cleanup
