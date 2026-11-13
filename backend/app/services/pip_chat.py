@@ -36,6 +36,10 @@ from app.services.privacy import all_active_household_members_granted
 
 _EMAIL_PATTERN = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 _PHONE_PATTERN = re.compile(r"(?<!\w)(?:\+?\d[\d\s().-]{7,}\d)(?!\w)")
+_ALLERGEN_TERMS = (
+    r"(?:peanuts?|tree\s+nuts?|milk|dairy|eggs?|fish|shellfish|wheat|gluten|soy|soya|"
+    r"sesame|crustacean|mani|gatas|itlog|isda|hipon|trigo|toyo)"
+)
 _SAFETY_QUERY_PATTERN = re.compile(
     r"\b(?:safe\s+(?:to\s+(?:eat|use|cook)|for|with)|food\s+safety|cross[- ]contact|"
     r"expired?|expiry|spoiled|food\s+poison(?:ing)?)\b|"
@@ -43,14 +47,15 @@ _SAFETY_QUERY_PATTERN = re.compile(
     r"\b(?:does|do|is there|are there)\b.{0,35}\b(?:contain|allergen|allergy|"
     r"peanuts?|tree\s+nuts?|milk|dairy|eggs?|fish|shellfish|wheat|gluten|soy|sesame)\b|"
     r"\b(?:pwede|puwede|pede)\b.{0,35}\b(?:kainin|inumin)\b|"
+    r"\b(?:may|meron|merong|mayroon)\b.{0,35}\b" + _ALLERGEN_TERMS + r"\b|"
     r"\b(?:ligtas\s+(?:bang\s+)?(?:kainin|kain)|panis|expired na)\b",
     re.IGNORECASE,
 )
 _ALLERGY_QUERY_PATTERN = re.compile(
     r"\b(?:allerg\w*|allergen\w*|cross[- ]contact)\b|"
     r"\b(?:avoid|without|free\s+(?:of|from)|no|cannot\s+have|can't\s+have)\s+"
-    r"(?:any\s+)?(?:peanuts?|tree\s+nuts?|milk|dairy|eggs?|fish|shellfish|wheat|"
-    r"gluten|soy|soya|sesame|crustacean|mani|gatas|itlog|isda|hipon|trigo|toyo)\b",
+    r"(?:any\s+)?" + _ALLERGEN_TERMS + r"\b|"
+    r"\b(?:may|meron|merong|mayroon)\b.{0,35}\b" + _ALLERGEN_TERMS + r"\b",
     re.IGNORECASE,
 )
 _INVENTORY_INTENT_PATTERN = re.compile(
@@ -71,14 +76,19 @@ _PREFERENCE_INTENT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _SAFETY_CLAIM_PATTERN = re.compile(
-    r"\b(?:safe|safely|safety|allerg\w*|cross[- ]contact|expired?|expiry|spoiled)\b|"
+    r"\b(?:safe|safely|safety|allerg\w*|cross[- ]contact|expired?|expiry|spoiled|"
+    r"ligtas|panis|sira|mapanganib)\b|"
     r"\b(?:free\s+(?:from|of)|does(?:n't| not)\s+contain|contains\s+no|"
-    r"will\s+not\s+trigger|won't\s+trigger)\b",
+    r"will\s+not\s+trigger|won't\s+trigger)\b|"
+    r"\b(?:walang|wala\s+(?:itong|kang)|hindi\s+(?:ito\s+)?naglalaman\s+ng)\b.{0,35}\b"
+    + _ALLERGEN_TERMS
+    + r"\b|\b(?:pwede|puwede|pede)\b.{0,30}\b(?:kainin|inumin)\b",
     re.IGNORECASE,
 )
 _HOUSEHOLD_FACT_CLAIM_PATTERN = re.compile(
     r"\b(?:you have .* in your pantry|your pantry (?:has|contains|includes)|"
-    r"your (?:stock|inventory) (?:has|contains|shows)|stored household recipe)\b",
+    r"your (?:stock|inventory) (?:has|contains|shows)|stored household recipe)\b|"
+    r"\b(?:may|meron|merong|mayroon)\b.{0,55}\b(?:ka|kayo|sa\s+(?:iyong|inyong|bahay|pantry|inventory))\b",
     re.IGNORECASE,
 )
 

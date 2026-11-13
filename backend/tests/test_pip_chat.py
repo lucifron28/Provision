@@ -281,6 +281,14 @@ def test_chat_requires_every_active_member_and_separate_allergy_consent(
     assert no_allergy_consent.json()["local_guidance"] is True
     assert provider.requests == []
 
+    tagalog_allergen_question = client.post(
+        "/api/v1/pip/chat", json={"message": "May mani ba sa ulam?"}
+    )
+    assert tagalog_allergen_question.status_code == 200
+    assert tagalog_allergen_question.json()["model"] == "local-guidance"
+    assert tagalog_allergen_question.json()["local_guidance"] is True
+    assert provider.requests == []
+
     _grant_allergy_sharing(db, auth_user, auth_household)
     _grant_allergy_sharing(db, other_member, auth_household)
     db.commit()
@@ -370,6 +378,32 @@ def test_chat_rejects_untrusted_model_references_and_never_writes_domain_data(
     unsafe_response = client.post("/api/v1/pip/chat", json={"message": "Suggest a dinner."})
     assert unsafe_response.status_code == 502
     assert unsafe_response.json()["detail"] == "INVALID_PIP_CHAT_RESPONSE"
+
+    filipino_unsafe_provider = FakePipChatProvider({
+        "reply": "Ligtas kainin ito, wala itong mani.",
+        "language": "filipino",
+        "fact_refs": [],
+        "actions": [],
+    })
+    _override_provider(filipino_unsafe_provider)
+    filipino_unsafe_response = client.post(
+        "/api/v1/pip/chat", json={"message": "Suggest a dinner."}
+    )
+    assert filipino_unsafe_response.status_code == 502
+    assert filipino_unsafe_response.json()["detail"] == "INVALID_PIP_CHAT_RESPONSE"
+
+    unsupported_inventory_claim = FakePipChatProvider({
+        "reply": "May bigas ka sa pantry.",
+        "language": "filipino",
+        "fact_refs": [],
+        "actions": [],
+    })
+    _override_provider(unsupported_inventory_claim)
+    unsupported_claim_response = client.post(
+        "/api/v1/pip/chat", json={"message": "Hello, Pip."}
+    )
+    assert unsupported_claim_response.status_code == 502
+    assert unsupported_claim_response.json()["detail"] == "INVALID_PIP_CHAT_RESPONSE"
     assert db.scalar(select(func.count()).select_from(Recipe)) == recipes_before
     assert db.scalar(select(func.count()).select_from(ShoppingListItem)) == shopping_before
 
