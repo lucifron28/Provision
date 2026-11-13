@@ -7,7 +7,7 @@ nonisolated enum PipChatMessageRole: String, Sendable {
 }
 
 nonisolated public struct PipChatDisplayMessage: Identifiable, Sendable {
-    let id = UUID()
+    public let id = UUID()
     let role: PipChatMessageRole
     let text: String
     let facts: [PipChatFact]
