@@ -487,6 +487,38 @@ public actor APIClient {
         return try await execute(request, expectedScope: scope)
     }
 
+    public func fetchPipChatConsent(scope: HouseholdScope) async throws -> PipChatConsent {
+        let url = baseURL.appendingPathComponent("privacy/pip-chat-consent")
+        return try await execute(URLRequest(url: url), expectedScope: scope)
+    }
+
+    public func updatePipChatConsent(_ update: PipChatConsentUpdate,
+                                     scope: HouseholdScope) async throws -> PipChatConsent {
+        let url = baseURL.appendingPathComponent("privacy/pip-chat-consent")
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(update)
+        return try await execute(request, expectedScope: scope)
+    }
+
+    public func revokePipChatConsent(scope: HouseholdScope) async throws -> PipChatConsent {
+        let url = baseURL.appendingPathComponent("privacy/pip-chat-consent")
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        return try await execute(request, expectedScope: scope)
+    }
+
+    public func sendPipChat(_ payload: PipChatRequest,
+                            scope: HouseholdScope) async throws -> PipChatResponse {
+        let url = baseURL.appendingPathComponent("pip/chat")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(payload)
+        return try await execute(request, expectedScope: scope)
+    }
+
     public func lookupIngredients(query: String?, limit: Int = 50, scope: HouseholdScope) async throws -> IngredientLookup {
         var components = URLComponents(url: baseURL.appendingPathComponent("ingredients/"), resolvingAgainstBaseURL: true)
         var items: [URLQueryItem] = [URLQueryItem(name: "limit", value: String(limit))]

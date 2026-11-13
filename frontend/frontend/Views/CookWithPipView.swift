@@ -5,18 +5,21 @@ public struct CookWithPipView: View {
     @StateObject private var viewModel: CookWithPipViewModel
     private let scope: HouseholdScope
     private let service: any CookWithPipService
+    private let chatService: any PipChatService
     private let workflowService: any CookWithPipWorkflowService
     private let pendingStore: any PendingRecipeShoppingStore
     private let onShoppingConfirmed: () async -> Void
     private let onNavigateToShopping: () -> Void
 
     public init(scope: HouseholdScope, service: any CookWithPipService = APIClient.shared,
+                chatService: any PipChatService = APIClient.shared,
                 workflowService: any CookWithPipWorkflowService = APIClient.shared,
                 pendingStore: any PendingRecipeShoppingStore = KeychainStore.shared,
                 onShoppingConfirmed: @escaping () async -> Void = {},
                 onNavigateToShopping: @escaping () -> Void = {}) {
         self.scope = scope
         self.service = service
+        self.chatService = chatService
         self.workflowService = workflowService
         self.pendingStore = pendingStore
         self.onShoppingConfirmed = onShoppingConfirmed
@@ -93,6 +96,23 @@ public struct CookWithPipView: View {
                             .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
                     }
                     .accessibilityIdentifier("cook-with-pip-management")
+                    NavigationLink {
+                        PipChatView(
+                            scope: scope,
+                            chatService: chatService,
+                            recipeService: service,
+                            workflowService: workflowService,
+                            pendingStore: pendingStore,
+                            onShoppingConfirmed: onShoppingConfirmed,
+                            onNavigateToShopping: onNavigateToShopping
+                        )
+                    } label: {
+                        Label("Chat with Pip", systemImage: "bubble.left.and.bubble.right")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                            .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
+                    }
+                    .accessibilityIdentifier("cook-with-pip-chat-link")
                     if !searchFieldFocused {
                         modePicker
                     }

@@ -2,6 +2,53 @@ import XCTest
 @testable import frontend
 
 final class CookWithPipUITests: XCTestCase {
+    func testPipChatConsentConversationAndValidatedRecipeAction() {
+        let app = launch()
+        openCookWithPip(app)
+        let chatLink = element("cook-with-pip-chat-link", in: app)
+        XCTAssertTrue(chatLink.waitForExistence(timeout: 10))
+        chatLink.tap()
+
+        XCTAssertTrue(element("pip-chat-privacy-card", in: app).waitForExistence(timeout: 10))
+        XCTAssertTrue(element("pip-chat-empty-state", in: app).waitForExistence(timeout: 10))
+        XCTAssertTrue(element("pip-chat-consent-chat", in: app).exists)
+        XCTAssertTrue(element("pip-chat-consent-allergies", in: app).exists)
+        capturePipChat("Pip_Chat_Empty", app: app)
+
+        let input = element("pip-chat-input", in: app)
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        input.tap()
+        input.typeText("Anong lulutuin natin?")
+        app.buttons["pip-chat-send"].tap()
+
+        let reply = app.staticTexts[
+            "Sige, puwede tayong tumingin sa household recipes. Check the verified recipe details in Cook with Pip."
+        ]
+        XCTAssertTrue(reply.waitForExistence(timeout: 10))
+        capturePipChat("Pip_Chat_Conversation", app: app)
+
+        let openRecipe = element("pip-chat-open-recipe-301", in: app)
+        XCTAssertTrue(openRecipe.waitForExistence(timeout: 5))
+        openRecipe.tap()
+        XCTAssertTrue(element("recipe-detail-title", in: app).waitForExistence(timeout: 10))
+    }
+
+    func testPipChatPrivacyControlsAtAccessibilitySizeInDarkMode() {
+        let app = launch(appearance: "dark", dynamicType: "accessibility")
+        openCookWithPip(app)
+        element("cook-with-pip-chat-link", in: app).tap()
+
+        let chatConsent = app.switches["pip-chat-consent-chat"]
+        let allergyConsent = app.switches["pip-chat-consent-allergies"]
+        XCTAssertTrue(chatConsent.waitForExistence(timeout: 10))
+        XCTAssertTrue(allergyConsent.waitForExistence(timeout: 10))
+        scrollTo(chatConsent, in: app)
+        XCTAssertTrue(chatConsent.isHittable)
+        scrollTo(allergyConsent, in: app)
+        XCTAssertTrue(allergyConsent.isHittable)
+        capturePipChat("Pip_Chat_Dark_Large_Text", app: app)
+    }
+
     func testHomeNavigationAndCaptureRecipeScreens() {
         let app = launch()
         let homeEntry = element("cook-with-pip-entry", in: app)
@@ -963,6 +1010,11 @@ final class CookWithPipUITests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    private func capturePipChat(_ name: String, app: XCUIApplication) {
+        guard ProcessInfo.processInfo.environment["PROVISION_SKIP_CHAT_SCREENSHOTS"] != "1" else { return }
+        capture(name, app: app)
     }
 }
 extension CookWithPipUITests {

@@ -1,6 +1,9 @@
 {
   "requiredScreenshots": [
     "Home_Cook_with_Pip",
+    "Pip_Chat_Empty",
+    "Pip_Chat_Conversation",
+    "Pip_Chat_Dark_Large_Text",
     "Cook_with_Pip",
     "Cook_Now",
     "Almost_There",

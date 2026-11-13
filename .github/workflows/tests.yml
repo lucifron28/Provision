@@ -23,6 +23,8 @@ jobs:
         run: mkdir -p artifacts/raw-cook-with-pip-screenshots artifacts/cook-with-pip-screenshots
       - name: Run Swift XCTest and the 12-screenshot UI smoke
         id: ios-tests
+        env:
+          PROVISION_SKIP_CHAT_SCREENSHOTS: "1"
         run: >-
           xcodebuild test
           -project frontend/frontend.xcodeproj
@@ -36,6 +38,8 @@ jobs:
           -only-testing:frontendUITests/CookWithPipUITests/testShoppingReviewRequiredAndBlockedStates
           -only-testing:frontendUITests/CookWithPipUITests/testShoppingOfflineRetryAndStalePreviewRecovery
           -only-testing:frontendUITests/CookWithPipUITests/testAmbiguousShoppingConfirmationSurvivesAppRelaunch
+          -only-testing:frontendUITests/CookWithPipUITests/testPipChatConsentConversationAndValidatedRecipeAction
+          -only-testing:frontendUITests/CookWithPipUITests/testPipChatPrivacyControlsAtAccessibilitySizeInDarkMode
           -resultBundlePath artifacts/frontend.xcresult
           CODE_SIGNING_ALLOWED=YES
           CODE_SIGN_IDENTITY=-
