@@ -43,7 +43,7 @@ private actor CookWithPipUITestScenarioCounter {
     func recordedConfirmations() -> [RecipeShoppingConfirmation] { confirmations }
 }
 
-nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWorkflowService {
+nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWorkflowService, PipChatService {
     private let recipes: [HouseholdRecipe]
     private let cookNowResults: [RecipeRecommendation]
     private let almostThereResults: [RecipeRecommendation]
@@ -560,6 +560,61 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
         }
     }
 
+    func fetchPipChatConsent(scope: HouseholdScope) async throws -> PipChatConsent {
+        PipChatConsent(
+            chatGranted: true,
+            allMembersChatGranted: true,
+            allergySharingGranted: false,
+            allMembersAllergySharingGranted: false,
+            providerEnabled: true,
+            notice: "Synthetic UI fixture; no data leaves the device."
+        )
+    }
+
+    func updatePipChatConsent(_ update: PipChatConsentUpdate,
+                              scope: HouseholdScope) async throws -> PipChatConsent {
+        let chatGranted = update.purpose == PipChatConsentPurpose.chat.rawValue ? update.granted : true
+        let allergyGranted = update.purpose == PipChatConsentPurpose.allergySharing.rawValue
+            ? update.granted : false
+        return PipChatConsent(
+            chatGranted: chatGranted,
+            allMembersChatGranted: chatGranted,
+            allergySharingGranted: allergyGranted,
+            allMembersAllergySharingGranted: allergyGranted,
+            providerEnabled: true,
+            notice: "Synthetic UI fixture; no data leaves the device."
+        )
+    }
+
+    func revokePipChatConsent(scope: HouseholdScope) async throws -> PipChatConsent {
+        PipChatConsent(chatGranted: false, allMembersChatGranted: false, providerEnabled: true)
+    }
+
+    func sendPipChat(_ request: PipChatRequest,
+                     scope: HouseholdScope) async throws -> PipChatResponse {
+        let actionKind = request.message.localizedCaseInsensitiveContains("buy")
+            ? "open_shopping_preview" : "open_recipe"
+        return PipChatResponse(
+            reply: "Sige, puwede tayong tumingin sa household recipes. Check the verified recipe details in Cook with Pip.",
+            language: "taglish",
+            actions: [PipChatAction(kind: actionKind, reference: "R1", recipeID: 301,
+                                    title: "Test Recipe: Sinigang na Baboy")],
+            recipeCards: [PipChatRecipeCard(
+                reference: "R1",
+                recipe_id: 301,
+                title: "Test Recipe: Sinigang na Baboy",
+                summary: "A stored recipe for UI navigation checks.",
+                cuisine: "Filipino",
+                availability_status: "partial",
+                missing_ingredient_count: 2,
+                safety_decision: "review_required",
+                safety_reasons: ["product_label_review_required"]
+            )],
+            model: "ui-fixture",
+            safetyNotice: "Chat suggestions are not safety checks."
+        )
+    }
+
     func recordedConfirmations() async -> [RecipeShoppingConfirmation] {
         await counter.recordedConfirmations()
     }
@@ -622,6 +677,7 @@ struct CookWithPipUITestHost: View {
                     },
                     cookWithPipScope: scope,
                     cookWithPipService: service,
+                    cookWithPipChatService: service,
                     cookWithPipWorkflowService: service,
                     cookWithPipPendingStore: pendingShoppingStore
                 )

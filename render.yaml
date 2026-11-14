@@ -21,6 +21,8 @@ services:
         generateValue: true
       - key: STAGING_TEST_FIXTURES_ENABLED
         value: "false"
+      - key: STAGING_TEST_CHAT_MOCK_ENABLED
+        value: "false"
       - key: STAGING_TEST_FIXTURE_TOKEN
         generateValue: true
       - key: DEEPSEEK_ENABLED

@@ -9,6 +9,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.security import hash_password, verify_password
+from app.core.staging_fixtures import is_staging_test_account
 from app.models.batch import InventoryBatch
 from app.models.event import InventoryEvent
 from app.models.household import Household, HouseholdMembership, HouseholdRole
@@ -34,6 +35,11 @@ from app.schemas.privacy import (
 )
 from app.schemas.product import ProductRead
 from app.schemas.privacy import CONSENT_POLICY_VERSION
+from app.schemas.pip_chat import (
+    PIP_CHAT_ALLERGY_POLICY_VERSION,
+    PIP_CHAT_POLICY_VERSION,
+    PipChatConsentRead,
+)
 from app.schemas.session import GrocerySessionRead
 from app.schemas.shopping import ShoppingListItemRead
 from app.services.preferences import read_profile
@@ -148,18 +154,205 @@ def set_member_consent(
     return _consent_read(consent)
 
 
-def all_active_household_members_consented(
+def _upsert_processing_consent(
     db: Session,
     *,
     household_id: int,
+    user_id: int,
+    purpose: str,
+    policy_version: str,
+    granted: bool,
+) -> None:
+    statement = pg_insert(ProcessingConsent).values(
+        household_id=household_id,
+        user_id=user_id,
+        purpose=purpose,
+        policy_version=policy_version,
+        granted=granted,
+    ).on_conflict_do_update(
+        constraint=CONSENT_CONSTRAINT,
+        set_={
+            "policy_version": policy_version,
+            "granted": granted,
+            "updated_at": datetime.now(timezone.utc),
+        },
+    )
+    db.execute(statement)
+
+
+def read_pip_chat_consent(
+    db: Session,
+    *,
+    household_id: int,
+    user_id: int,
+) -> PipChatConsentRead:
+    from app.core.config import settings
+
+    consents = db.scalars(
+        select(ProcessingConsent).where(
+            ProcessingConsent.household_id == household_id,
+            ProcessingConsent.user_id == user_id,
+            ProcessingConsent.purpose.in_(("pip_chat_v1", "pip_chat_allergies_v1")),
+        )
+    ).all()
+    by_purpose = {consent.purpose: consent for consent in consents}
+    chat = by_purpose.get("pip_chat_v1")
+    allergies = by_purpose.get("pip_chat_allergies_v1")
+    user_email = db.scalar(select(User.email).where(User.id == user_id)) or ""
+    staging_mock_enabled = bool(
+        settings.DEPLOYMENT_ENVIRONMENT == "staging"
+        and settings.STAGING_TEST_FIXTURES_ENABLED
+        and settings.STAGING_TEST_CHAT_MOCK_ENABLED
+        and is_staging_test_account(user_email)
+    )
+    return PipChatConsentRead(
+        chat_granted=bool(
+            chat and chat.granted and chat.policy_version == PIP_CHAT_POLICY_VERSION
+        ),
+        all_active_members_chat_granted=all_active_household_members_granted(
+            db,
+            household_id=household_id,
+            purpose="pip_chat_v1",
+            policy_version=PIP_CHAT_POLICY_VERSION,
+        ),
+        allergy_sharing_granted=bool(
+            allergies
+            and allergies.granted
+            and allergies.policy_version == PIP_CHAT_ALLERGY_POLICY_VERSION
+        ),
+        all_active_members_allergy_sharing_granted=all_active_household_members_granted(
+            db,
+            household_id=household_id,
+            purpose="pip_chat_allergies_v1",
+            policy_version=PIP_CHAT_ALLERGY_POLICY_VERSION,
+        ),
+        provider_enabled=settings.DEEPSEEK_ENABLED or staging_mock_enabled,
+    )
+
+
+def set_pip_chat_consent(
+    db: Session,
+    *,
+    household_id: int,
+    user_id: int,
+    purpose: str,
+    policy_version: str,
+    granted: bool,
+) -> PipChatConsentRead:
+    versions = {
+        "pip_chat_v1": PIP_CHAT_POLICY_VERSION,
+        "pip_chat_allergies_v1": PIP_CHAT_ALLERGY_POLICY_VERSION,
+    }
+    if purpose not in versions or versions[purpose] != policy_version:
+        raise ValueError("The current consent policy version is required.")
+
+    locked_household_id = db.scalar(
+        select(Household.id).where(Household.id == household_id).with_for_update()
+    )
+    if locked_household_id is None:
+        db.rollback()
+        raise LookupError("The household is unavailable.")
+    member_exists = db.scalar(
+        select(HouseholdMembership.id).where(
+            HouseholdMembership.household_id == household_id,
+            HouseholdMembership.user_id == user_id,
+        )
+    )
+    if member_exists is None:
+        db.rollback()
+        raise LookupError("The member is not authorized for this household.")
+
+    if purpose == "pip_chat_allergies_v1" and granted:
+        chat_consent = db.scalar(
+            select(ProcessingConsent).where(
+                ProcessingConsent.household_id == household_id,
+                ProcessingConsent.user_id == user_id,
+                ProcessingConsent.purpose == "pip_chat_v1",
+            )
+        )
+        if not (
+            chat_consent
+            and chat_consent.granted
+            and chat_consent.policy_version == PIP_CHAT_POLICY_VERSION
+        ):
+            db.rollback()
+            raise ValueError("Pip Chat consent is required before allergy sharing can be enabled.")
+
+    _upsert_processing_consent(
+        db,
+        household_id=household_id,
+        user_id=user_id,
+        purpose=purpose,
+        policy_version=policy_version,
+        granted=granted,
+    )
+    if purpose == "pip_chat_v1" and not granted:
+        _upsert_processing_consent(
+            db,
+            household_id=household_id,
+            user_id=user_id,
+            purpose="pip_chat_allergies_v1",
+            policy_version=PIP_CHAT_ALLERGY_POLICY_VERSION,
+            granted=False,
+        )
+    db.commit()
+    return read_pip_chat_consent(db, household_id=household_id, user_id=user_id)
+
+
+def revoke_pip_chat_consent(
+    db: Session,
+    *,
+    household_id: int,
+    user_id: int,
+) -> PipChatConsentRead:
+    locked_household_id = db.scalar(
+        select(Household.id).where(Household.id == household_id).with_for_update()
+    )
+    if locked_household_id is None:
+        db.rollback()
+        raise LookupError("The household is unavailable.")
+    member_exists = db.scalar(
+        select(HouseholdMembership.id).where(
+            HouseholdMembership.household_id == household_id,
+            HouseholdMembership.user_id == user_id,
+        )
+    )
+    if member_exists is None:
+        db.rollback()
+        raise LookupError("The member is not authorized for this household.")
+    _upsert_processing_consent(
+        db,
+        household_id=household_id,
+        user_id=user_id,
+        purpose="pip_chat_v1",
+        policy_version=PIP_CHAT_POLICY_VERSION,
+        granted=False,
+    )
+    _upsert_processing_consent(
+        db,
+        household_id=household_id,
+        user_id=user_id,
+        purpose="pip_chat_allergies_v1",
+        policy_version=PIP_CHAT_ALLERGY_POLICY_VERSION,
+        granted=False,
+    )
+    db.commit()
+    return read_pip_chat_consent(db, household_id=household_id, user_id=user_id)
+
+
+def all_active_household_members_granted(
+    db: Session,
+    *,
+    household_id: int,
+    purpose: str,
+    policy_version: str,
 ) -> bool:
-    """Require current consent from every active household member."""
     current_grant_exists = exists(
         select(ProcessingConsent.id).where(
             ProcessingConsent.household_id == household_id,
             ProcessingConsent.user_id == HouseholdMembership.user_id,
-            ProcessingConsent.purpose == CONSENT_PURPOSE,
-            ProcessingConsent.policy_version == CONSENT_POLICY_VERSION,
+            ProcessingConsent.purpose == purpose,
+            ProcessingConsent.policy_version == policy_version,
             ProcessingConsent.granted.is_(True),
         )
     )
@@ -182,6 +375,20 @@ def all_active_household_members_consented(
         )
     ).one()
     return active_count > 0 and active_count == granted_count
+
+
+def all_active_household_members_consented(
+    db: Session,
+    *,
+    household_id: int,
+) -> bool:
+    """Require current consent from every active household member."""
+    return all_active_household_members_granted(
+        db,
+        household_id=household_id,
+        purpose=CONSENT_PURPOSE,
+        policy_version=CONSENT_POLICY_VERSION,
+    )
 
 
 def export_account_data(

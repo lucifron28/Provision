@@ -13,6 +13,7 @@ from app.schemas.privacy import (
     ConsentRead,
     ConsentUpdate,
 )
+from app.schemas.pip_chat import PipChatConsentRead, PipChatConsentUpdate
 from app.services.privacy import (
     HouseholdMembershipChanged,
     InvalidAccountPassword,
@@ -20,6 +21,9 @@ from app.services.privacy import (
     delete_account,
     export_account_data,
     read_member_consent,
+    read_pip_chat_consent,
+    revoke_pip_chat_consent,
+    set_pip_chat_consent,
     set_member_consent,
 )
 
@@ -63,6 +67,11 @@ def update_consent(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Household membership is required",
         ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
 
 
 @router.delete("/consent", status_code=status.HTTP_204_NO_CONTENT)
@@ -88,6 +97,72 @@ def revoke_consent(
         status_code=status.HTTP_204_NO_CONTENT,
         headers={"Cache-Control": "no-store"},
     )
+
+
+@router.get("/pip-chat-consent", response_model=PipChatConsentRead)
+def get_pip_chat_consent(
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    household: Household = Depends(get_current_household),
+    db: Session = Depends(get_db),
+) -> PipChatConsentRead:
+    response.headers["Cache-Control"] = "no-store"
+    return read_pip_chat_consent(
+        db,
+        household_id=household.id,
+        user_id=current_user.id,
+    )
+
+
+@router.put("/pip-chat-consent", response_model=PipChatConsentRead)
+def update_pip_chat_consent(
+    consent: PipChatConsentUpdate,
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    household: Household = Depends(get_current_household),
+    db: Session = Depends(get_db),
+) -> PipChatConsentRead:
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return set_pip_chat_consent(
+            db,
+            household_id=household.id,
+            user_id=current_user.id,
+            purpose=consent.purpose,
+            policy_version=consent.policy_version,
+            granted=consent.granted,
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Household membership is required",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+
+@router.delete("/pip-chat-consent", response_model=PipChatConsentRead)
+def revoke_pip_chat_consent_endpoint(
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    household: Household = Depends(get_current_household),
+    db: Session = Depends(get_db),
+) -> PipChatConsentRead:
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return revoke_pip_chat_consent(
+            db,
+            household_id=household.id,
+            user_id=current_user.id,
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Household membership is required",
+        ) from exc
 
 
 @router.get("/export", response_model=AccountExport)

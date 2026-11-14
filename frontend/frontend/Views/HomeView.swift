@@ -14,6 +14,7 @@ public struct HomeView: View {
     @State private var itemToConsume: ExpiringSoonItem? = nil
     private let cookWithPipScope: HouseholdScope?
     private let cookWithPipService: any CookWithPipService
+    private let cookWithPipChatService: any PipChatService
     private let cookWithPipWorkflowService: any CookWithPipWorkflowService
     private let cookWithPipPendingStore: any PendingRecipeShoppingStore
 
@@ -25,6 +26,7 @@ public struct HomeView: View {
         onShoppingConfirmed: @escaping () async -> Void = {},
         cookWithPipScope: HouseholdScope? = nil,
         cookWithPipService: any CookWithPipService = APIClient.shared,
+        cookWithPipChatService: any PipChatService = APIClient.shared,
         cookWithPipWorkflowService: any CookWithPipWorkflowService = APIClient.shared,
         cookWithPipPendingStore: any PendingRecipeShoppingStore = KeychainStore.shared
     ) {
@@ -35,6 +37,7 @@ public struct HomeView: View {
         self.onShoppingConfirmed = onShoppingConfirmed
         self.cookWithPipScope = cookWithPipScope
         self.cookWithPipService = cookWithPipService
+        self.cookWithPipChatService = cookWithPipChatService
         self.cookWithPipWorkflowService = cookWithPipWorkflowService
         self.cookWithPipPendingStore = cookWithPipPendingStore
     }
@@ -47,6 +50,7 @@ public struct HomeView: View {
         onShoppingConfirmed: @escaping () async -> Void = {},
         cookWithPipScope: HouseholdScope? = nil,
         cookWithPipService: any CookWithPipService = APIClient.shared,
+        cookWithPipChatService: any PipChatService = APIClient.shared,
         cookWithPipWorkflowService: any CookWithPipWorkflowService = APIClient.shared,
         cookWithPipPendingStore: any PendingRecipeShoppingStore = KeychainStore.shared
     ) {
@@ -58,6 +62,7 @@ public struct HomeView: View {
             onShoppingConfirmed: onShoppingConfirmed,
             cookWithPipScope: cookWithPipScope,
             cookWithPipService: cookWithPipService,
+            cookWithPipChatService: cookWithPipChatService,
             cookWithPipWorkflowService: cookWithPipWorkflowService,
             cookWithPipPendingStore: cookWithPipPendingStore
         )
@@ -184,6 +189,7 @@ public struct HomeView: View {
         if let scope = activeCookWithPipScope {
             NavigationLink {
                 CookWithPipView(scope: scope, service: cookWithPipService,
+                                chatService: cookWithPipChatService,
                                 workflowService: cookWithPipWorkflowService,
                                 pendingStore: cookWithPipPendingStore,
                                 onShoppingConfirmed: onShoppingConfirmed,

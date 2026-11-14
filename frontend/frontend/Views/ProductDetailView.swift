@@ -47,6 +47,22 @@ public struct ProductDetailView: View {
             VStack(alignment: .leading, spacing: 20) {
                 // Top Product Summary Card
                 productSummaryHeader
+
+                if let scope = viewModel.scope {
+                    NavigationLink {
+                        PipChatView(
+                            scope: scope,
+                            context: PipChatContext(kind: .product, id: currentProduct.id)
+                        )
+                        .id("pip-chat-\(scope.storageKey)-product-\(currentProduct.id)")
+                    } label: {
+                        Label("Ask Pip about this product", systemImage: "bubble.left.and.bubble.right")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                            .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
+                    }
+                    .accessibilityIdentifier("product-ask-pip-link")
+                }
                 
                 // Warning on Invalid Legacy Unit
                 if !isUnitValid {

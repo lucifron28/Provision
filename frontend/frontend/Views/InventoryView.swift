@@ -271,6 +271,7 @@ public struct InventoryView: View {
                         productRow(product: product)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("product-row-\(product.id)")
                 }
             }
             .padding(.horizontal, 16)

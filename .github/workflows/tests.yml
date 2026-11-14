@@ -9,9 +9,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: provision-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  ios:
+  swift-unit-tests:
+    name: iOS Swift unit tests
     runs-on: macos-26
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Show Xcode and simulator runtimes
@@ -19,54 +25,172 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Prepare iOS test artifact folder
-        run: mkdir -p artifacts/raw-cook-with-pip-screenshots artifacts/cook-with-pip-screenshots
-      - name: Run Swift XCTest and the 12-screenshot UI smoke
-        id: ios-tests
+      - name: Prepare unit test artifacts
+        run: mkdir -p artifacts
+      - name: Run Swift unit tests
+        id: swift-tests
+        env:
+          PROVISION_SKIP_CHAT_SCREENSHOTS: "1"
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project frontend/frontend.xcodeproj \
+            -scheme frontend \
+            -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+            -only-testing:frontendTests \
+            -resultBundlePath artifacts/frontend-unit.xcresult \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- 2>&1 | tee artifacts/xcodebuild.log
+      - name: Report unit test durations
+        if: always()
         run: >-
-          xcodebuild test
-          -project frontend/frontend.xcodeproj
-          -scheme frontend
-          -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
-          -only-testing:frontendTests
-          -only-testing:frontendUITests/CookWithPipUITests/testHomeNavigationAndCaptureRecipeScreens
-          -only-testing:frontendUITests/CookWithPipUITests/testSafetyAndAvailabilityStatesWithLongFilipinoNames
-          -only-testing:frontendUITests/CookWithPipUITests/testPreferencesAndPackageLabelReviewScreens
-          -only-testing:frontendUITests/CookWithPipUITests/testFormsStayReadableInDarkModeAndLargeText
-          -only-testing:frontendUITests/CookWithPipUITests/testShoppingReviewRequiredAndBlockedStates
-          -only-testing:frontendUITests/CookWithPipUITests/testShoppingOfflineRetryAndStalePreviewRecovery
-          -only-testing:frontendUITests/CookWithPipUITests/testAmbiguousShoppingConfirmationSurvivesAppRelaunch
-          -resultBundlePath artifacts/frontend.xcresult
-          CODE_SIGNING_ALLOWED=YES
-          CODE_SIGN_IDENTITY=-
-      - name: Export simulator screenshots
+          python .github/scripts/report_xcode_test_durations.py
+          --input-log artifacts/xcodebuild.log
+          --json-output artifacts/test-durations-unit.json
+          --summary "$GITHUB_STEP_SUMMARY"
+      - name: Upload unit test timing and log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcode-test-durations-unit
+          path: |
+            artifacts/test-durations-unit.json
+            artifacts/xcodebuild.log
+          if-no-files-found: warn
+
+  ios-ui-smoke:
+    name: iOS UI smoke (${{ matrix.shard }})
+    runs-on: macos-26
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: preferences-product-label
+            tests: >-
+              -only-testing:frontendUITests/CookWithPipUITests/testPreferencesAllergySettings
+              -only-testing:frontendUITests/CookWithPipUITests/testProductLabelReviewScreens
+          - shard: recipes-chat-accessibility
+            tests: >-
+              -only-testing:frontendUITests/CookWithPipUITests/testFormsStayReadableInDarkModeAndLargeText
+              -only-testing:frontendUITests/CookWithPipUITests/testHomeNavigationAndCaptureRecipeScreens
+              -only-testing:frontendUITests/CookWithPipUITests/testSafetyAndAvailabilityStatesWithLongFilipinoNames
+              -only-testing:frontendUITests/CookWithPipUITests/testPipChatConsentConversationAndValidatedRecipeAction
+              -only-testing:frontendUITests/CookWithPipUITests/testPipChatShoppingActionOpensTheExistingReviewScreen
+              -only-testing:frontendUITests/CookWithPipUITests/testPipChatPrivacyControlsAtAccessibilitySizeInDarkMode
+          - shard: shopping-confirmation
+            tests: >-
+              -only-testing:frontendUITests/CookWithPipUITests/testShoppingReviewRequiredAndBlockedStates
+              -only-testing:frontendUITests/CookWithPipUITests/testAmbiguousShoppingConfirmationSurvivesAppRelaunch
+          - shard: shopping-recovery
+            tests: >-
+              -only-testing:frontendUITests/CookWithPipUITests/testShoppingOfflineRetryAndStalePreviewRecovery
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show Xcode and simulator runtimes
+        run: xcodebuild -version && xcrun simctl list devices available
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Prepare UI smoke artifacts
+        run: mkdir -p artifacts/raw-cook-with-pip-screenshots
+      - name: Run UI smoke shard
+        id: ui-tests
+        env:
+          PROVISION_SKIP_CHAT_SCREENSHOTS: "1"
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project frontend/frontend.xcodeproj \
+            -scheme frontend \
+            -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+            ${{ matrix.tests }} \
+            -resultBundlePath artifacts/frontend-${{ matrix.shard }}.xcresult \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- 2>&1 | tee artifacts/xcodebuild.log
+      - name: Report UI test durations
+        if: always()
+        run: >-
+          python .github/scripts/report_xcode_test_durations.py
+          --input-log artifacts/xcodebuild.log
+          --json-output artifacts/test-durations-${{ matrix.shard }}.json
+          --summary "$GITHUB_STEP_SUMMARY"
+      - name: Export shard screenshots
         if: always()
         run: |
-          if [ -d artifacts/frontend.xcresult ]; then
+          result_bundle="artifacts/frontend-${{ matrix.shard }}.xcresult"
+          if [ -d "$result_bundle" ]; then
             xcrun xcresulttool export attachments \
-              --path artifacts/frontend.xcresult \
+              --path "$result_bundle" \
               --output-path artifacts/raw-cook-with-pip-screenshots
           else
-            echo "No xcresult bundle was produced." >&2
+            echo "No xcresult bundle was produced for shard ${{ matrix.shard }}." >&2
             exit 1
           fi
-      - name: Organize and verify required screenshot scenarios
+      - name: Upload shard screenshots
         if: always()
-        run: >-
-          python .github/scripts/organize_ios_screenshots.py
-          --input artifacts/raw-cook-with-pip-screenshots
-          --output artifacts/cook-with-pip-screenshots
-          --required .github/scripts/required_ios_smoke_screenshots.json
-          --only-required
-          --commit-sha "$GITHUB_SHA"
-          --test-outcome "${{ steps.ios-tests.outcome }}"
-      - name: Package screenshots for visual review
+        uses: actions/upload-artifact@v4
+        with:
+          name: cook-with-pip-raw-${{ matrix.shard }}
+          path: artifacts/raw-cook-with-pip-screenshots
+          if-no-files-found: warn
+      - name: Upload UI test timing and log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcode-test-durations-${{ matrix.shard }}
+          path: |
+            artifacts/test-durations-${{ matrix.shard }}.json
+            artifacts/xcodebuild.log
+          if-no-files-found: warn
+
+  ios-screenshot-evidence:
+    name: iOS screenshot evidence
+    if: always()
+    needs: [ios-ui-smoke]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Download UI shard screenshots
+        uses: actions/download-artifact@v4
+        with:
+          pattern: cook-with-pip-raw-*
+          path: artifacts/raw-shards
+          merge-multiple: false
+      - name: Prepare screenshot evidence folder
+        run: mkdir -p artifacts/cook-with-pip-screenshots
+      - name: Organize and verify the 12 required screenshot scenarios
+        if: always()
+        env:
+          UI_TEST_OUTCOME: ${{ needs.ios-ui-smoke.result }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          input_args=()
+          for input_dir in artifacts/raw-shards/cook-with-pip-raw-*; do
+            if [[ -d "$input_dir" ]]; then
+              input_args+=(--input "$input_dir")
+            fi
+          done
+          if [[ ${#input_args[@]} -eq 0 ]]; then
+            echo "No UI screenshot shard exports were downloaded." >&2
+            exit 1
+          fi
+          python .github/scripts/organize_ios_screenshots.py \
+            "${input_args[@]}" \
+            --output artifacts/cook-with-pip-screenshots \
+            --required .github/scripts/required_ios_smoke_screenshots.json \
+            --only-required \
+            --commit-sha "$COMMIT_SHA" \
+            --test-outcome "$UI_TEST_OUTCOME"
+      - name: Package screenshot review archive
         if: always()
         run: |
           if [ -d artifacts/cook-with-pip-screenshots ]; then
-            ditto -c -k --sequesterRsrc --keepParent \
-              artifacts/cook-with-pip-screenshots \
-              artifacts/cook-with-pip-visual-review.zip
+            zip -r artifacts/cook-with-pip-visual-review.zip artifacts/cook-with-pip-screenshots
           else
             echo "Organized screenshot folder is missing." >&2
             exit 1
@@ -85,6 +209,40 @@ jobs:
           name: cook-with-pip-ios-screenshots
           path: artifacts/cook-with-pip-screenshots
           if-no-files-found: error
+
+  ios:
+    name: ios
+    if: always()
+    needs: [swift-unit-tests, ios-ui-smoke, ios-screenshot-evidence]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download XCTest duration reports
+        if: always()
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: xcode-test-durations-*
+          path: artifacts/test-durations
+          merge-multiple: true
+      - name: Summarize slowest XCTest cases
+        if: always()
+        run: >-
+          python .github/scripts/report_xcode_test_durations.py
+          --aggregate-dir artifacts/test-durations
+          --summary "$GITHUB_STEP_SUMMARY"
+      - name: Require unit, UI, and screenshot checks
+        if: always()
+        env:
+          UNIT_RESULT: ${{ needs.swift-unit-tests.result }}
+          UI_RESULT: ${{ needs.ios-ui-smoke.result }}
+          SCREENSHOT_RESULT: ${{ needs.ios-screenshot-evidence.result }}
+        run: |
+          set -euo pipefail
+          test "$UNIT_RESULT" = success
+          test "$UI_RESULT" = success
+          test "$SCREENSHOT_RESULT" = success
+
   backend:
     runs-on: ubuntu-latest
     services:
@@ -185,3 +343,19 @@ jobs:
           name: backend-test-results
           path: artifacts/backend-junit.xml
           if-no-files-found: warn
+
+  pr-fast-feedback:
+    name: Fast PR feedback
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    needs: [swift-unit-tests, backend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the early Swift and backend results
+        env:
+          SWIFT_RESULT: ${{ needs.swift-unit-tests.result }}
+          BACKEND_RESULT: ${{ needs.backend.result }}
+        run: |
+          set -euo pipefail
+          test "$SWIFT_RESULT" = success
+          test "$BACKEND_RESULT" = success
+          echo "Swift unit tests and backend checks passed. The complete UI and screenshot gate continues independently."

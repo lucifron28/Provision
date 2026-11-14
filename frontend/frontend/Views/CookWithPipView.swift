@@ -5,18 +5,22 @@ public struct CookWithPipView: View {
     @StateObject private var viewModel: CookWithPipViewModel
     private let scope: HouseholdScope
     private let service: any CookWithPipService
+    private let chatService: any PipChatService
     private let workflowService: any CookWithPipWorkflowService
     private let pendingStore: any PendingRecipeShoppingStore
     private let onShoppingConfirmed: () async -> Void
     private let onNavigateToShopping: () -> Void
+    @State private var selectedRecipeID: Int?
 
     public init(scope: HouseholdScope, service: any CookWithPipService = APIClient.shared,
+                chatService: any PipChatService = APIClient.shared,
                 workflowService: any CookWithPipWorkflowService = APIClient.shared,
                 pendingStore: any PendingRecipeShoppingStore = KeychainStore.shared,
                 onShoppingConfirmed: @escaping () async -> Void = {},
                 onNavigateToShopping: @escaping () -> Void = {}) {
         self.scope = scope
         self.service = service
+        self.chatService = chatService
         self.workflowService = workflowService
         self.pendingStore = pendingStore
         self.onShoppingConfirmed = onShoppingConfirmed
@@ -93,6 +97,24 @@ public struct CookWithPipView: View {
                             .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
                     }
                     .accessibilityIdentifier("cook-with-pip-management")
+                    NavigationLink {
+                        PipChatView(
+                            scope: scope,
+                            chatService: chatService,
+                            recipeService: service,
+                            workflowService: workflowService,
+                            pendingStore: pendingStore,
+                            onShoppingConfirmed: onShoppingConfirmed,
+                            onNavigateToShopping: onNavigateToShopping
+                        )
+                        .id("pip-chat-\(scope.storageKey)-household")
+                    } label: {
+                        Label("Chat with Pip", systemImage: "bubble.left.and.bubble.right")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                            .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
+                    }
+                    .accessibilityIdentifier("cook-with-pip-chat-link")
                     if !searchFieldFocused {
                         modePicker
                     }
@@ -139,6 +161,13 @@ public struct CookWithPipView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(ProvisionTheme.background, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
+        .navigationDestination(item: $selectedRecipeID) { recipeID in
+            RecipeDetailView(recipeID: recipeID, scope: scope, service: service,
+                             chatService: chatService, workflowService: workflowService,
+                             pendingStore: pendingStore,
+                             onShoppingConfirmed: onShoppingConfirmed,
+                             onNavigateToShopping: onNavigateToShopping)
+        }
         .task {
             if !viewModel.hasLoadedOnce {
                 await viewModel.load(reset: true)
@@ -248,12 +277,8 @@ public struct CookWithPipView: View {
         LazyVStack(spacing: 12) {
             if viewModel.mode == .myRecipes {
                 ForEach(viewModel.recipes) { recipe in
-                    NavigationLink {
-                        RecipeDetailView(recipeID: recipe.id, scope: scope, service: service,
-                                         workflowService: workflowService,
-                                         pendingStore: pendingStore,
-                                         onShoppingConfirmed: onShoppingConfirmed,
-                                         onNavigateToShopping: onNavigateToShopping)
+                    Button {
+                        selectedRecipeID = recipe.id
                     } label: {
                         HouseholdRecipeCard(recipe: recipe)
                     }
@@ -262,12 +287,8 @@ public struct CookWithPipView: View {
                 }
             } else {
                 ForEach(viewModel.recommendations, id: \.recipe.id) { recommendation in
-                    NavigationLink {
-                        RecipeDetailView(recipeID: recommendation.recipe.id, scope: scope, service: service,
-                                         workflowService: workflowService,
-                                         pendingStore: pendingStore,
-                                         onShoppingConfirmed: onShoppingConfirmed,
-                                         onNavigateToShopping: onNavigateToShopping)
+                    Button {
+                        selectedRecipeID = recommendation.recipe.id
                     } label: {
                         RecommendationRecipeCard(recommendation: recommendation)
                     }

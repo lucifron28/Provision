@@ -12,6 +12,7 @@ from decimal import Decimal
 import httpx
 
 from app.core.staging_target import validate_staging_api_base_url, verify_staging_deployment
+from app.schemas.pip_chat import PIP_CHAT_POLICY_VERSION
 
 
 def _api_base_url() -> str:
@@ -107,6 +108,56 @@ def _cleanup_account(client: httpx.Client, email: str, password: str) -> None:
         )
 
 
+def _cleanup_stale_accounts(client: httpx.Client) -> dict[str, object]:
+    response = client.post(
+        f"{_api_base_url()}/auth/staging-test-accounts/cleanup-stale",
+        headers={"X-Staging-Test-Token": _fixture_token()},
+        timeout=30,
+    )
+    if response.status_code != 200:
+        raise RuntimeError(
+            "Staging stale-fixture cleanup refused or failed "
+            f"(HTTP {response.status_code})"
+        )
+    result = response.json()
+    if not isinstance(result, dict) or not all(
+        isinstance(result.get(field), int) and result[field] >= 0
+        for field in ("deleted_count", "skipped_count")
+    ) or not isinstance(result.get("skipped_user_ids"), list) or any(
+        not isinstance(user_id, int) or user_id <= 0
+        for user_id in result["skipped_user_ids"]
+    ):
+        raise RuntimeError("Staging stale-fixture cleanup returned an invalid summary")
+    return result
+
+
+def _new_staging_test_email() -> str:
+    run_id = os.environ.get("GITHUB_RUN_ID", "")
+    run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "")
+    random_suffix = secrets.token_hex(16)
+    if run_id.isdecimal() and run_attempt.isdecimal():
+        identifier = f"{run_id}-{run_attempt}-{random_suffix}"
+    else:
+        identifier = uuid.uuid4().hex
+    return f"provision-e2e+{identifier}@example.com"
+
+
+def _remember_recipe_id(recipe_id: int) -> None:
+    env_file = os.environ.get("GITHUB_ENV")
+    if not env_file:
+        raise RuntimeError("Synthetic staging recipes can only be created by the GitHub Actions workflow")
+    with open(env_file, "a", encoding="utf-8") as output:
+        output.write(f"PROVISION_STAGING_TEST_RECIPE_ID={recipe_id}\n")
+
+
+def _remember_product_id(product_id: int) -> None:
+    env_file = os.environ.get("GITHUB_ENV")
+    if not env_file:
+        raise RuntimeError("Synthetic staging products can only be created by the GitHub Actions workflow")
+    with open(env_file, "a", encoding="utf-8") as output:
+        output.write(f"PROVISION_STAGING_TEST_PRODUCT_ID={product_id}\n")
+
+
 def _expect(condition: bool, message: str) -> None:
     if not condition:
         raise RuntimeError(message)
@@ -117,14 +168,18 @@ def prepare() -> None:
         raise RuntimeError("Run prepare only in the staging GitHub Actions job")
     preflight()
     _fixture_token()
-    run_id = uuid.uuid4().hex
-    email = f"provision-e2e+{run_id}@example.com"
+    email = _new_staging_test_email()
     password = secrets.token_urlsafe(32)
     _remember_account(email, password)
     with httpx.Client(timeout=20, follow_redirects=False, trust_env=False) as client:
+        cleanup = _cleanup_stale_accounts(client)
         user = _register(client, email, password)
     _remember_account(email, password, household_id=user["default_household_id"])
-    print(f"Prepared a synthetic staging account and household {user['default_household_id']}.")
+    print(
+        f"Prepared a synthetic staging account and household {user['default_household_id']}; "
+        f"removed {cleanup['deleted_count']} expired fixtures and retained "
+        f"{cleanup['skipped_count']} scoped records (user IDs: {cleanup['skipped_user_ids']})."
+    )
 
 
 def preflight() -> None:
@@ -141,7 +196,7 @@ def api_smoke() -> None:
     password = os.environ["PROVISION_STAGING_TEST_PASSWORD"]
     household_id = int(os.environ["PROVISION_STAGING_TEST_HOUSEHOLD_ID"])
     run_id = uuid.uuid4().hex
-    second_email = f"provision-e2e+{run_id}@example.com"
+    second_email = _new_staging_test_email()
     second_password = secrets.token_urlsafe(32)
 
     product_name = f"Synthetic pantry item {run_id}"
@@ -227,6 +282,7 @@ def api_smoke() -> None:
                 json={"name": product_name, "category": "E2E test", "unit": "g"},
             ).json()
             product_id = created["id"]
+            _remember_product_id(product_id)
             updated_name = f"{product_name} edited"
             updated = _request(
                 client,
@@ -391,6 +447,74 @@ def api_smoke() -> None:
                     "allergy_status": "NONE_DECLARED",
                     "allergies": [],
                 },
+            )
+
+            chat_consent = _request(
+                client,
+                "PUT",
+                "/privacy/pip-chat-consent",
+                headers=first_headers,
+                json={
+                    "purpose": "pip_chat_v1",
+                    "policy_version": PIP_CHAT_POLICY_VERSION,
+                    "granted": True,
+                },
+            ).json()
+            _expect(
+                chat_consent.get("all_active_members_chat_granted") is True
+                and chat_consent.get("provider_enabled") is True,
+                "The synthetic account could not use the staging-only Pip Chat mock",
+            )
+            shopping_before_chat = _request(
+                client, "GET", "/shopping-list/", headers=first_headers
+            ).json()
+            recommendation_chat = _request(
+                client,
+                "POST",
+                "/pip/chat",
+                headers=first_headers,
+                json={"message": "Suggest one Filipino meal for one person."},
+            ).json()
+            _expect(
+                recommendation_chat.get("model") == "staging-fixture-mock"
+                and recommendation_chat.get("usage", {}).get("total_tokens") == 0,
+                "Pip Chat did not use the non-billable staging mock provider",
+            )
+            chat_cards = recommendation_chat.get("recipe_cards", [])
+            _expect(
+                len(chat_cards) == 1
+                and chat_cards[0].get("recipe_id") == recipe["id"]
+                and chat_cards[0].get("availability_status") == "partial"
+                and chat_cards[0].get("missing_ingredient_count") == 1
+                and chat_cards[0].get("safety_decision") == "eligible",
+                "Pip Chat did not return the backend-evaluated recipe card",
+            )
+            _remember_recipe_id(recipe["id"])
+            shopping_chat = _request(
+                client,
+                "POST",
+                "/pip/chat",
+                headers=first_headers,
+                json={
+                    "message": "What should I buy?",
+                    "context": {"kind": "recipe", "id": recipe["id"]},
+                },
+            ).json()
+            _expect(
+                shopping_chat.get("actions") == [{
+                    "kind": "open_shopping_preview",
+                    "reference": "R1",
+                    "recipe_id": recipe["id"],
+                    "title": recipe["title"],
+                }],
+                "Pip Chat did not return a validated action for the existing shopping preview",
+            )
+            shopping_after_chat = _request(
+                client, "GET", "/shopping-list/", headers=first_headers
+            ).json()
+            _expect(
+                shopping_after_chat == shopping_before_chat,
+                "Pip Chat changed shopping data before the user reviewed the existing preview",
             )
 
             preview = _request(
