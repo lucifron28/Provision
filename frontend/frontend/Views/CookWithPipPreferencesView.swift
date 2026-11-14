@@ -176,6 +176,8 @@ public struct CookWithPipPreferencesView: View {
                 }
             } header: {
                 Text("Allergies")
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityAddTraits(.isHeader)
                     .accessibilityIdentifier("pip-preferences-allergies-heading")
             } footer: {
                 Text("Choose an explicit declaration. A missing declaration is never treated as allergy-free.")
