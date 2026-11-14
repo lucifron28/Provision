@@ -317,25 +317,27 @@ final class CookWithPipUITests: XCTestCase {
     func testProductLabelReviewScreens() {
         let app = launch()
         openCookWithPip(app)
-        element("cook-with-pip-management", in: app).tap()
-        element("cook-with-pip-product-labels-link", in: app).tap()
-        XCTAssertTrue(element("pip-label-product-9903", in: app).waitForExistence(timeout: 10))
+        app.buttons["cook-with-pip-management"].tap()
+        app.buttons["cook-with-pip-product-labels-link"].tap()
+        let labelList = app.buttons["pip-label-product-9903"]
+        XCTAssertTrue(labelList.waitForExistence(timeout: 10))
         capture("Product_Label_List", app: app)
-        element("pip-label-product-9903", in: app).tap()
-        let productTitle = element("pip-label-product-title", in: app)
+        labelList.tap()
+        let labelForm = app.collectionViews["pip-label-review-form"]
+        let productTitle = labelForm.staticTexts["pip-label-product-title"]
         XCTAssertTrue(productTitle.waitForExistence(timeout: 10))
         capture("Product_Label_Review", app: app)
 
-        let labelForm = app.collectionViews["pip-label-review-form"]
-        let milkDeclaration = element("pip-label-allergen-milk", in: app)
+        let milkDeclaration = labelForm.descendants(matching: .any)
+            .matching(identifier: "pip-label-allergen-milk").firstMatch
         scrollTargetIntoView(milkDeclaration, inside: labelForm, progressAnchor: productTitle, in: app)
         milkDeclaration.tap()
-        let declaredOption = element("pip-label-disposition-declared", in: app)
+        let declaredOption = app.buttons["pip-label-disposition-declared"]
         XCTAssertTrue(declaredOption.waitForExistence(timeout: 5))
         declaredOption.tap()
         XCTAssertEqual(milkDeclaration.value as? String, "Declared on label")
 
-        let source = element("pip-label-source-reference", in: app)
+        let source = labelForm.textViews["pip-label-source-reference"]
         scrollTargetIntoView(source, inside: labelForm, progressAnchor: productTitle, in: app)
         source.tap()
         let keyboard = app.keyboards.firstMatch
@@ -347,26 +349,28 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertEqual(source.value as? String, "Synthetic package")
         typeTextAndWait(" label", in: source)
         XCTAssertEqual(source.value as? String, "Synthetic package label")
-        let keyboardDone = element("pip-label-keyboard-done", in: app)
+        let keyboardDone = app.buttons["pip-label-keyboard-done"]
         XCTAssertTrue(keyboardDone.waitForExistence(timeout: 5))
         keyboardDone.tap()
         let keyboardDismissed = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "isHittable == false"), object: keyboard
         )
         XCTAssertEqual(XCTWaiter.wait(for: [keyboardDismissed], timeout: 5), .completed)
-        let saveReview = element("pip-label-save-review", in: app)
+        let saveReview = labelForm.buttons["pip-label-save-review"]
         scrollTargetIntoView(saveReview, inside: labelForm, progressAnchor: productTitle, in: app)
         XCTAssertTrue(saveReview.isEnabled, "A verified mapping and source reference enable saving the label review")
         XCTAssertTrue(saveReview.isHittable)
         saveReview.tap()
-        let savedLabelMessage = element("pip-label-status-message", in: app)
-        let saveError = element("pip-label-error", in: app)
+        let savedLabelMessage = labelForm.staticTexts["pip-label-status-message"]
+        let saveError = labelForm.descendants(matching: .any)
+            .matching(identifier: "pip-label-error").firstMatch
         let didSave = savedLabelMessage.waitForExistence(timeout: 15)
         let saveFailure = saveError.exists ? saveError.label : "No save status appeared"
         XCTAssertTrue(didSave, "Expected the save result before checking the updated label: \(saveFailure)")
         XCTAssertTrue(savedLabelMessage.label.contains("Package label review recorded"))
-        let currentStatus = element("pip-label-current-status", in: app)
-        let packageDeclarationHeading = element("pip-label-package-declaration-heading", in: app)
+        let currentStatus = labelForm.descendants(matching: .any)
+            .matching(identifier: "pip-label-current-status").firstMatch
+        let packageDeclarationHeading = labelForm.staticTexts["pip-label-package-declaration-heading"]
         scrollTargetIntoView(
             packageDeclarationHeading,
             inside: labelForm,
@@ -382,7 +386,7 @@ final class CookWithPipUITests: XCTestCase {
         capture("Product_Label_Saved_Keyboard_Dismissed", app: app)
         capture("Product_Label_Review_Current", app: app)
 
-        let technicalDetails = app.buttons["pip-label-technical-details"]
+        let technicalDetails = labelForm.buttons["pip-label-technical-details"]
         scrollTargetIntoView(
             technicalDetails,
             inside: labelForm,
@@ -392,7 +396,7 @@ final class CookWithPipUITests: XCTestCase {
             initialDirection: .towardStart
         )
         assertReachable(technicalDetails, in: app)
-        let reviewRevision = app.staticTexts["pip-label-review-revision"]
+        let reviewRevision = labelForm.staticTexts["pip-label-review-revision"]
         XCTAssertFalse(reviewRevision.exists, "Revision metadata starts collapsed")
         technicalDetails.tap()
         XCTAssertTrue(reviewRevision.waitForExistence(timeout: 5))
@@ -401,8 +405,9 @@ final class CookWithPipUITests: XCTestCase {
         assertReachable(reviewRevision, in: app)
         technicalDetails.tap()
         waitUntilGone(reviewRevision)
-        let mappingVerified = element("pip-label-mapping-verified", in: app)
-        let mappingType = element("pip-label-mapping-type", in: app)
+        let mappingVerified = labelForm.switches["pip-label-mapping-verified"]
+        let mappingType = labelForm.descendants(matching: .any)
+            .matching(identifier: "pip-label-mapping-type").firstMatch
         scrollTargetIntoView(mappingType, inside: labelForm, progressAnchor: productTitle, in: app)
         assertReachable(mappingType, in: app)
         scrollTargetIntoView(mappingVerified, inside: labelForm, progressAnchor: mappingType, in: app)
@@ -412,8 +417,8 @@ final class CookWithPipUITests: XCTestCase {
     func testFormsStayReadableInDarkModeAndLargeText() {
         let darkApp = launch(appearance: "dark")
         openCookWithPip(darkApp)
-        element("cook-with-pip-management", in: darkApp).tap()
-        element("cook-with-pip-preferences-link", in: darkApp).tap()
+        darkApp.buttons["cook-with-pip-management"].tap()
+        darkApp.buttons["cook-with-pip-preferences-link"].tap()
         let savePreferences = element("pip-preferences-save", in: darkApp)
         XCTAssertTrue(savePreferences.waitForExistence(timeout: 10))
         XCTAssertTrue(savePreferences.isHittable)
@@ -433,12 +438,13 @@ final class CookWithPipUITests: XCTestCase {
 
         navigateBack(
             darkApp,
-            to: element("cook-with-pip-product-labels-link", in: darkApp),
+            to: darkApp.buttons["cook-with-pip-product-labels-link"],
             screen: "Cook with Pip management"
         )
-        element("cook-with-pip-product-labels-link", in: darkApp).tap()
-        element("pip-label-product-9903", in: darkApp).tap()
-        let darkProductTitle = element("pip-label-product-title", in: darkApp)
+        darkApp.buttons["cook-with-pip-product-labels-link"].tap()
+        darkApp.buttons["pip-label-product-9903"].tap()
+        let darkLabelForm = darkApp.collectionViews["pip-label-review-form"]
+        let darkProductTitle = darkLabelForm.staticTexts["pip-label-product-title"]
         XCTAssertTrue(darkProductTitle.waitForExistence(timeout: 10))
         XCTAssertTrue(darkProductTitle.isHittable)
         capture("Product_Label_Review_Dark_Mode", app: darkApp)
@@ -446,19 +452,19 @@ final class CookWithPipUITests: XCTestCase {
         darkApp.terminate()
         let largeLabel = launch(dynamicType: "accessibility")
         openCookWithPip(largeLabel)
-        element("cook-with-pip-management", in: largeLabel).tap()
-        element("cook-with-pip-product-labels-link", in: largeLabel).tap()
-        element("pip-label-product-9903", in: largeLabel).tap()
-        let productTitle = element("pip-label-product-title", in: largeLabel)
+        largeLabel.buttons["cook-with-pip-management"].tap()
+        largeLabel.buttons["cook-with-pip-product-labels-link"].tap()
+        largeLabel.buttons["pip-label-product-9903"].tap()
+        let labelForm = largeLabel.collectionViews["pip-label-review-form"]
+        let productTitle = labelForm.staticTexts["pip-label-product-title"]
         XCTAssertTrue(productTitle.waitForExistence(timeout: 10))
         XCTAssertTrue(productTitle.isHittable)
         assertReachable(productTitle, in: largeLabel)
-        let labelForm = largeLabel.collectionViews["pip-label-review-form"]
         XCTAssertTrue(labelForm.waitForExistence(timeout: 5))
-        let technicalDetails = largeLabel.buttons["pip-label-technical-details"]
+        let technicalDetails = labelForm.buttons["pip-label-technical-details"]
         XCTAssertTrue(technicalDetails.waitForExistence(timeout: 5))
         scrollTargetIntoView(technicalDetails, inside: labelForm, progressAnchor: productTitle, in: largeLabel)
-        let serverVersion = largeLabel.staticTexts["pip-label-server-version"]
+        let serverVersion = labelForm.staticTexts["pip-label-server-version"]
         XCTAssertFalse(serverVersion.exists, "Technical metadata starts collapsed below the product details")
         capture("Product_Label_Review_Large_Text", app: largeLabel)
         technicalDetails.tap()
@@ -469,7 +475,7 @@ final class CookWithPipUITests: XCTestCase {
         scrollTargetIntoView(technicalDetails, inside: labelForm, progressAnchor: serverVersion, in: largeLabel)
         technicalDetails.tap()
         waitUntilGone(serverVersion)
-        let mappingVerified = element("pip-label-mapping-verified", in: largeLabel)
+        let mappingVerified = labelForm.switches["pip-label-mapping-verified"]
         scrollTargetIntoView(mappingVerified, inside: labelForm, progressAnchor: technicalDetails, in: largeLabel)
         assertReachable(mappingVerified, in: largeLabel)
         capture("Product_Label_Review_Scrolled", app: largeLabel)
@@ -480,19 +486,20 @@ final class CookWithPipUITests: XCTestCase {
         scrollTargetIntoView(mappingNote, inside: labelForm, progressAnchor: mappingVerified, in: largeLabel)
         assertReachable(mappingNote, in: largeLabel)
 
-        let milkDeclaration = element("pip-label-allergen-milk", in: largeLabel)
+        let milkDeclaration = labelForm.descendants(matching: .any)
+            .matching(identifier: "pip-label-allergen-milk").firstMatch
         scrollTargetIntoView(milkDeclaration, inside: labelForm, progressAnchor: mappingNote, in: largeLabel)
         XCTAssertTrue(milkDeclaration.label.hasSuffix("Milk label declaration"),
                       "The picker label preserves the allergen declaration description")
         assertReachable(milkDeclaration, in: largeLabel)
 
-        let customAllergensHeading = element("pip-label-custom-allergens-heading", in: largeLabel)
-        let customAllergensField = element("pip-label-custom-allergens", in: largeLabel)
+        let customAllergensHeading = labelForm.staticTexts["pip-label-custom-allergens-heading"]
+        let customAllergensField = labelForm.textFields["pip-label-custom-allergens"]
         scrollTargetIntoView(customAllergensHeading, inside: labelForm, progressAnchor: milkDeclaration, in: largeLabel)
         assertReachable(customAllergensHeading, in: largeLabel)
         assertReachable(customAllergensField, in: largeLabel)
 
-        let sourceField = element("pip-label-source-reference", in: largeLabel)
+        let sourceField = labelForm.textViews["pip-label-source-reference"]
         scrollTargetIntoView(sourceField, inside: labelForm, progressAnchor: customAllergensHeading, in: largeLabel)
         XCTAssertEqual(sourceField.label, "Source reference")
         XCTAssertEqual(sourceField.placeholderValue, "Package label, URL, or label section")
@@ -502,25 +509,28 @@ final class CookWithPipUITests: XCTestCase {
     func testStaleProductLabelReviewIsShownAsStale() {
         let app = launch(scenario: "product-label-stale")
         openCookWithPip(app)
-        element("cook-with-pip-management", in: app).tap()
-        element("cook-with-pip-product-labels-link", in: app).tap()
-        element("pip-label-product-9903", in: app).tap()
+        app.buttons["cook-with-pip-management"].tap()
+        app.buttons["cook-with-pip-product-labels-link"].tap()
+        app.buttons["pip-label-product-9903"].tap()
 
-        let productTitle = element("pip-label-product-title", in: app)
-        XCTAssertTrue(productTitle.waitForExistence(timeout: 10))
         let labelForm = app.collectionViews["pip-label-review-form"]
-        let milkDeclaration = element("pip-label-allergen-milk", in: app)
-        let ingredientSearchButton = element("pip-label-search-ingredients", in: app)
+        let productTitle = labelForm.staticTexts["pip-label-product-title"]
+        XCTAssertTrue(productTitle.waitForExistence(timeout: 10))
+        let milkDeclaration = labelForm.descendants(matching: .any)
+            .matching(identifier: "pip-label-allergen-milk").firstMatch
+        let ingredientSearchButton = labelForm.buttons["pip-label-search-ingredients"]
         scrollTargetIntoView(milkDeclaration, inside: labelForm, progressAnchor: productTitle, in: app)
         XCTAssertEqual(milkDeclaration.value as? String, "Declared on label")
-        let status = element("pip-label-current-status", in: app)
-        let packageDeclarationHeading = element("pip-label-package-declaration-heading", in: app)
+        let status = labelForm.descendants(matching: .any)
+            .matching(identifier: "pip-label-current-status").firstMatch
+        let packageDeclarationHeading = labelForm.staticTexts["pip-label-package-declaration-heading"]
         scrollTargetIntoView(status, inside: labelForm, progressAnchor: milkDeclaration, in: app)
         XCTAssertTrue(status.waitForExistence(timeout: 10))
         XCTAssertTrue(status.label.contains("no longer current"))
-        let mappingVerified = element("pip-label-mapping-verified", in: app)
-        let mappingType = element("pip-label-mapping-type", in: app)
-        let ingredientSearchField = element("pip-label-ingredient-search", in: app)
+        let mappingVerified = labelForm.switches["pip-label-mapping-verified"]
+        let mappingType = labelForm.descendants(matching: .any)
+            .matching(identifier: "pip-label-mapping-type").firstMatch
+        let ingredientSearchField = labelForm.textFields["pip-label-ingredient-search"]
         scrollTargetIntoView(mappingType, inside: labelForm, progressAnchor: productTitle, in: app)
         assertReachable(mappingType, in: app)
         scrollTargetIntoView(mappingVerified, inside: labelForm, progressAnchor: mappingType, in: app)
@@ -1054,13 +1064,12 @@ final class CookWithPipUITests: XCTestCase {
         if targetExists && target.isHittable { return }
 
         let anchor = progressAnchor ?? container.descendants(matching: .any).firstMatch
-        var previousTargetFrame = targetExists ? measurableFrame(of: target) : nil
-        var previousAnchorFrame = measurableFrame(of: anchor)
+        let containerFrame = measurableFrame(of: container, exists: true)
+        var anchorExists = anchor.exists
+        var previousTargetFrame = targetExists ? measurableFrame(of: target, exists: true) : nil
+        var previousAnchorFrame = anchorExists ? measurableFrame(of: anchor, exists: true) : nil
 
         for swipeNumber in 1...maximumSwipes {
-            if targetExists && target.isHittable { return }
-
-            let containerFrame = measurableFrame(of: container)
             let direction: ScrollDirection
             if let targetFrame = previousTargetFrame, let containerFrame {
                 if targetFrame.minY < containerFrame.minY {
@@ -1084,8 +1093,9 @@ final class CookWithPipUITests: XCTestCase {
             targetExists = target.exists
             if targetExists && target.isHittable { return }
 
-            let currentTargetFrame = targetExists ? measurableFrame(of: target) : nil
-            let currentAnchorFrame = measurableFrame(of: anchor)
+            let currentTargetFrame = targetExists ? measurableFrame(of: target, exists: true) : nil
+            anchorExists = anchor.exists
+            let currentAnchorFrame = anchorExists ? measurableFrame(of: anchor, exists: true) : nil
             let madeProgress = frameMoved(from: previousTargetFrame, to: currentTargetFrame)
                 || frameMoved(from: previousAnchorFrame, to: currentAnchorFrame)
             guard madeProgress else {
@@ -1112,8 +1122,8 @@ final class CookWithPipUITests: XCTestCase {
         )
     }
 
-    private func measurableFrame(of element: XCUIElement) -> CGRect? {
-        guard element.exists else { return nil }
+    private func measurableFrame(of element: XCUIElement, exists: Bool) -> CGRect? {
+        guard exists else { return nil }
         let frame = element.frame
         guard !frame.isNull, !frame.isInfinite, !frame.isEmpty,
               frame.minX.isFinite, frame.minY.isFinite,
