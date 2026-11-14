@@ -3,6 +3,10 @@
     "Home_Cook_with_Pip",
     "Pip_Chat_Empty",
     "Pip_Chat_Conversation",
+    "Pip_Chat_Shopping_Preview_Action",
+    "Pip_Chat_Recipe_Context",
+    "Pip_Chat_Product_Context",
+    "Pip_Chat_Consent_Controls",
     "Pip_Chat_Dark_Large_Text",
     "Cook_with_Pip",
     "Cook_Now",
@@ -55,6 +59,12 @@
   "scenarioDescriptions": {
     "Cook_with_Pip": "Cook with Pip household recipe search with the Bicol Express result visible.",
     "Cook_Now": "Cook Now mode is selected and its matching recipe is visible.",
-    "Recipe_Detail_Instructions": "The selected recipe detail shows its first readable instruction step."
+    "Recipe_Detail_Instructions": "The selected recipe detail shows its first readable instruction step.",
+    "Pip_Chat_Conversation": "A synthetic chat reply and validated household recipe card are visible.",
+    "Pip_Chat_Shopping_Preview_Action": "A synthetic chat shopping action is visible before opening the existing review flow.",
+    "Pip_Chat_Recipe_Context": "Pip Chat identifies the household recipe that opened the conversation.",
+    "Pip_Chat_Product_Context": "Pip Chat identifies the household product that opened the conversation.",
+    "Pip_Chat_Consent_Controls": "Chat consent is enabled separately from allergy sharing, which is shown enabled in the synthetic fixture.",
+    "Pip_Chat_Dark_Large_Text": "Pip Chat consent controls remain readable in dark mode at accessibility text size."
   }
 }

@@ -3,6 +3,7 @@ import SwiftUI
 public struct ProductDetailView: View {
     @ObservedObject var viewModel: InventoryViewModel
     let product: Product
+    private let chatService: any PipChatService
     @Environment(\.dismiss) private var dismiss
     
     @State private var showingConsumeSheet: Bool = false
@@ -29,9 +30,11 @@ public struct ProductDetailView: View {
     @State private var isAdjusting: Bool = false
     @State private var showingAdjustConfirmation: Bool = false
     @State private var isBatchListExpanded: Bool = false
-    public init(viewModel: InventoryViewModel, product: Product) {
+    public init(viewModel: InventoryViewModel, product: Product,
+                chatService: any PipChatService = APIClient.shared) {
         self.viewModel = viewModel
         self.product = product
+        self.chatService = chatService
     }
     
     private var currentProduct: Product {
@@ -52,7 +55,9 @@ public struct ProductDetailView: View {
                     NavigationLink {
                         PipChatView(
                             scope: scope,
-                            context: PipChatContext(kind: .product, id: currentProduct.id)
+                            context: PipChatContext(kind: .product, id: currentProduct.id),
+                            contextTitle: currentProduct.name,
+                            chatService: chatService
                         )
                         .id("pip-chat-\(scope.storageKey)-product-\(currentProduct.id)")
                     } label: {

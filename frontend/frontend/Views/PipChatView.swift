@@ -13,6 +13,7 @@ public struct PipChatView: View {
     @FocusState private var composerFocused: Bool
     private let scope: HouseholdScope
     private let context: PipChatContext?
+    private let contextTitle: String?
     private let chatService: any PipChatService
     private let recipeService: any CookWithPipService
     private let workflowService: any CookWithPipWorkflowService
@@ -23,6 +24,7 @@ public struct PipChatView: View {
     public init(
         scope: HouseholdScope,
         context: PipChatContext? = nil,
+        contextTitle: String? = nil,
         chatService: any PipChatService = APIClient.shared,
         recipeService: any CookWithPipService = APIClient.shared,
         workflowService: any CookWithPipWorkflowService = APIClient.shared,
@@ -32,6 +34,7 @@ public struct PipChatView: View {
     ) {
         self.scope = scope
         self.context = context
+        self.contextTitle = contextTitle
         self.chatService = chatService
         self.recipeService = recipeService
         self.workflowService = workflowService
@@ -47,6 +50,10 @@ public struct PipChatView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 consentCard
+
+                if let context, let contextTitle, !contextTitle.isEmpty {
+                    contextCard(kind: context.kind, title: contextTitle)
+                }
 
                 if viewModel.isLoadingConsent && !viewModel.hasLoadedConsent {
                     ProgressView("Loading privacy settings")
@@ -200,6 +207,25 @@ public struct PipChatView: View {
         .provisionCard(backgroundColor: ProvisionTheme.surface)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("pip-chat-privacy-card")
+    }
+
+    private func contextCard(kind: PipChatContext.Kind, title: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(kind == .recipe ? "Recipe context" : "Product context")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(ProvisionTheme.textSecondary)
+                .accessibilityIdentifier("pip-chat-context-kind")
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(ProvisionTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("pip-chat-context-title")
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .provisionCard(backgroundColor: ProvisionTheme.surfaceSecondary)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("pip-chat-context-card")
     }
 
     private var conversation: some View {

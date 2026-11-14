@@ -193,6 +193,7 @@ private struct RecipeDetailContents: View {
                 PipChatView(
                     scope: scope,
                     context: PipChatContext(kind: .recipe, id: recipe.id),
+                    contextTitle: recipe.title,
                     chatService: chatService,
                     recipeService: recipeService,
                     workflowService: workflowService,

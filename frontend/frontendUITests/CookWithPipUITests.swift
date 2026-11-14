@@ -25,9 +25,12 @@ final class CookWithPipUITests: XCTestCase {
             "Sige, puwede tayong tumingin sa household recipes. Check the verified recipe details in Cook with Pip."
         ]
         XCTAssertTrue(reply.waitForExistence(timeout: 10))
-        capturePipChat("Pip_Chat_Conversation", app: app)
-        XCTAssertTrue(element("pip-chat-recipe-card-301", in: app).exists,
+        let recipeCard = element("pip-chat-recipe-card-301", in: app)
+        XCTAssertTrue(recipeCard.waitForExistence(timeout: 5),
                       "Recipe suggestions are rendered as validated household cards")
+        scrollTargetIntoView(recipeCard, inside: app.scrollViews["pip-chat-scroll"], in: app)
+        assertReachable(recipeCard, in: app)
+        capturePipChat("Pip_Chat_Conversation", app: app)
 
         let openRecipe = element("pip-chat-open-recipe-301", in: app)
         XCTAssertTrue(openRecipe.waitForExistence(timeout: 5))
@@ -48,6 +51,9 @@ final class CookWithPipUITests: XCTestCase {
 
         let previewAction = element("pip-chat-open-shopping-preview-301", in: app)
         XCTAssertTrue(previewAction.waitForExistence(timeout: 10))
+        scrollTargetIntoView(previewAction, inside: app.scrollViews["pip-chat-scroll"], in: app)
+        assertReachable(previewAction, in: app)
+        capturePipChat("Pip_Chat_Shopping_Preview_Action", app: app)
         previewAction.tap()
 
         XCTAssertTrue(element("recipe-shopping-safety-status", in: app).waitForExistence(timeout: 10))
@@ -69,7 +75,79 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(chatConsent.isHittable)
         scrollTargetIntoView(allergyConsent, inside: chatScroll, progressAnchor: chatConsent, in: app)
         XCTAssertTrue(allergyConsent.isHittable)
+        XCTAssertTrue(element("pip-chat-data-notice", in: app).waitForExistence(timeout: 10))
         capturePipChat("Pip_Chat_Dark_Large_Text", app: app)
+    }
+
+    func testPipChatConsentControlsGallery() {
+        let app = launch()
+        openCookWithPip(app)
+        app.buttons["cook-with-pip-chat-link"].tap()
+
+        let chatConsent = app.switches["pip-chat-consent-chat"]
+        let allergyConsent = app.switches["pip-chat-consent-allergies"]
+        XCTAssertTrue(chatConsent.waitForExistence(timeout: 10))
+        XCTAssertTrue(allergyConsent.waitForExistence(timeout: 10))
+        let consentLoaded = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "1"), object: chatConsent
+        )
+        let separateAllergyConsentOff = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "0"), object: allergyConsent
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [consentLoaded, separateAllergyConsentOff], timeout: 10), .completed)
+        XCTAssertEqual(chatConsent.value as? String, "1", "The fixture starts with Pip Chat consent enabled")
+        XCTAssertEqual(allergyConsent.value as? String, "0", "Allergy sharing remains a separate consent")
+        XCTAssertTrue(chatConsent.isHittable)
+        XCTAssertTrue(allergyConsent.isHittable)
+
+        allergyConsent.tap()
+        let allergyConsentEnabled = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "1"), object: allergyConsent
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [allergyConsentEnabled], timeout: 10), .completed)
+        XCTAssertTrue(allergyConsent.isHittable)
+        XCTAssertTrue(element("pip-chat-data-notice", in: app).waitForExistence(timeout: 5))
+        capturePipChat("Pip_Chat_Consent_Controls", app: app)
+    }
+
+    func testPipChatRecipeContextGallery() {
+        let app = launch()
+        openCookNowRecipe(app)
+        let askPip = app.buttons["recipe-ask-pip-link"]
+        scrollTargetIntoView(
+            askPip,
+            inside: app.scrollViews["recipe-detail-scroll"],
+            progressAnchor: element("recipe-detail-title", in: app),
+            in: app
+        )
+        assertReachable(askPip, in: app)
+        askPip.tap()
+
+        let contextCard = element("pip-chat-context-card", in: app)
+        let contextTitle = app.staticTexts["pip-chat-context-title"]
+        XCTAssertTrue(contextCard.waitForExistence(timeout: 10))
+        XCTAssertTrue(contextTitle.waitForExistence(timeout: 5))
+        XCTAssertTrue(element("pip-chat-empty-state", in: app).waitForExistence(timeout: 10))
+        XCTAssertEqual(contextTitle.label, "Test Recipe: Sinigang na Baboy")
+        assertReachable(contextCard, in: app)
+        capturePipChat("Pip_Chat_Recipe_Context", app: app)
+    }
+
+    func testPipChatProductContextGallery() {
+        let app = launch(screen: "product-chat-context")
+        let askPip = app.buttons["product-ask-pip-link"]
+        XCTAssertTrue(askPip.waitForExistence(timeout: 10))
+        XCTAssertTrue(askPip.isHittable)
+        askPip.tap()
+
+        let contextCard = element("pip-chat-context-card", in: app)
+        let contextTitle = app.staticTexts["pip-chat-context-title"]
+        XCTAssertTrue(contextCard.waitForExistence(timeout: 10))
+        XCTAssertTrue(contextTitle.waitForExistence(timeout: 5))
+        XCTAssertTrue(element("pip-chat-empty-state", in: app).waitForExistence(timeout: 10))
+        XCTAssertEqual(contextTitle.label, "Century Tuna Flakes in Oil")
+        assertReachable(contextCard, in: app)
+        capturePipChat("Pip_Chat_Product_Context", app: app)
     }
 
     func testHomeNavigationAndCaptureRecipeScreens() {
@@ -966,7 +1044,7 @@ final class CookWithPipUITests: XCTestCase {
 
     private func launch(scenario: String = "default", appearance: String? = nil,
                         dynamicType: String? = nil, fixtureID: Int? = nil,
-                        useKeychain: Bool = false) -> XCUIApplication {
+                        useKeychain: Bool = false, screen: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments.append(contentsOf: [
             "-cook-with-pip-ui-tests",
@@ -974,6 +1052,7 @@ final class CookWithPipUITests: XCTestCase {
             "-pip-ui-fixture-id", String(fixtureID ?? Int.random(in: 10_000...90_000))
         ])
         if useKeychain { app.launchArguments.append(contentsOf: ["-pip-ui-use-keychain", "1"]) }
+        if let screen { app.launchArguments.append(contentsOf: ["-pip-ui-screen", screen]) }
         if let appearance {
             app.launchArguments.append(contentsOf: ["-pip-ui-appearance", appearance])
         }

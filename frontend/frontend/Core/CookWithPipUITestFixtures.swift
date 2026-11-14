@@ -630,6 +630,7 @@ struct CookWithPipUITestHost: View {
     @State private var showingShoppingList = false
     @State private var loadingReleased = false
     @StateObject private var shoppingViewModel: ShoppingViewModel
+    @StateObject private var productViewModel: InventoryViewModel
     @State private var pendingShoppingStore: any PendingRecipeShoppingStore
 
     init() {
@@ -638,6 +639,10 @@ struct CookWithPipUITestHost: View {
         let scope = HouseholdScope(userID: 9901 + fixtureID, householdID: 9902 + fixtureID,
                                    serverID: "ui-test-fixtures")
         _shoppingViewModel = StateObject(wrappedValue: ShoppingViewModel(isPreview: true, scope: scope))
+        let productViewModel = InventoryViewModel(isPreview: true, scope: scope)
+        productViewModel.selectedProduct = PreviewData.centuryTuna
+        productViewModel.productBatches = PreviewData.centuryTunaBatches
+        _productViewModel = StateObject(wrappedValue: productViewModel)
         let pendingStore: any PendingRecipeShoppingStore = Self.launchArgument("-pip-ui-use-keychain") == "1"
             ? KeychainStore.shared
             : CookWithPipUITestPendingShoppingStore()
@@ -666,6 +671,14 @@ struct CookWithPipUITestHost: View {
             if showingShoppingList {
                 NavigationStack {
                     ShoppingListView(viewModel: shoppingViewModel)
+                }
+            } else if Self.launchArgument("-pip-ui-screen") == "product-chat-context" {
+                NavigationStack {
+                    ProductDetailView(
+                        viewModel: productViewModel,
+                        product: PreviewData.centuryTuna,
+                        chatService: service
+                    )
                 }
             } else {
                 HomeView(

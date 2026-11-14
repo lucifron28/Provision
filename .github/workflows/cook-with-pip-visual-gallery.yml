@@ -2,14 +2,57 @@ name: Cook with Pip visual gallery
 
 on:
   workflow_dispatch:
+    inputs:
+      force:
+        description: Rerun the complete gallery even if this commit already has a successful gallery run
+        required: false
+        type: boolean
+        default: false
   schedule:
     - cron: '30 6 * * 1'
 
 permissions:
+  actions: read
   contents: read
 
+concurrency:
+  group: cook-with-pip-gallery-${{ github.workflow }}-${{ github.sha }}
+  cancel-in-progress: false
+
 jobs:
+  duplicate-check:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - name: Skip a duplicate successful gallery for this commit
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const force = context.eventName === "workflow_dispatch"
+              && context.payload.inputs?.force === "true";
+            if (force) {
+              core.setOutput("skip", "false");
+              core.info("Manual force input requested a fresh gallery run.");
+              return;
+            }
+            const { data } = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: "cook-with-pip-visual-gallery.yml",
+              head_sha: context.sha,
+              per_page: 100,
+            });
+            const priorSuccess = data.workflow_runs.find(run =>
+              run.id !== context.runId && run.status === "completed" && run.conclusion === "success"
+            );
+            core.setOutput("skip", priorSuccess ? "true" : "false");
+            if (priorSuccess) core.info(`Gallery already passed for this commit in run ${priorSuccess.id}.`);
+
   ios-gallery:
+    needs: [duplicate-check]
+    if: needs.duplicate-check.outputs.skip != 'true'
     runs-on: macos-26
     timeout-minutes: 90
     steps:
@@ -19,18 +62,30 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - name: Install screenshot validation dependency
+        run: python -m pip install --disable-pip-version-check Pillow
+      - name: Test screenshot organizer with synthetic PNG fixtures
+        run: python -m unittest discover -s .github/scripts/tests -p "test_*.py"
       - name: Prepare full gallery artifact folders
         run: mkdir -p artifacts/raw-cook-with-pip-screenshots artifacts/cook-with-pip-screenshots
       - name: Run full iOS XCTest and screenshot gallery
         id: ios-tests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project frontend/frontend.xcodeproj \
+            -scheme frontend \
+            -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+            -resultBundlePath artifacts/frontend.xcresult \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- 2>&1 | tee artifacts/xcodebuild.log
+      - name: Report full XCTest durations
+        if: always()
         run: >-
-          xcodebuild test
-          -project frontend/frontend.xcodeproj
-          -scheme frontend
-          -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
-          -resultBundlePath artifacts/frontend.xcresult
-          CODE_SIGNING_ALLOWED=YES
-          CODE_SIGN_IDENTITY=-
+          python .github/scripts/report_xcode_test_durations.py
+          --input-log artifacts/xcodebuild.log
+          --json-output artifacts/test-durations-full-gallery.json
+          --summary "$GITHUB_STEP_SUMMARY"
       - name: Export full simulator screenshot gallery
         if: always()
         run: |
@@ -50,7 +105,7 @@ jobs:
           --output artifacts/cook-with-pip-screenshots
           --required .github/scripts/required_ios_screenshots.json
           --commit-sha "$GITHUB_SHA"
-          --test-outcome "$(if [[ '${{ steps.ios-tests.outcome }}' == 'success' ]]; then echo success; else echo failure; fi)"
+          --test-outcome "${{ steps.ios-tests.outcome }}"
       - name: Package full gallery for visual review
         if: always()
         run: |
@@ -84,3 +139,12 @@ jobs:
           path: artifacts/frontend.xcresult
           if-no-files-found: error
           compression-level: 0
+      - name: Upload full XCTest timing report and log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cook-with-pip-xctest-durations
+          path: |
+            artifacts/test-durations-full-gallery.json
+            artifacts/xcodebuild.log
+          if-no-files-found: warn
