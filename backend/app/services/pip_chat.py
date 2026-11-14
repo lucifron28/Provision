@@ -805,10 +805,10 @@ def generate_pip_chat(
         query_text=query_text,
         include_allergies=all_members_allow_allergy_context,
     )
+    provider_request = _chat_request(request, facts=facts, provider_context=provider_context)
+    db.commit()
     try:
-        provider_response = provider.chat_json(
-            _chat_request(request, facts=facts, provider_context=provider_context)
-        )
+        provider_response = provider.chat_json(provider_request)
         model_response = PipChatModelResponse.model_validate(provider_response.json_object)
     except ValidationError:
         raise HTTPException(502, "INVALID_PIP_CHAT_RESPONSE") from None
@@ -842,6 +842,34 @@ def generate_pip_chat(
             recipe_id=target["recipe_id"],
             title=target["title"],
         ))
+
+    lock_household_write(db, household_id)
+    member_id = db.scalar(
+        select(HouseholdMembership.id)
+        .join(User, User.id == HouseholdMembership.user_id)
+        .where(
+            HouseholdMembership.household_id == household_id,
+            HouseholdMembership.user_id == actor_id,
+            User.is_active.is_(True),
+        )
+    )
+    if member_id is None:
+        raise HTTPException(403, "ACTIVE_HOUSEHOLD_MEMBERSHIP_REQUIRED")
+    if not all_active_household_members_granted(
+        db,
+        household_id=household_id,
+        purpose="pip_chat_v1",
+        policy_version=PIP_CHAT_POLICY_VERSION,
+    ):
+        raise HTTPException(403, "CURRENT_HOUSEHOLD_PIP_CHAT_CONSENT_REQUIRED")
+    if all_members_allow_allergy_context and not all_active_household_members_granted(
+        db,
+        household_id=household_id,
+        purpose="pip_chat_allergies_v1",
+        policy_version=PIP_CHAT_ALLERGY_POLICY_VERSION,
+    ):
+        raise HTTPException(403, "CURRENT_HOUSEHOLD_PIP_CHAT_ALLERGY_CONSENT_REQUIRED")
+    db.commit()
 
     return PipChatRead(
         reply=_redact_personal_identifiers(model_response.reply),

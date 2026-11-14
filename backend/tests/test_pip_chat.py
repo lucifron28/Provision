@@ -1,9 +1,14 @@
 """Household isolation, privacy, safety, and no-write tests for Pip Chat."""
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from threading import Event
 
+import pytest
+from fastapi import HTTPException
 from sqlalchemy import func, select
+from sqlalchemy.orm import sessionmaker
 
 from app.main import app
 from app.models.batch import InventoryBatch
@@ -25,8 +30,11 @@ from app.schemas.ingredients import IngredientRequirementInput
 from app.schemas.pip_chat import (
     PIP_CHAT_ALLERGY_POLICY_VERSION,
     PIP_CHAT_POLICY_VERSION,
+    PipChatRequest,
 )
-from app.services.privacy import set_pip_chat_consent
+from app.services.household_writes import lock_household_write
+from app.services.pip_chat import generate_pip_chat
+from app.services.privacy import revoke_pip_chat_consent, set_pip_chat_consent
 from test_privacy import _add_member, _new_household, _new_user
 
 
@@ -44,6 +52,25 @@ class FakePipChatProvider:
         self.requests.append(request)
         return DeepSeekChatResponse(
             model="fake-chat",
+            finish_reason="stop",
+            json_object=self.response,
+            usage=DeepSeekTokenUsage(prompt_tokens=4, completion_tokens=8, total_tokens=12),
+        )
+
+
+class BlockingPipChatProvider(FakePipChatProvider):
+    def __init__(self, response=None):
+        super().__init__(response)
+        self.request_started = Event()
+        self.allow_response = Event()
+
+    def chat_json(self, request):
+        self.requests.append(request)
+        self.request_started.set()
+        if not self.allow_response.wait(timeout=15):
+            raise TimeoutError("test did not release the blocked Pip Chat provider")
+        return DeepSeekChatResponse(
+            model="fake-blocking-chat",
             finish_reason="stop",
             json_object=self.response,
             usage=DeepSeekTokenUsage(prompt_tokens=4, completion_tokens=8, total_tokens=12),
@@ -931,3 +958,143 @@ def test_chat_safety_questions_are_routed_to_local_guidance_and_history_is_bound
         },
     )
     assert invalid_history.status_code == 422
+
+
+def test_chat_releases_household_transaction_before_waiting_on_provider(
+    db, engine, auth_user, auth_household
+):
+    _grant_chat(db, auth_user, auth_household)
+    db.commit()
+    household_id = auth_household.id
+    actor_id = auth_user.id
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    provider = BlockingPipChatProvider()
+    write_completed = Event()
+
+    def generate_chat():
+        with session_factory() as session:
+            return generate_pip_chat(
+                session,
+                household_id,
+                actor_id,
+                PipChatRequest(message="Suggest a dinner."),
+                provider,
+            )
+
+    def write_household():
+        with session_factory() as session:
+            household = lock_household_write(session, household_id, actor_id=actor_id)
+            household.name = "Updated while Pip is responding"
+            session.commit()
+            write_completed.set()
+            return True
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        chat_future = executor.submit(generate_chat)
+        try:
+            assert provider.request_started.wait(timeout=5)
+            assert isinstance(provider.requests[0], DeepSeekChatRequest)
+            write_future = executor.submit(write_household)
+            assert write_completed.wait(timeout=5), (
+                "An authorized household write waited for the model call to finish"
+            )
+            assert not provider.allow_response.is_set()
+        finally:
+            provider.allow_response.set()
+
+        assert write_future.result(timeout=5)
+        result = chat_future.result(timeout=5)
+        assert result.model == "fake-blocking-chat"
+
+
+@pytest.mark.parametrize(
+    ("revocation", "message", "expected_detail"),
+    [
+        ("chat", "Suggest a dinner.", "CURRENT_HOUSEHOLD_PIP_CHAT_CONSENT_REQUIRED"),
+        (
+            "allergy",
+            "Suggest a meal without peanuts.",
+            "CURRENT_HOUSEHOLD_PIP_CHAT_ALLERGY_CONSENT_REQUIRED",
+        ),
+        ("membership", "Suggest a dinner.", "ACTIVE_HOUSEHOLD_MEMBERSHIP_REQUIRED"),
+    ],
+)
+def test_chat_rechecks_membership_and_consent_after_provider_response(
+    db, engine, auth_user, auth_household, revocation, message, expected_detail
+):
+    _grant_chat(db, auth_user, auth_household)
+    if revocation == "allergy":
+        _grant_allergy_sharing(db, auth_user, auth_household)
+        profile = FoodPreference(
+            household_id=auth_household.id,
+            member_user_id=auth_user.id,
+            preferences={"diet_patterns": []},
+            allergy_status="DECLARED",
+        )
+        db.add(profile)
+        db.flush()
+        db.add(FoodAllergy(
+            profile_id=profile.id,
+            allergen_code="peanuts",
+            custom_text=None,
+            severity="severe",
+            cross_contact_concern=True,
+            notes="Private test note",
+        ))
+    db.commit()
+
+    household_id = auth_household.id
+    actor_id = auth_user.id
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    provider = BlockingPipChatProvider()
+
+    def generate_chat():
+        with session_factory() as session:
+            return generate_pip_chat(
+                session,
+                household_id,
+                actor_id,
+                PipChatRequest(message=message),
+                provider,
+            )
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        chat_future = executor.submit(generate_chat)
+        try:
+            assert provider.request_started.wait(timeout=5)
+            if revocation == "allergy":
+                request_text = provider.requests[0].messages[1].content
+                assert "peanuts" in request_text
+                assert "Private test note" not in request_text
+                with session_factory() as revoker:
+                    set_pip_chat_consent(
+                        revoker,
+                        household_id=household_id,
+                        user_id=actor_id,
+                        purpose="pip_chat_allergies_v1",
+                        policy_version=PIP_CHAT_ALLERGY_POLICY_VERSION,
+                        granted=False,
+                    )
+            elif revocation == "chat":
+                with session_factory() as revoker:
+                    revoke_pip_chat_consent(
+                        revoker, household_id=household_id, user_id=actor_id
+                    )
+            else:
+                with session_factory() as revoker:
+                    lock_household_write(revoker, household_id)
+                    membership = revoker.scalar(
+                        select(HouseholdMembership).where(
+                            HouseholdMembership.household_id == household_id,
+                            HouseholdMembership.user_id == actor_id,
+                        )
+                    )
+                    revoker.delete(membership)
+                    revoker.commit()
+        finally:
+            provider.allow_response.set()
+
+        with pytest.raises(HTTPException) as error:
+            chat_future.result(timeout=10)
+        assert error.value.status_code == 403
+        assert error.value.detail == expected_detail
