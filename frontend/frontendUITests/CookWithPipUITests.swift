@@ -1193,7 +1193,7 @@ extension CookWithPipUITests {
         passwordField.typeText(password)
         app.buttons["login-submit"].tap()
         XCTAssertTrue(app.buttons["Home"].waitForExistence(timeout: 40))
-        dismissSavePasswordPromptIfPresent(in: app, readyElement: app.buttons["Home"])
+        dismissSavePasswordPromptIfPresent(readyElement: app.buttons["Home"])
 
         let homeEntry = element("cook-with-pip-entry", in: app)
         XCTAssertTrue(homeEntry.waitForExistence(timeout: 20))
