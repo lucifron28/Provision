@@ -233,6 +233,11 @@ public struct ProductLabelReviewView: View {
             }
 
             Section {
+                Text("Package label declaration")
+                    .font(.headline)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("pip-label-package-declaration-heading")
                 if let label = viewModel.label {
                     let status = label.current_for_product ? "Current label review" : "Review is no longer current"
                     Label(status,
@@ -295,9 +300,6 @@ public struct ProductLabelReviewView: View {
                 if viewModel.statusContext == .packageLabel, let status = viewModel.statusMessage {
                     statusMessageView(status)
                 }
-            } header: {
-                Text("Package label declaration")
-                    .accessibilityIdentifier("pip-label-package-declaration-heading")
             } footer: {
                 if !viewModel.canReviewLabel {
                     Text("Save a verified, complete ingredient mapping and refresh the product before recording this review.")

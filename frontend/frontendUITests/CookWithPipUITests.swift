@@ -217,7 +217,14 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertEqual(milkCrossContact.value as? String, "1")
         element("pip-preferences-save", in: app).tap()
         let savedMessage = element("pip-preferences-success", in: app)
-        XCTAssertTrue(savedMessage.waitForExistence(timeout: 10))
+        scrollTargetIntoView(
+            savedMessage,
+            inside: preferencesForm,
+            progressAnchor: milkSeverity,
+            in: app,
+            initialDirection: .towardStart
+        )
+        XCTAssertTrue(savedMessage.isHittable, "Saving preferences should show its confirmation at the top of the form")
         let allergyHeading = element("pip-preferences-allergies-heading", in: app)
         scrollTargetIntoView(allergyHeading, inside: preferencesForm, progressAnchor: milkSeverity, in: app)
         assertReachable(allergyHeading, in: app)
@@ -1118,7 +1125,7 @@ final class CookWithPipUITests: XCTestCase {
 
     private func capture(_ name: String, app: XCUIApplication) {
         guard ProcessInfo.processInfo.environment["PROVISION_SKIP_UI_SCREENSHOTS"] != "1" else { return }
-        let attachment = XCTAttachment(screenshot: app.screenshot())
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
