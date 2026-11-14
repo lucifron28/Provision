@@ -476,6 +476,7 @@ private struct RecipeDetailContents: View {
                         .font(.body)
                         .foregroundStyle(ProvisionTheme.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("recipe-instruction-step-\(step.offset + 1)")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }

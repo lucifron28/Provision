@@ -12,5 +12,10 @@
     "Shopping_Offline_Error_Retry",
     "Shopping_Confirmation_Retry_Pending",
     "Shopping_Stale_Preview_Refresh"
-  ]
+  ],
+  "scenarioDescriptions": {
+    "Cook_with_Pip": "Cook with Pip household recipe search with the Bicol Express result visible.",
+    "Cook_Now": "Cook Now mode is selected and its matching recipe is visible.",
+    "Recipe_Detail_Instructions": "The selected recipe detail shows its first readable instruction step."
+  }
 }

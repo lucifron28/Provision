@@ -87,9 +87,44 @@ final class CookWithPipUITests: XCTestCase {
         homeEntry.tap()
 
         XCTAssertTrue(element("cook-with-pip-introduction", in: app).waitForExistence(timeout: 10))
-        XCTAssertTrue(element("recipe-card-301", in: app).waitForExistence(timeout: 10))
+        let myRecipes = app.buttons["cook-mode-myRecipes"]
+        XCTAssertTrue(myRecipes.waitForExistence(timeout: 10))
+        myRecipes.tap()
+        let myRecipesSelected = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "Selected"), object: myRecipes
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [myRecipesSelected], timeout: 10), .completed)
+
+        let search = app.textFields["cook-with-pip-search"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("Bicol Express")
+        let searchDone = app.buttons["cook-with-pip-search-keyboard-done"]
+        XCTAssertTrue(searchDone.waitForExistence(timeout: 5))
+        searchDone.tap()
+        let searchedRecipe = app.buttons["recipe-card-303"]
+        XCTAssertTrue(searchedRecipe.waitForExistence(timeout: 10))
+        XCTAssertTrue(searchedRecipe.label.contains("Test Recipe: Bicol Express"))
+        XCTAssertTrue(searchedRecipe.isHittable,
+                      "The filtered household recipe is visible in the Cook with Pip search state")
+        XCTAssertFalse(app.keyboards.firstMatch.isHittable,
+                       "The Cook with Pip search capture is taken after dismissing the keyboard")
         capture("Cook_with_Pip", app: app)
-        XCTAssertTrue(element("cook-mode-cookNow", in: app).exists)
+
+        let clearSearch = app.buttons["Clear search"]
+        XCTAssertTrue(clearSearch.waitForExistence(timeout: 5))
+        clearSearch.tap()
+        let cookNow = app.buttons["cook-mode-cookNow"]
+        XCTAssertTrue(cookNow.waitForExistence(timeout: 5))
+        XCTAssertTrue(cookNow.isHittable)
+        cookNow.tap()
+        let cookNowSelected = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "Selected"), object: cookNow
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [cookNowSelected], timeout: 10), .completed)
+        let cookNowRecipe = app.buttons["recipe-card-301"]
+        XCTAssertTrue(cookNowRecipe.waitForExistence(timeout: 10))
+        XCTAssertTrue(cookNowRecipe.isHittable)
         capture("Cook_Now", app: app)
 
         element("cook-mode-almostThere", in: app).tap()
@@ -109,10 +144,22 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertEqual(element("recipe-availability-status", in: app).label, "Unknown")
         capture("Recipe_Detail", app: app)
         let instructions = element("recipe-instructions", in: app)
-        scrollTargetIntoView(instructions, inside: app.scrollViews["recipe-detail-scroll"], in: app)
+        let recipeScroll = app.scrollViews["recipe-detail-scroll"]
+        scrollTargetIntoView(instructions, inside: recipeScroll, in: app)
         XCTAssertTrue(instructions.exists)
         XCTAssertTrue(instructions.isHittable,
                       "Recipe instructions remain visible after scrolling the recipe detail")
+        let firstInstruction = app.staticTexts["recipe-instruction-step-1"]
+        scrollTargetIntoView(
+            firstInstruction,
+            inside: recipeScroll,
+            progressAnchor: instructions,
+            targetDescription: "first instruction for Test Recipe: Bicol Express",
+            in: app
+        )
+        XCTAssertEqual(firstInstruction.label, "Prepare the measured ingredients.",
+                       "The screenshot must show an actual instruction from the selected recipe")
+        assertReachable(firstInstruction, in: app)
         capture("Recipe_Detail_Instructions", app: app)
     }
 
