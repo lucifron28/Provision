@@ -25,7 +25,7 @@ def test_pull_request_workflow_runs_representative_screenshots_only():
     )
 
     smoke_tests = {
-        "testPreferencesAndPackageLabelReviewScreens",
+        "testPreferencesAllergySettings",
         "testProductLabelReviewScreens",
         "testFormsStayReadableInDarkModeAndLargeText",
         "testHomeNavigationAndCaptureRecipeScreens",
@@ -38,12 +38,15 @@ def test_pull_request_workflow_runs_representative_screenshots_only():
         "testShoppingOfflineRetryAndStalePreviewRecovery",
     }
     assert "-only-testing:frontendTests" in workflow
+    assert workflow.count("- shard: ") == 4
     assert all(
         f"-only-testing:frontendUITests/CookWithPipUITests/{test}" in workflow
         for test in smoke_tests
     )
     assert "concurrency:" in workflow
     assert "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in workflow
+    assert "name: Fast PR feedback" in workflow
+    assert "needs: [swift-unit-tests, backend]" in workflow
     assert "needs: [swift-unit-tests, ios-ui-smoke, ios-screenshot-evidence]" in workflow
     assert "--required .github/scripts/required_ios_smoke_screenshots.json" in workflow
     assert "name: cook-with-pip-xcresult" not in workflow

@@ -10,13 +10,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: provision-ci-${{ github.event.pull_request.number || github.ref }}
+  group: provision-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   swift-unit-tests:
     name: iOS Swift unit tests
     runs-on: macos-26
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Show Xcode and simulator runtimes
@@ -60,15 +61,14 @@ jobs:
   ios-ui-smoke:
     name: iOS UI smoke (${{ matrix.shard }})
     runs-on: macos-26
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         include:
-          - shard: preferences
+          - shard: preferences-product-label
             tests: >-
-              -only-testing:frontendUITests/CookWithPipUITests/testPreferencesAndPackageLabelReviewScreens
-          - shard: product-label
-            tests: >-
+              -only-testing:frontendUITests/CookWithPipUITests/testPreferencesAllergySettings
               -only-testing:frontendUITests/CookWithPipUITests/testProductLabelReviewScreens
           - shard: recipes-chat-accessibility
             tests: >-
@@ -343,3 +343,19 @@ jobs:
           name: backend-test-results
           path: artifacts/backend-junit.xml
           if-no-files-found: warn
+
+  pr-fast-feedback:
+    name: Fast PR feedback
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    needs: [swift-unit-tests, backend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the early Swift and backend results
+        env:
+          SWIFT_RESULT: ${{ needs.swift-unit-tests.result }}
+          BACKEND_RESULT: ${{ needs.backend.result }}
+        run: |
+          set -euo pipefail
+          test "$SWIFT_RESULT" = success
+          test "$BACKEND_RESULT" = success
+          echo "Swift unit tests and backend checks passed. The complete UI and screenshot gate continues independently."
