@@ -1082,7 +1082,7 @@ extension CookWithPipUITests {
         passwordField.typeText(password)
         app.buttons["login-submit"].tap()
         XCTAssertTrue(app.buttons["Home"].waitForExistence(timeout: 40))
-        dismissSavePasswordPromptIfPresent(in: app)
+        dismissSavePasswordPromptIfPresent(in: app, readyElement: app.buttons["Home"])
 
         let homeEntry = element("cook-with-pip-entry", in: app)
         XCTAssertTrue(homeEntry.waitForExistence(timeout: 20))
@@ -1159,7 +1159,7 @@ extension CookWithPipUITests {
 
         let inventoryTab = app.buttons["Inventory"]
         XCTAssertTrue(inventoryTab.waitForExistence(timeout: 40), "Staging login did not establish an authorized household session")
-        dismissSavePasswordPromptIfPresent(in: app)
+        dismissSavePasswordPromptIfPresent(in: app, readyElement: inventoryTab)
         capture("Staging_Authenticated_Home", app: app)
 
         app.terminate()
@@ -1190,7 +1190,7 @@ extension CookWithPipUITests {
         passwordField.typeText(password)
         signIn.tap()
         XCTAssertTrue(inventoryTab.waitForExistence(timeout: 40), "The synthetic staging account could not log in again")
-        dismissSavePasswordPromptIfPresent(in: app)
+        dismissSavePasswordPromptIfPresent(in: app, readyElement: inventoryTab)
         app.terminate()
         app.launchArguments = []
         app.launch()
@@ -1198,12 +1198,24 @@ extension CookWithPipUITests {
         capture("Staging_Relogin_Relaunch_Recovery", app: app)
     }
 
-    private func dismissSavePasswordPromptIfPresent(in app: XCUIApplication) {
+    private func dismissSavePasswordPromptIfPresent(
+        in app: XCUIApplication,
+        readyElement: XCUIElement
+    ) {
         // The AutoFill sheet and its button are exposed in the target app's
         // accessibility tree, and the prompt can arrive after login completes.
         let notNowButton = app.buttons["Not Now"]
-        guard notNowButton.waitForExistence(timeout: 15) else { return }
-        notNowButton.tap()
-        waitUntilGone(notNowButton)
+        if notNowButton.waitForExistence(timeout: 15) {
+            notNowButton.tap()
+        }
+        let signedInScreenIsInteractive = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true AND hittable == true"),
+            object: readyElement
+        )
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [signedInScreenIsInteractive], timeout: 10),
+            .completed,
+            "The signed-in screen should be interactive after handling the password-save prompt"
+        )
     }
 }
