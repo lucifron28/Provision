@@ -112,6 +112,20 @@ jobs:
 
       - name: Run staging login, offline recovery, and Keychain relaunch tests on iPhone 17
         id: ios-staging
+        env:
+          # xcodebuild only forwards custom variables to XCTest runner processes
+          # when they use the TEST_RUNNER_ prefix. The tests then read the
+          # unprefixed names from ProcessInfo and pass credentials to the app
+          # launch environment explicitly.
+          TEST_RUNNER_PROVISION_API_BASE_URL: ${{ env.PROVISION_API_BASE_URL }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_EMAIL: ${{ env.PROVISION_STAGING_TEST_EMAIL }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_PASSWORD: ${{ env.PROVISION_STAGING_TEST_PASSWORD }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_HOUSEHOLD_ID: ${{ env.PROVISION_STAGING_TEST_HOUSEHOLD_ID }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_EMAIL_2: ${{ env.PROVISION_STAGING_TEST_EMAIL_2 }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_PASSWORD_2: ${{ env.PROVISION_STAGING_TEST_PASSWORD_2 }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_HOUSEHOLD_ID_2: ${{ env.PROVISION_STAGING_TEST_HOUSEHOLD_ID_2 }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_PRODUCT_ID: ${{ env.PROVISION_STAGING_TEST_PRODUCT_ID }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_RECIPE_ID: ${{ env.PROVISION_STAGING_TEST_RECIPE_ID }}
         run: |
           mkdir -p artifacts
           xcodebuild test \
