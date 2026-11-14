@@ -170,6 +170,12 @@ final class CookWithPipUITests: XCTestCase {
         let reviewLabels = element("recipe-review-product-labels", in: app)
         scrollTargetIntoView(reviewPreferences, inside: app.scrollViews["recipe-detail-scroll"], in: app)
         assertReachable(reviewPreferences, in: app)
+        scrollTargetIntoView(
+            reviewLabels,
+            inside: app.scrollViews["recipe-detail-scroll"],
+            progressAnchor: reviewPreferences,
+            in: app
+        )
         assertReachable(reviewLabels, in: app)
         let recipeTitle = element("recipe-detail-title", in: app)
         scrollTargetIntoView(recipeTitle, inside: app.scrollViews["recipe-detail-scroll"], in: app)
@@ -289,7 +295,13 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(savedLabelMessage.label.contains("Package label review recorded"))
         let currentStatus = element("pip-label-current-status", in: app)
         let packageDeclarationHeading = element("pip-label-package-declaration-heading", in: app)
-        scrollTargetIntoView(packageDeclarationHeading, inside: labelForm, progressAnchor: source, in: app)
+        scrollTargetIntoView(
+            packageDeclarationHeading,
+            inside: labelForm,
+            progressAnchor: source,
+            in: app,
+            initialDirection: .towardStart
+        )
         assertReachable(currentStatus, in: app)
         assertReachable(packageDeclarationHeading, in: app)
         XCTAssertTrue(currentStatus.label.contains("Current label review"))
