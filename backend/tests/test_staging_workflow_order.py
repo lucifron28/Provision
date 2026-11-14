@@ -96,6 +96,10 @@ def test_staging_workflow_runs_authenticated_and_offline_recovery_ui_smokes():
     ) in workflow
     assert (
         "-only-testing:frontendUITests/CookWithPipUITests/"
+        "testStagingPipChatContextAndShoppingPreviewRoutes"
+    ) in workflow
+    assert (
+        "-only-testing:frontendUITests/CookWithPipUITests/"
         "testCookWithPipLoadingEmptyAndOfflineRecovery"
     ) in workflow
     assert (
@@ -126,6 +130,15 @@ def test_prepare_preflights_and_persists_cleanup_credentials_before_registration
     monkeypatch.setattr(staging_e2e_smoke, "preflight", lambda: events.append("preflight"))
     monkeypatch.setattr(
         staging_e2e_smoke,
+        "_cleanup_stale_accounts",
+        lambda *_args: events.append("cleanup_stale") or {
+            "deleted_count": 0,
+            "skipped_count": 0,
+            "skipped_user_ids": [],
+        },
+    )
+    monkeypatch.setattr(
+        staging_e2e_smoke,
         "_remember_account",
         lambda *_args, **_kwargs: events.append("remember"),
     )
@@ -138,7 +151,17 @@ def test_prepare_preflights_and_persists_cleanup_credentials_before_registration
 
     staging_e2e_smoke.prepare()
 
-    assert events == ["preflight", "remember", "register", "remember"]
+    assert events == ["preflight", "remember", "cleanup_stale", "register", "remember"]
+
+
+def test_staging_fixture_email_records_github_run_ownership(monkeypatch):
+    monkeypatch.setenv("GITHUB_RUN_ID", "43450000000")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
+    monkeypatch.setattr(staging_e2e_smoke.secrets, "token_hex", lambda _size: "a" * 32)
+
+    assert staging_e2e_smoke._new_staging_test_email() == (
+        f"provision-e2e+43450000000-2-{'a' * 32}@example.com"
+    )
 
 
 def test_api_smoke_preflights_before_login(monkeypatch):
@@ -217,6 +240,7 @@ def test_api_smoke_runs_against_local_test_api_and_cleans_its_accounts(
     monkeypatch.setenv("PROVISION_STAGING_FIXTURE_TOKEN", token)
     monkeypatch.setattr(settings, "DEPLOYMENT_ENVIRONMENT", "staging")
     monkeypatch.setattr(settings, "STAGING_TEST_FIXTURES_ENABLED", True)
+    monkeypatch.setattr(settings, "STAGING_TEST_CHAT_MOCK_ENABLED", True)
     monkeypatch.setattr(settings, "STAGING_TEST_FIXTURE_TOKEN", SecretStr(token))
     monkeypatch.setattr(staging_e2e_smoke, "preflight", lambda: None)
     monkeypatch.setattr(staging_e2e_smoke, "print", lambda *_args, **_kwargs: None, raising=False)
@@ -236,6 +260,9 @@ def test_api_smoke_runs_against_local_test_api_and_cleans_its_accounts(
 
         def delete(self, url, **kwargs):
             return self.request("DELETE", url, **kwargs)
+
+        def post(self, url, **kwargs):
+            return self.request("POST", url, **kwargs)
 
     monkeypatch.setattr(
         staging_e2e_smoke.httpx,

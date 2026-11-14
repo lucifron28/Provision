@@ -1,5 +1,5 @@
 import hmac
-import re
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi import Header, Response
@@ -10,12 +10,19 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
 from app.core.config import settings
+from app.core.staging_fixtures import is_staging_test_account
 from app.core.security import hash_password, verify_password, create_access_token, decode_access_token
 from app.models.household import Household, HouseholdMembership, HouseholdRole
 from app.models.user import User
 from app.models.base import Base
 from app.models.privacy import ProcessingConsent
-from app.schemas.auth import UserCreate, UserRead, LoginRequest, TokenResponse
+from app.schemas.auth import (
+    LoginRequest,
+    StagingFixtureCleanupRead,
+    TokenResponse,
+    UserCreate,
+    UserRead,
+)
 
 router = APIRouter()
 http_bearer = HTTPBearer(auto_error=False)
@@ -199,7 +206,58 @@ def delete_staging_test_account(
         fixture_token, expected_token.get_secret_value()
     ):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authorized")
-    if re.fullmatch(r"provision-e2e\+[0-9a-f]{32}@example\.com", current_user.email) is None:
+    _delete_staging_account(db, current_user)
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response
+
+
+@router.post("/staging-test-accounts/cleanup-stale")
+def cleanup_stale_staging_test_accounts(
+    fixture_token: str | None = Header(default=None, alias="X-Staging-Test-Token"),
+    db: Session = Depends(get_db),
+) -> StagingFixtureCleanupRead:
+    """Clean only expired, exact-pattern synthetic fixture accounts in staging."""
+    expected_token = settings.STAGING_TEST_FIXTURE_TOKEN
+    if (
+        settings.DEPLOYMENT_ENVIRONMENT != "staging"
+        or not settings.STAGING_TEST_FIXTURES_ENABLED
+        or expected_token is None
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    if fixture_token is None or not hmac.compare_digest(
+        fixture_token, expected_token.get_secret_value()
+    ):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authorized")
+
+    stale_before = datetime.now(timezone.utc) - timedelta(minutes=30)
+    candidates = db.scalars(
+        select(User)
+        .where(User.email.like("provision-e2e+%@example.com"), User.created_at < stale_before)
+        .order_by(User.id)
+    ).all()
+    deleted_count = 0
+    skipped_user_ids: list[int] = []
+    for candidate in candidates:
+        if not is_staging_test_account(candidate.email):
+            continue
+        try:
+            _delete_staging_account(db, candidate)
+        except HTTPException as exc:
+            if exc.status_code != status.HTTP_409_CONFLICT:
+                raise
+            db.rollback()
+            skipped_user_ids.append(candidate.id)
+        else:
+            deleted_count += 1
+    return StagingFixtureCleanupRead(
+        deleted_count=deleted_count,
+        skipped_count=len(skipped_user_ids),
+        skipped_user_ids=skipped_user_ids,
+    )
+
+
+def _delete_staging_account(db: Session, current_user: User) -> None:
+    if not is_staging_test_account(current_user.email):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a staging test account")
 
     memberships = db.scalars(
@@ -269,9 +327,6 @@ def delete_staging_test_account(
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Test account has related data") from None
-
-    response.status_code = status.HTTP_204_NO_CONTENT
-    return response
 
 
 @router.get("/me", response_model=UserRead)
