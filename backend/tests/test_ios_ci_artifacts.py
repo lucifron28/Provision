@@ -1,7 +1,10 @@
+import hashlib
 import json
 import subprocess
 import sys
 from pathlib import Path
+
+from PIL import Image
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -12,7 +15,8 @@ ATTACHMENT_UUID = "123e4567-e89b-12d3-a456-426614174000"
 
 def _write_export(folder: Path, scenario: str, filename: str) -> None:
     folder.mkdir()
-    (folder / filename).write_bytes(b"synthetic screenshot bytes")
+    color = hashlib.sha256(scenario.encode("utf-8")).digest()[:3]
+    Image.new("RGB", (1, 1), color=tuple(color)).save(folder / filename, format="PNG")
     (folder / "manifest.json").write_text(
         json.dumps(
             [
@@ -59,7 +63,7 @@ def test_screenshot_organizer_merges_shards_and_verifies_every_required_scenario
             str(required),
             "--only-required",
             "--commit-sha",
-            "abc123",
+            "a" * 40,
             "--test-outcome",
             "success",
         ],
@@ -71,13 +75,15 @@ def test_screenshot_organizer_merges_shards_and_verifies_every_required_scenario
     assert result.returncode == 0, result.stderr
     organized = tmp_path / "organized"
     evidence = json.loads((organized / "scenario-manifest.json").read_text(encoding="utf-8"))
-    assert evidence["assertionStatus"] == "passed"
+    assert evidence["overallStatus"] == "passed"
+    assert evidence["captureIntegrityStatus"] == "passed"
+    assert evidence["visualReviewStatus"] == "not_reviewed_automatically"
     assert evidence["missingScreenshots"] == []
     assert {item["scenario"] for item in evidence["capturedScreenshots"]} == {
         "Home_Cook_with_Pip",
         "Shopping_Preview_Review_Required",
     }
-    assert all(item["assertionStatus"] == "passed" for item in evidence["capturedScreenshots"])
+    assert all(item["captureIntegrityStatus"] == "passed" for item in evidence["capturedScreenshots"])
     assert len(json.loads((organized / "xcresult-attachments.json").read_text(encoding="utf-8"))) == 2
 
 
@@ -101,6 +107,8 @@ def test_screenshot_organizer_does_not_verify_missing_required_scenarios(tmp_pat
             "--required",
             str(required),
             "--only-required",
+            "--commit-sha",
+            "b" * 40,
             "--test-outcome",
             "success",
         ],
@@ -113,7 +121,8 @@ def test_screenshot_organizer_does_not_verify_missing_required_scenarios(tmp_pat
     evidence = json.loads(
         (tmp_path / "organized" / "scenario-manifest.json").read_text(encoding="utf-8")
     )
-    assert evidence["assertionStatus"] == "not_verified"
+    assert evidence["overallStatus"] == "failed"
+    assert evidence["captureIntegrityStatus"] == "failed"
     assert evidence["missingScreenshots"] == ["Missing_Scenario"]
     assert [item["scenario"] for item in evidence["capturedScreenshots"]] == ["Home_Cook_with_Pip"]
 

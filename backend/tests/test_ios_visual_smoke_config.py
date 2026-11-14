@@ -38,7 +38,8 @@ def test_pull_request_workflow_runs_representative_screenshots_only():
         "testShoppingOfflineRetryAndStalePreviewRecovery",
     }
     assert "-only-testing:frontendTests" in workflow
-    assert workflow.count("- shard: ") == 4
+    assert workflow.count("- shard: ") == 5
+    assert "- shard: product-label-review" in workflow
     assert all(
         f"-only-testing:frontendUITests/CookWithPipUITests/{test}" in workflow
         for test in smoke_tests
@@ -66,11 +67,12 @@ def test_required_smoke_screenshots_are_captured_by_the_pr_ui_tests():
 
 def test_manual_gallery_keeps_full_screenshot_suite_and_result_bundle():
     workflow = (
-        REPOSITORY_ROOT / ".github" / "workflows" / "ios-screenshot-gallery.yml"
+        REPOSITORY_ROOT / ".github" / "workflows" / "cook-with-pip-visual-gallery.yml"
     ).read_text(encoding="utf-8")
 
     assert "workflow_dispatch:" in workflow
+    assert "schedule:" in workflow
     assert "xcodebuild test" in workflow
     assert "-only-testing:" not in workflow
     assert "--required .github/scripts/required_ios_screenshots.json" in workflow
-    assert "name: cook-with-pip-full-xcresult" in workflow
+    assert "name: cook-with-pip-xcresult" in workflow
