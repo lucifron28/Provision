@@ -1,11 +1,15 @@
+import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 from pydantic import SecretStr
-from sqlalchemy import func, select
-from urllib.parse import urlsplit
+from sqlalchemy import select
 
 from app.core.config import settings
+from app.core.security import hash_password
+from app.models.household import Household, HouseholdMembership, HouseholdRole
 from app.models.user import User
 from scripts import staging_e2e_smoke, staging_live_deepseek_smoke
 from test_food_safety import catalog as allergen_catalog
@@ -229,7 +233,7 @@ def test_live_deepseek_remains_disabled_without_validation_toggle(monkeypatch):
         staging_live_deepseek_smoke.run_one_request()
 
 
-def test_api_smoke_runs_against_local_test_api_and_cleans_its_accounts(
+def test_api_smoke_cleanup_preserves_another_run_owned_stale_household(
     unauthed_client, db, allergen_catalog, monkeypatch, tmp_path
 ):
     token = "synthetic-local-fixture-token"
@@ -275,9 +279,38 @@ def test_api_smoke_runs_against_local_test_api_and_cleans_its_accounts(
         name, value = line.split("=", 1)
         monkeypatch.setenv(name, value)
     staging_e2e_smoke.api_smoke()
+
+    stale_email = f"provision-e2e+99999999999-1-{uuid.uuid4().hex}@example.com"
+    stale_user = User(
+        email=stale_email,
+        hashed_password=hash_password("another-run-password"),
+        is_active=True,
+        created_at=datetime.now(timezone.utc) - timedelta(hours=1),
+    )
+    db.add(stale_user)
+    db.flush()
+    stale_household = Household(name="Home", slug=f"user-{stale_user.id}")
+    db.add(stale_household)
+    db.flush()
+    db.add(
+        HouseholdMembership(
+            household_id=stale_household.id,
+            user_id=stale_user.id,
+            role=HouseholdRole.OWNER.value,
+            is_default=True,
+        )
+    )
+    db.commit()
+    stale_user_id = stale_user.id
+    stale_household_id = stale_household.id
+
     staging_e2e_smoke.cleanup()
 
-    remaining_fixtures = db.scalar(
-        select(func.count()).select_from(User).where(User.email.like("provision-e2e+%@example.com"))
+    primary_email = next(
+        line.split("=", 1)[1]
+        for line in env_file.read_text(encoding="utf-8").splitlines()
+        if line.startswith("PROVISION_STAGING_TEST_EMAIL=")
     )
-    assert remaining_fixtures == 0
+    assert db.scalar(select(User).where(User.email == primary_email)) is None
+    assert db.get(User, stale_user_id) is not None
+    assert db.get(Household, stale_household_id) is not None

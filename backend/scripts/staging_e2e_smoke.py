@@ -591,12 +591,7 @@ def cleanup() -> None:
     with httpx.Client(timeout=20, follow_redirects=False, trust_env=False) as client:
         for email, password in accounts:
             _cleanup_account(client, email, password)
-        cleanup = _cleanup_stale_accounts(client)
-    print(
-        "Run-owned synthetic staging households were cleaned up; "
-        f"removed {cleanup['deleted_count']} expired fixtures and retained "
-        f"{cleanup['skipped_count']} scoped records (user IDs: {cleanup['skipped_user_ids']})."
-    )
+    print("Run-owned synthetic staging households were cleaned up.")
 
 
 if __name__ == "__main__":
