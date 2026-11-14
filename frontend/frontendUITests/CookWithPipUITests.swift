@@ -1211,7 +1211,7 @@ extension CookWithPipUITests {
         passwordField.typeText(password)
         app.buttons["login-submit"].tap()
         XCTAssertTrue(app.buttons["Home"].waitForExistence(timeout: 40))
-        dismissSavePasswordPromptIfPresent(readyElement: app.buttons["Home"])
+        dismissSavePasswordPromptIfPresent(app: app, readyElement: app.buttons["Home"])
 
         let homeEntry = element("cook-with-pip-entry", in: app)
         XCTAssertTrue(homeEntry.waitForExistence(timeout: 20))
@@ -1288,7 +1288,7 @@ extension CookWithPipUITests {
 
         let inventoryTab = app.buttons["Inventory"]
         XCTAssertTrue(inventoryTab.waitForExistence(timeout: 40), "Staging login did not establish an authorized household session")
-        dismissSavePasswordPromptIfPresent(readyElement: inventoryTab)
+        dismissSavePasswordPromptIfPresent(app: app, readyElement: inventoryTab)
         capture("Staging_Authenticated_Home", app: app)
 
         app.terminate()
@@ -1319,7 +1319,7 @@ extension CookWithPipUITests {
         passwordField.typeText(password)
         signIn.tap()
         XCTAssertTrue(inventoryTab.waitForExistence(timeout: 40), "The synthetic staging account could not log in again")
-        dismissSavePasswordPromptIfPresent(readyElement: inventoryTab)
+        dismissSavePasswordPromptIfPresent(app: app, readyElement: inventoryTab)
         app.terminate()
         app.launchArguments = []
         app.launch()
@@ -1328,15 +1328,30 @@ extension CookWithPipUITests {
     }
 
     private func dismissSavePasswordPromptIfPresent(
+        app: XCUIApplication,
         readyElement: XCUIElement
     ) {
-        // iOS presents Password AutoFill outside the app's accessibility tree.
-        // The system prompt can arrive after the authorized screen is already visible.
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        let notNowButton = springboard.buttons["Not Now"]
-        if notNowButton.waitForExistence(timeout: 15) {
+        // iOS exposes Password AutoFill's Save Password prompt as a sheet in the app tree.
+        // The sheet can arrive after the authorized screen is already visible.
+        let savePasswordSheet = app.sheets.matching(
+            NSPredicate(format: "label == %@", "Save Password?")
+        ).firstMatch
+        if savePasswordSheet.waitForExistence(timeout: 15) {
+            let notNowButton = savePasswordSheet.buttons.matching(
+                NSPredicate(format: "label == %@", "Not Now")
+            ).firstMatch
+            XCTAssertTrue(notNowButton.waitForExistence(timeout: 5), "The Save Password sheet must offer a dismiss action")
             XCTAssertTrue(notNowButton.isHittable, "The system Save Password prompt must be dismissible")
             notNowButton.tap()
+            let promptDismissed = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "exists == false"),
+                object: savePasswordSheet
+            )
+            XCTAssertEqual(
+                XCTWaiter.wait(for: [promptDismissed], timeout: 5),
+                .completed,
+                "The Save Password sheet should close after selecting Not Now"
+            )
         }
         let signedInScreenIsInteractive = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "exists == true AND hittable == true"),
