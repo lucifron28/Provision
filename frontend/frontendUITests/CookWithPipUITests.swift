@@ -241,8 +241,26 @@ final class CookWithPipUITests: XCTestCase {
             initialDirection: .towardEnd
         )
         assertReachable(allergyHeading, in: app)
+        scrollTargetIntoView(
+            milkAllergen,
+            inside: preferencesForm,
+            progressAnchor: allergyHeading,
+            in: app
+        )
         assertReachable(milkAllergen, in: app)
+        scrollTargetIntoView(
+            milkSeverity,
+            inside: preferencesForm,
+            progressAnchor: milkAllergen,
+            in: app
+        )
         assertReachable(milkSeverity, in: app)
+        scrollTargetIntoView(
+            milkCrossContact,
+            inside: preferencesForm,
+            progressAnchor: milkSeverity,
+            in: app
+        )
         assertReachable(milkCrossContact, in: app)
         XCTAssertEqual(milkAllergen.value as? String, "1")
         XCTAssertEqual(milkCrossContact.value as? String, "1")
