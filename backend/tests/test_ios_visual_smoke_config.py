@@ -24,29 +24,41 @@ def test_pull_request_workflow_runs_representative_screenshots_only():
         encoding="utf-8"
     )
 
+    smoke_tests = {
+        "testPreferencesAndPackageLabelReviewScreens",
+        "testProductLabelReviewScreens",
+        "testFormsStayReadableInDarkModeAndLargeText",
+        "testHomeNavigationAndCaptureRecipeScreens",
+        "testSafetyAndAvailabilityStatesWithLongFilipinoNames",
+        "testPipChatConsentConversationAndValidatedRecipeAction",
+        "testPipChatShoppingActionOpensTheExistingReviewScreen",
+        "testPipChatPrivacyControlsAtAccessibilitySizeInDarkMode",
+        "testShoppingReviewRequiredAndBlockedStates",
+        "testAmbiguousShoppingConfirmationSurvivesAppRelaunch",
+        "testShoppingOfflineRetryAndStalePreviewRecovery",
+    }
     assert "-only-testing:frontendTests" in workflow
-    assert (
-        "-only-testing:frontendUITests/CookWithPipUITests/"
-        "testHomeNavigationAndCaptureRecipeScreens"
-    ) in workflow
-    assert (
-        "-only-testing:frontendUITests/CookWithPipUITests/"
-        "testShoppingReviewRequiredAndBlockedStates"
-    ) in workflow
-    assert (
-        "-only-testing:frontendUITests/CookWithPipUITests/"
-        "testShoppingOfflineRetryAndStalePreviewRecovery"
-    ) in workflow
-    assert (
-        "-only-testing:frontendUITests/CookWithPipUITests/"
-        "testAmbiguousShoppingConfirmationSurvivesAppRelaunch"
-    ) in workflow
-    assert (
-        "-only-testing:frontendUITests/CookWithPipUITests/"
-        "testPipChatShoppingActionOpensTheExistingReviewScreen"
-    ) in workflow
+    assert all(
+        f"-only-testing:frontendUITests/CookWithPipUITests/{test}" in workflow
+        for test in smoke_tests
+    )
+    assert "concurrency:" in workflow
+    assert "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in workflow
+    assert "needs: [swift-unit-tests, ios-ui-smoke, ios-screenshot-evidence]" in workflow
     assert "--required .github/scripts/required_ios_smoke_screenshots.json" in workflow
     assert "name: cook-with-pip-xcresult" not in workflow
+
+
+def test_required_smoke_screenshots_are_captured_by_the_pr_ui_tests():
+    scripts = REPOSITORY_ROOT / ".github" / "scripts"
+    required = json.loads(
+        (scripts / "required_ios_smoke_screenshots.json").read_text(encoding="utf-8")
+    )["requiredScreenshots"]
+    source = (
+        REPOSITORY_ROOT / "frontend" / "frontendUITests" / "CookWithPipUITests.swift"
+    ).read_text(encoding="utf-8")
+
+    assert all(f'capture("{scenario}"' in source for scenario in required)
 
 
 def test_manual_gallery_keeps_full_screenshot_suite_and_result_bundle():
