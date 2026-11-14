@@ -415,7 +415,7 @@ final class CookWithPipUITests: XCTestCase {
         declaredOption.tap()
         XCTAssertEqual(milkDeclaration.value as? String, "Declared on label")
 
-        let source = labelForm.textViews["pip-label-source-reference"]
+        let source = labelForm.textFields["pip-label-source-reference"]
         scrollTargetIntoView(source, inside: labelForm, progressAnchor: productTitle, in: app)
         source.tap()
         let keyboard = app.keyboards.firstMatch
@@ -577,7 +577,7 @@ final class CookWithPipUITests: XCTestCase {
         assertReachable(customAllergensHeading, in: largeLabel)
         assertReachable(customAllergensField, in: largeLabel)
 
-        let sourceField = labelForm.textViews["pip-label-source-reference"]
+        let sourceField = labelForm.textFields["pip-label-source-reference"]
         scrollTargetIntoView(sourceField, inside: labelForm, progressAnchor: customAllergensHeading, in: largeLabel)
         XCTAssertEqual(sourceField.label, "Source reference")
         XCTAssertEqual(sourceField.placeholderValue, "Package label, URL, or label section")
