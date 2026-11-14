@@ -1066,9 +1066,11 @@ extension CookWithPipUITests {
         passwordField.typeText(password)
         app.buttons["login-submit"].tap()
         XCTAssertTrue(app.buttons["Home"].waitForExistence(timeout: 40))
+        dismissSavePasswordPromptIfPresent()
 
         let homeEntry = element("cook-with-pip-entry", in: app)
         XCTAssertTrue(homeEntry.waitForExistence(timeout: 20))
+        XCTAssertTrue(homeEntry.isHittable, "The Cook with Pip entry should be interactive after login")
         homeEntry.tap()
         let myRecipes = app.buttons["cook-mode-myRecipes"]
         XCTAssertTrue(myRecipes.waitForExistence(timeout: 15))
@@ -1139,6 +1141,7 @@ extension CookWithPipUITests {
 
         let inventoryTab = app.buttons["Inventory"]
         XCTAssertTrue(inventoryTab.waitForExistence(timeout: 40), "Staging login did not establish an authorized household session")
+        dismissSavePasswordPromptIfPresent()
         capture("Staging_Authenticated_Home", app: app)
 
         app.terminate()
@@ -1169,10 +1172,21 @@ extension CookWithPipUITests {
         passwordField.typeText(password)
         signIn.tap()
         XCTAssertTrue(inventoryTab.waitForExistence(timeout: 40), "The synthetic staging account could not log in again")
+        dismissSavePasswordPromptIfPresent()
         app.terminate()
         app.launchArguments = []
         app.launch()
         XCTAssertTrue(inventoryTab.waitForExistence(timeout: 40), "The new staging session did not survive relaunch")
         capture("Staging_Relogin_Relaunch_Recovery", app: app)
+    }
+
+    private func dismissSavePasswordPromptIfPresent() {
+        // Synthetic staging credentials trigger iOS Passwords AutoFill. Decline
+        // saving them so the system sheet cannot obscure the app during UI checks.
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let notNowButton = springboard.buttons["Not Now"]
+        guard notNowButton.waitForExistence(timeout: 3) else { return }
+        notNowButton.tap()
+        waitUntilGone(notNowButton)
     }
 }
