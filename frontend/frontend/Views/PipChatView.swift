@@ -107,6 +107,7 @@ public struct PipChatView: View {
             .padding(.top, 14)
             .padding(.bottom, 20)
         }
+        .accessibilityIdentifier("pip-chat-scroll")
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if viewModel.isChatReady {
                 composer

@@ -188,6 +188,7 @@ public struct CookWithPipPreferencesView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .accessibilityIdentifier("pip-preferences-form")
         .background(ProvisionTheme.background)
         .navigationTitle("My Cooking Preferences")
         .navigationBarTitleDisplayMode(.inline)

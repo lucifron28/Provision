@@ -297,6 +297,7 @@ public struct ProductLabelReviewView: View {
                 }
             } header: {
                 Text("Package label declaration")
+                    .accessibilityIdentifier("pip-label-package-declaration-heading")
             } footer: {
                 if !viewModel.canReviewLabel {
                     Text("Save a verified, complete ingredient mapping and refresh the product before recording this review.")
