@@ -7,17 +7,14 @@ public struct RecipeDetailView: View {
     private let chatService: any PipChatService
     private let workflowService: any CookWithPipWorkflowService
     private let pendingStore: any PendingRecipeShoppingStore
-    private let opensShoppingPreview: Bool
     private let onShoppingConfirmed: () async -> Void
     private let onNavigateToShopping: () -> Void
     @State private var showingSubstitutionEditor = false
-    @State private var navigateToShoppingPreview = false
 
     public init(recipeID: Int, scope: HouseholdScope, service: any CookWithPipService = APIClient.shared,
                 chatService: any PipChatService = APIClient.shared,
                 workflowService: any CookWithPipWorkflowService = APIClient.shared,
                 pendingStore: any PendingRecipeShoppingStore = KeychainStore.shared,
-                opensShoppingPreview: Bool = false,
                 onShoppingConfirmed: @escaping () async -> Void = {},
                 onNavigateToShopping: @escaping () -> Void = {}) {
         self.scope = scope
@@ -25,7 +22,6 @@ public struct RecipeDetailView: View {
         self.chatService = chatService
         self.workflowService = workflowService
         self.pendingStore = pendingStore
-        self.opensShoppingPreview = opensShoppingPreview
         self.onShoppingConfirmed = onShoppingConfirmed
         self.onNavigateToShopping = onNavigateToShopping
         _viewModel = StateObject(wrappedValue: RecipeDetailViewModel(recipeID: recipeID, scope: scope, service: service))
@@ -95,21 +91,6 @@ public struct RecipeDetailView: View {
         .accessibilityIdentifier("recipe-detail-scroll")
         .task {
             if !viewModel.hasLoadedOnce { await viewModel.load() }
-            if opensShoppingPreview, viewModel.recipe != nil {
-                navigateToShoppingPreview = true
-            }
-        }
-        .navigationDestination(isPresented: $navigateToShoppingPreview) {
-            if let recipe = viewModel.recipe {
-                RecipeShoppingReviewView(
-                    recipe: recipe,
-                    scope: scope,
-                    service: workflowService,
-                    pendingStore: pendingStore,
-                    onShoppingConfirmed: onShoppingConfirmed,
-                    onNavigateToShopping: onNavigateToShopping
-                )
-            }
         }
         .sheet(isPresented: $showingSubstitutionEditor) {
             if let recipe = viewModel.recipe {

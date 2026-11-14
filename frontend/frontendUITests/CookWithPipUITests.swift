@@ -108,10 +108,10 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertEqual(element("recipe-availability-status", in: app).label, "Unknown")
         capture("Recipe_Detail", app: app)
         let instructions = element("recipe-instructions", in: app)
-        scrollTo(instructions, in: app)
+        scrollTargetIntoView(instructions, inside: app.scrollViews["recipe-detail-scroll"], in: app)
         XCTAssertTrue(instructions.exists)
-        nudgeContentDown(in: app, by: 0.055)
-        XCTAssertTrue(instructions.isHittable)
+        XCTAssertTrue(instructions.isHittable,
+                      "Recipe instructions remain visible after scrolling the recipe detail")
         capture("Recipe_Detail_Instructions", app: app)
     }
 

@@ -126,7 +126,11 @@ public struct PipChatView: View {
             }
         }
         .navigationDestination(item: $selectedDestination) { destination in
-            recipeDetail(for: destination.recipeID, opensShoppingPreview: destination.opensShoppingPreview)
+            if destination.opensShoppingPreview {
+                shoppingPreview(for: destination.recipeID)
+            } else {
+                recipeDetail(for: destination.recipeID)
+            }
         }
         .task {
             if !viewModel.hasLoadedConsent {
@@ -301,7 +305,7 @@ public struct PipChatView: View {
         .accessibilityIdentifier(message.role == .assistant ? "pip-chat-message-assistant" : "pip-chat-message-user")
     }
 
-    private func recipeDetail(for recipeID: Int, opensShoppingPreview: Bool = false) -> some View {
+    private func recipeDetail(for recipeID: Int) -> some View {
         RecipeDetailView(
             recipeID: recipeID,
             scope: scope,
@@ -309,7 +313,18 @@ public struct PipChatView: View {
             chatService: chatService,
             workflowService: workflowService,
             pendingStore: pendingStore,
-            opensShoppingPreview: opensShoppingPreview,
+            onShoppingConfirmed: onShoppingConfirmed,
+            onNavigateToShopping: onNavigateToShopping
+        )
+    }
+
+    private func shoppingPreview(for recipeID: Int) -> some View {
+        PipChatShoppingPreviewRoute(
+            recipeID: recipeID,
+            scope: scope,
+            recipeService: recipeService,
+            workflowService: workflowService,
+            pendingStore: pendingStore,
             onShoppingConfirmed: onShoppingConfirmed,
             onNavigateToShopping: onNavigateToShopping
         )
@@ -446,6 +461,68 @@ public struct PipChatView: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .provisionCard(backgroundColor: ProvisionTheme.surfaceSecondary)
+    }
+}
+
+private struct PipChatShoppingPreviewRoute: View {
+    let recipeID: Int
+    let scope: HouseholdScope
+    let recipeService: any CookWithPipService
+    let workflowService: any CookWithPipWorkflowService
+    let pendingStore: any PendingRecipeShoppingStore
+    let onShoppingConfirmed: () async -> Void
+    let onNavigateToShopping: () -> Void
+
+    @State private var recipe: HouseholdRecipe?
+    @State private var didFailToLoad = false
+
+    var body: some View {
+        Group {
+            if let recipe {
+                RecipeShoppingReviewView(
+                    recipe: recipe,
+                    scope: scope,
+                    service: workflowService,
+                    pendingStore: pendingStore,
+                    onShoppingConfirmed: onShoppingConfirmed,
+                    onNavigateToShopping: onNavigateToShopping
+                )
+            } else if didFailToLoad {
+                VStack(alignment: .leading, spacing: 12) {
+                    Label("Unable to load the selected recipe", systemImage: "exclamationmark.triangle.fill")
+                        .font(.headline)
+                        .foregroundStyle(ProvisionTheme.redAlert)
+                    Text("Reconnect to Provision and try again. No shopping changes have been made.")
+                        .font(.subheadline)
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                    Button("Try again") { Task { await loadRecipe() } }
+                        .frame(minHeight: 44)
+                        .accessibilityIdentifier("pip-chat-shopping-preview-retry")
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else {
+                ProgressView("Loading current recipe details")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .accessibilityIdentifier("pip-chat-shopping-preview-loading")
+            }
+        }
+        .navigationTitle("Shopping Preview")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            guard recipe == nil, !didFailToLoad else { return }
+            await loadRecipe()
+        }
+    }
+
+    @MainActor
+    private func loadRecipe() async {
+        didFailToLoad = false
+        do {
+            recipe = try await recipeService.fetchRecipe(id: recipeID, scope: scope)
+        } catch {
+            didFailToLoad = true
+        }
     }
 }
 
