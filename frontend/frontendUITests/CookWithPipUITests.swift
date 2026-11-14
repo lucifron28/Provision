@@ -366,7 +366,11 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(milkCrossContact.label.contains("Milk"))
         capture("Preferences_Allergy_Dark_Mode", app: darkApp)
 
-        navigateBack(darkApp, to: element("cook-with-pip-management", in: darkApp), screen: "Cook with Pip management")
+        navigateBack(
+            darkApp,
+            to: element("cook-with-pip-product-labels-link", in: darkApp),
+            screen: "Cook with Pip management"
+        )
         element("cook-with-pip-product-labels-link", in: darkApp).tap()
         element("pip-label-product-9903", in: darkApp).tap()
         let darkProductTitle = element("pip-label-product-title", in: darkApp)
@@ -1266,7 +1270,7 @@ extension CookWithPipUITests {
 
         let inventoryTab = app.buttons["Inventory"]
         XCTAssertTrue(inventoryTab.waitForExistence(timeout: 40), "Staging login did not establish an authorized household session")
-        dismissSavePasswordPromptIfPresent(in: app, readyElement: inventoryTab)
+        dismissSavePasswordPromptIfPresent(readyElement: inventoryTab)
         capture("Staging_Authenticated_Home", app: app)
 
         app.terminate()
@@ -1297,7 +1301,7 @@ extension CookWithPipUITests {
         passwordField.typeText(password)
         signIn.tap()
         XCTAssertTrue(inventoryTab.waitForExistence(timeout: 40), "The synthetic staging account could not log in again")
-        dismissSavePasswordPromptIfPresent(in: app, readyElement: inventoryTab)
+        dismissSavePasswordPromptIfPresent(readyElement: inventoryTab)
         app.terminate()
         app.launchArguments = []
         app.launch()
@@ -1306,13 +1310,14 @@ extension CookWithPipUITests {
     }
 
     private func dismissSavePasswordPromptIfPresent(
-        in app: XCUIApplication,
         readyElement: XCUIElement
     ) {
-        // The AutoFill sheet and its button are exposed in the target app's
-        // accessibility tree, and the prompt can arrive after login completes.
-        let notNowButton = app.buttons["Not Now"]
+        // iOS presents Password AutoFill outside the app's accessibility tree.
+        // The system prompt can arrive after the authorized screen is already visible.
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let notNowButton = springboard.buttons["Not Now"]
         if notNowButton.waitForExistence(timeout: 15) {
+            XCTAssertTrue(notNowButton.isHittable, "The system Save Password prompt must be dismissible")
             notNowButton.tap()
         }
         let signedInScreenIsInteractive = XCTNSPredicateExpectation(
