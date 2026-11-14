@@ -942,6 +942,22 @@ final class CookWithPipUITests: XCTestCase {
         back.tap()
     }
 
+    private func navigateBack(_ app: XCUIApplication, to destination: XCUIElement, screen: String) {
+        let back = app.navigationBars.buttons.firstMatch
+        XCTAssertTrue(back.waitForExistence(timeout: 5), "Expected a back button while leaving \(screen)")
+        back.tap()
+
+        let destinationIsVisible = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true AND hittable == true"),
+            object: destination
+        )
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [destinationIsVisible], timeout: 15),
+            .completed,
+            "Back navigation should return to \(screen)"
+        )
+    }
+
     private func assertReachable(_ target: XCUIElement, in app: XCUIApplication) {
         XCTAssertTrue(target.waitForExistence(timeout: 5), "Expected \(target.identifier) to exist")
         XCTAssertTrue(target.isHittable, "Expected \(target.identifier) to be visible and interactable")
@@ -1097,8 +1113,10 @@ extension CookWithPipUITests {
         XCTAssertFalse(app.alerts.firstMatch.exists,
                        "No confirmation dialog appears until the user starts the existing confirmation flow")
 
-        for _ in 0..<5 { navigateBack(app) }
-        XCTAssertTrue(homeEntry.waitForExistence(timeout: 15))
+        navigateBack(app, to: chatInput, screen: "Pip Chat")
+        navigateBack(app, to: element("recipe-detail-title", in: app), screen: "Recipe Detail")
+        navigateBack(app, to: recipe, screen: "My Recipes")
+        navigateBack(app, to: homeEntry, screen: "Home")
         app.buttons["Inventory"].tap()
         let productRow = element("product-row-\(productID)", in: app)
         XCTAssertTrue(productRow.waitForExistence(timeout: 20))
