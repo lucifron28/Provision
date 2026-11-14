@@ -39,6 +39,7 @@ jobs:
           -only-testing:frontendUITests/CookWithPipUITests/testShoppingOfflineRetryAndStalePreviewRecovery
           -only-testing:frontendUITests/CookWithPipUITests/testAmbiguousShoppingConfirmationSurvivesAppRelaunch
           -only-testing:frontendUITests/CookWithPipUITests/testPipChatConsentConversationAndValidatedRecipeAction
+          -only-testing:frontendUITests/CookWithPipUITests/testPipChatShoppingActionOpensTheExistingReviewScreen
           -only-testing:frontendUITests/CookWithPipUITests/testPipChatPrivacyControlsAtAccessibilitySizeInDarkMode
           -resultBundlePath artifacts/frontend.xcresult
           CODE_SIGNING_ALLOWED=YES

@@ -9,6 +9,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.security import hash_password, verify_password
+from app.core.staging_fixtures import is_staging_test_account
 from app.models.batch import InventoryBatch
 from app.models.event import InventoryEvent
 from app.models.household import Household, HouseholdMembership, HouseholdRole
@@ -197,6 +198,13 @@ def read_pip_chat_consent(
     by_purpose = {consent.purpose: consent for consent in consents}
     chat = by_purpose.get("pip_chat_v1")
     allergies = by_purpose.get("pip_chat_allergies_v1")
+    user_email = db.scalar(select(User.email).where(User.id == user_id)) or ""
+    staging_mock_enabled = bool(
+        settings.DEPLOYMENT_ENVIRONMENT == "staging"
+        and settings.STAGING_TEST_FIXTURES_ENABLED
+        and settings.STAGING_TEST_CHAT_MOCK_ENABLED
+        and is_staging_test_account(user_email)
+    )
     return PipChatConsentRead(
         chat_granted=bool(
             chat and chat.granted and chat.policy_version == PIP_CHAT_POLICY_VERSION
@@ -218,7 +226,7 @@ def read_pip_chat_consent(
             purpose="pip_chat_allergies_v1",
             policy_version=PIP_CHAT_ALLERGY_POLICY_VERSION,
         ),
-        provider_enabled=settings.DEEPSEEK_ENABLED,
+        provider_enabled=settings.DEEPSEEK_ENABLED or staging_mock_enabled,
     )
 
 

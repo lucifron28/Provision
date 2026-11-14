@@ -26,11 +26,33 @@ final class CookWithPipUITests: XCTestCase {
         ]
         XCTAssertTrue(reply.waitForExistence(timeout: 10))
         capturePipChat("Pip_Chat_Conversation", app: app)
+        XCTAssertTrue(element("pip-chat-recipe-card-301", in: app).exists,
+                      "Recipe suggestions are rendered as validated household cards")
 
         let openRecipe = element("pip-chat-open-recipe-301", in: app)
         XCTAssertTrue(openRecipe.waitForExistence(timeout: 5))
         openRecipe.tap()
         XCTAssertTrue(element("recipe-detail-title", in: app).waitForExistence(timeout: 10))
+    }
+
+    func testPipChatShoppingActionOpensTheExistingReviewScreen() {
+        let app = launch()
+        openCookWithPip(app)
+        element("cook-with-pip-chat-link", in: app).tap()
+
+        let input = element("pip-chat-input", in: app)
+        XCTAssertTrue(input.waitForExistence(timeout: 10))
+        input.tap()
+        input.typeText("What should I buy?")
+        app.buttons["pip-chat-send"].tap()
+
+        let previewAction = element("pip-chat-open-shopping-preview-301", in: app)
+        XCTAssertTrue(previewAction.waitForExistence(timeout: 10))
+        previewAction.tap()
+
+        XCTAssertTrue(element("recipe-shopping-safety-status", in: app).waitForExistence(timeout: 10))
+        XCTAssertTrue(element("recipe-shopping-confirm", in: app).exists,
+                      "Chat opens the existing preview; the household must still review and confirm it")
     }
 
     func testPipChatPrivacyControlsAtAccessibilitySizeInDarkMode() {
@@ -1018,6 +1040,79 @@ final class CookWithPipUITests: XCTestCase {
     }
 }
 extension CookWithPipUITests {
+    func testStagingPipChatContextAndShoppingPreviewRoutes() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let baseURL = environment["PROVISION_API_BASE_URL"],
+              let email = environment["PROVISION_STAGING_TEST_EMAIL"],
+              let password = environment["PROVISION_STAGING_TEST_PASSWORD"],
+              let recipeID = environment["PROVISION_STAGING_TEST_RECIPE_ID"].flatMap(Int.init),
+              let productID = environment["PROVISION_STAGING_TEST_PRODUCT_ID"].flatMap(Int.init) else {
+            throw XCTSkip("Staging API credentials and synthetic resource IDs are supplied only by the manual staging workflow")
+        }
+
+        let app = XCUIApplication()
+        app.launchEnvironment["PROVISION_API_BASE_URL"] = baseURL
+        app.launchEnvironment["PROVISION_STAGING_TEST_EMAIL"] = email
+        app.launchEnvironment["PROVISION_STAGING_TEST_PASSWORD"] = password
+        app.launchArguments = ["--provision-reset-staging-session"]
+        app.launch()
+
+        let emailField = app.textFields["login-email"]
+        XCTAssertTrue(emailField.waitForExistence(timeout: 20))
+        emailField.tap()
+        emailField.typeText(email)
+        let passwordField = app.secureTextFields["login-password"]
+        passwordField.tap()
+        passwordField.typeText(password)
+        app.buttons["login-submit"].tap()
+        XCTAssertTrue(app.buttons["Home"].waitForExistence(timeout: 40))
+
+        let homeEntry = element("cook-with-pip-entry", in: app)
+        XCTAssertTrue(homeEntry.waitForExistence(timeout: 20))
+        homeEntry.tap()
+        let myRecipes = app.buttons["cook-mode-myRecipes"]
+        XCTAssertTrue(myRecipes.waitForExistence(timeout: 15))
+        myRecipes.tap()
+        let recipe = element("recipe-card-\(recipeID)", in: app)
+        XCTAssertTrue(recipe.waitForExistence(timeout: 20))
+        recipe.tap()
+        XCTAssertTrue(element("recipe-detail-title", in: app).waitForExistence(timeout: 20))
+
+        let askAboutRecipe = element("recipe-ask-pip-link", in: app)
+        scrollTo(askAboutRecipe, in: app)
+        askAboutRecipe.tap()
+        let chatInput = element("pip-chat-input", in: app)
+        XCTAssertTrue(chatInput.waitForExistence(timeout: 15))
+        chatInput.tap()
+        chatInput.typeText("What should I buy?")
+        app.buttons["pip-chat-send"].tap()
+        let shoppingAction = element("pip-chat-open-shopping-preview-\(recipeID)", in: app)
+        XCTAssertTrue(shoppingAction.waitForExistence(timeout: 20))
+        shoppingAction.tap()
+        XCTAssertTrue(element("recipe-shopping-safety-status", in: app).waitForExistence(timeout: 30))
+        XCTAssertTrue(app.buttons["recipe-shopping-confirm"].exists,
+                      "Chat opens the existing review screen without confirming changes")
+        XCTAssertFalse(app.alerts.firstMatch.exists,
+                       "No confirmation dialog appears until the user starts the existing confirmation flow")
+
+        for _ in 0..<5 { navigateBack(app) }
+        XCTAssertTrue(homeEntry.waitForExistence(timeout: 15))
+        app.buttons["Inventory"].tap()
+        let productRow = element("product-row-\(productID)", in: app)
+        XCTAssertTrue(productRow.waitForExistence(timeout: 20))
+        productRow.tap()
+        let askAboutProduct = element("product-ask-pip-link", in: app)
+        XCTAssertTrue(askAboutProduct.waitForExistence(timeout: 15))
+        askAboutProduct.tap()
+        let productChatInput = element("pip-chat-input", in: app)
+        XCTAssertTrue(productChatInput.waitForExistence(timeout: 15))
+        productChatInput.tap()
+        productChatInput.typeText("How much is left?")
+        app.buttons["pip-chat-send"].tap()
+        XCTAssertTrue(element("pip-chat-fact-I1", in: app).waitForExistence(timeout: 15),
+                      "Product context returns the backend's exact inventory fact")
+    }
+
     func testStagingLoginAndRelaunch() throws {
         let environment = ProcessInfo.processInfo.environment
         guard let baseURL = environment["PROVISION_API_BASE_URL"],

@@ -8,13 +8,20 @@ from sqlalchemy import func, select
 from app.main import app
 from app.models.batch import InventoryBatch
 from app.models.household import Household, HouseholdMembership, HouseholdRole
+from app.models.ingredient import Ingredient, ProductIngredientMapping, ProductIngredientMappingTarget
 from app.models.preferences import FoodAllergy, FoodPreference
 from app.models.privacy import ProcessingConsent
 from app.models.product import Product
-from app.models.recipe import Recipe
+from app.models.recipe import Recipe, RecipeIngredient, RecipeRevision
 from app.models.shopping import ShoppingListItem
 from app.models.user import User
-from app.schemas.deepseek import DeepSeekChatResponse, DeepSeekTokenUsage
+from app.schemas.deepseek import (
+    DeepSeekChatMessage,
+    DeepSeekChatRequest,
+    DeepSeekChatResponse,
+    DeepSeekTokenUsage,
+)
+from app.schemas.ingredients import IngredientRequirementInput
 from app.schemas.pip_chat import (
     PIP_CHAT_ALLERGY_POLICY_VERSION,
     PIP_CHAT_POLICY_VERSION,
@@ -60,6 +67,49 @@ def _grant_allergy_sharing(db, user: User, household: Household):
         purpose="pip_chat_allergies_v1",
         policy_version=PIP_CHAT_ALLERGY_POLICY_VERSION,
         granted=True,
+    ))
+
+
+def _recipe_content(*, permission="OWNED_OR_PERMISSION_GRANTED", servings="4"):
+    return {
+        "summary": "A household recipe for testing contextual cooking help.",
+        "content_permission": permission,
+        "ph_regions": ["Tagalog"],
+        "course_categories": ["dinner"],
+        "dish_types": ["soup"],
+        "difficulty": "beginner",
+        "prep_minutes": 10,
+        "cook_minutes": 20,
+        "servings": servings,
+        "equipment": ["pot"],
+        "spice_level": "mild",
+        "instructions": ["Prepare the vegetables.", "Simmer until cooked."],
+    }
+
+
+def _add_recipe_ingredient(
+    db,
+    recipe: Recipe,
+    *,
+    name="Tomato",
+    amount="2",
+    unit="count",
+    ingredient_id=None,
+    substitution_options=None,
+):
+    db.add(RecipeIngredient(
+        household_id=recipe.household_id,
+        recipe_id=recipe.id,
+        position=0,
+        ingredient_id=ingredient_id,
+        display_name=name,
+        amount=Decimal(amount),
+        unit=unit,
+        required=True,
+        preparation=None,
+        substitution_options=[
+            option.model_dump(mode="json") for option in (substitution_options or [])
+        ],
     ))
 
 
@@ -158,12 +208,14 @@ def test_chat_sends_redacted_question_relevant_context_and_only_authorized_rows(
         household_id=auth_household.id,
         title="Household Tomato Stew",
         cuisine="Filipino",
-        content={"instructions": ["Cook the vegetables"]},
+        content=_recipe_content(),
         revision=1,
         is_active=True,
         created_by_user_id=auth_user.id,
     )
     db.add(own_recipe)
+    db.flush()
+    _add_recipe_ingredient(db, own_recipe)
 
     outside_user = _new_user(db, "outside-member@provision.local")
     outside_household = _new_household(db, "outside-pip-chat", "Outside Home")
@@ -173,7 +225,7 @@ def test_chat_sends_redacted_question_relevant_context_and_only_authorized_rows(
         household_id=outside_household.id,
         title="Outside Household Recipe",
         cuisine="Filipino",
-        content={"instructions": []},
+        content=_recipe_content(permission="NOT_DECLARED"),
         revision=1,
         is_active=True,
         created_by_user_id=outside_user.id,
@@ -194,7 +246,7 @@ def test_chat_sends_redacted_question_relevant_context_and_only_authorized_rows(
     response = client.post(
         "/api/v1/pip/chat",
         json={
-            "message": "What can I cook with Tomato? Email me at ron.secret@example.com or call +1 (555) 123-4567.",
+            "message": "Can you open the Household Tomato Stew recipe with Tomato? Email me at ron.secret@example.com or call +1 (555) 123-4567.",
             "history": [],
         },
     )
@@ -212,6 +264,10 @@ def test_chat_sends_redacted_question_relevant_context_and_only_authorized_rows(
     assert "[redacted email]" in request_content
     assert "[redacted phone]" in request_content
     assert request_content.count("Household Tomato Stew") >= 1
+    assert "Simmer until cooked." in request_content
+    assert '"quantity":"2"' in request_content
+    assert "Outside Household Recipe" not in request_content
+    assert "Private Outside Rice" not in request_content
     expected_expiry = (date.today() + timedelta(days=18)).isoformat()
     assert response.json()["facts"][0]["detail"] == (
         f"Remaining quantity: 1.5 count; expiry date: {expected_expiry}."
@@ -233,6 +289,368 @@ def test_chat_sends_redacted_question_relevant_context_and_only_authorized_rows(
     )
     assert unauthorized.status_code == 403
     assert len(provider.requests) == 1
+
+
+def test_selected_recipe_context_is_scaled_permission_gated_and_household_scoped(
+    client, db, auth_user, auth_household
+):
+    _grant_chat(db, auth_user, auth_household)
+    chicken = Ingredient(
+        canonical_name="Chicken",
+        normalized_name="chicken",
+        family="poultry",
+        default_dimension="mass",
+        default_unit="kg",
+        is_active=True,
+    )
+    db.add(chicken)
+    db.flush()
+    permitted_recipe = Recipe(
+        household_id=auth_household.id,
+        title="Chicken Tinola",
+        cuisine="Filipino",
+        content=_recipe_content(),
+        revision=1,
+        is_active=True,
+        created_by_user_id=auth_user.id,
+    )
+    db.add(permitted_recipe)
+    db.flush()
+    _add_recipe_ingredient(
+        db,
+        permitted_recipe,
+        name="Chicken",
+        amount="2",
+        unit="kg",
+        ingredient_id=chicken.id,
+    )
+    restricted_recipe = Recipe(
+        household_id=auth_household.id,
+        title="Publisher copy without sharing permission",
+        cuisine="Filipino",
+        content={**_recipe_content(permission="NOT_DECLARED"), "instructions": ["Do not send this publisher text."]},
+        revision=1,
+        is_active=True,
+        created_by_user_id=auth_user.id,
+    )
+    db.add(restricted_recipe)
+    db.flush()
+    _add_recipe_ingredient(
+        db,
+        restricted_recipe,
+        name="Chicken",
+        amount="2",
+        unit="kg",
+        ingredient_id=chicken.id,
+    )
+    outside_user = _new_user(db, "recipe-context-outside@provision.local")
+    outside_household = _new_household(db, "recipe-context-outside", "Outside Home")
+    _add_member(db, outside_user, outside_household, HouseholdRole.OWNER, is_default=True)
+    outside_recipe = Recipe(
+        household_id=outside_household.id,
+        title="Outside private recipe",
+        cuisine="Filipino",
+        content=_recipe_content(),
+        revision=1,
+        is_active=True,
+        created_by_user_id=outside_user.id,
+    )
+    db.add(outside_recipe)
+    db.commit()
+
+    provider = FakePipChatProvider()
+    _override_provider(provider)
+    scoped = client.post(
+        "/api/v1/pip/chat",
+        json={
+            "message": "How much chicken do I need for five servings?",
+            "context": {"kind": "recipe", "id": permitted_recipe.id},
+        },
+    )
+    assert scoped.status_code == 200, scoped.text
+    prompt = provider.requests[0].messages[1].content
+    assert "Prepare the vegetables." in prompt
+    assert "Simmer until cooked." in prompt
+    assert '"quantity":"2.5"' in prompt
+    assert '"shortfall":"2.5"' in prompt
+    assert '"servings":"5"' in prompt
+    assert '"permission":"user_owned_or_permission_granted"' in prompt
+    assert "Do not send this publisher text." not in prompt
+
+    restricted = client.post(
+        "/api/v1/pip/chat",
+        json={
+            "message": "Explain step two.",
+            "context": {"kind": "recipe", "id": restricted_recipe.id},
+        },
+    )
+    assert restricted.status_code == 200, restricted.text
+    restricted_prompt = provider.requests[1].messages[1].content
+    assert "Full recipe text is not cleared for model sharing." in restricted_prompt
+    assert "Do not send this publisher text." not in restricted_prompt
+
+    outside = client.post(
+        "/api/v1/pip/chat",
+        json={
+            "message": "Explain this recipe.",
+            "context": {"kind": "recipe", "id": outside_recipe.id},
+        },
+    )
+    assert outside.status_code == 404
+    assert len(provider.requests) == 2
+
+
+def test_requested_recipe_substitution_uses_a_scaled_stored_option_and_backend_review(
+    client, db, auth_user, auth_household
+):
+    _grant_chat(db, auth_user, auth_household)
+    chicken = Ingredient(
+        canonical_name="Chicken",
+        normalized_name="chicken",
+        family="poultry",
+        default_dimension="mass",
+        default_unit="kg",
+        is_active=True,
+    )
+    papaya = Ingredient(
+        canonical_name="Green papaya",
+        normalized_name="green papaya",
+        family="fruit vegetable",
+        default_dimension="mass",
+        default_unit="kg",
+        is_active=True,
+    )
+    db.add_all([chicken, papaya])
+    db.flush()
+    recipe = Recipe(
+        household_id=auth_household.id,
+        title="Chicken Tinola",
+        cuisine="Filipino",
+        content=_recipe_content(),
+        revision=1,
+        is_active=True,
+        created_by_user_id=auth_user.id,
+    )
+    db.add(recipe)
+    db.flush()
+    _add_recipe_ingredient(
+        db,
+        recipe,
+        name="Chicken",
+        amount="2",
+        unit="kg",
+        ingredient_id=chicken.id,
+        substitution_options=[IngredientRequirementInput(
+            ingredient_id=papaya.id,
+            amount=Decimal("1"),
+            unit="kg",
+        )],
+    )
+    db.commit()
+
+    provider = FakePipChatProvider()
+    _override_provider(provider)
+    response = client.post(
+        "/api/v1/pip/chat",
+        json={
+            "message": "Can I substitute chicken with Green papaya for five servings?",
+            "context": {"kind": "recipe", "id": recipe.id},
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    prompt = provider.requests[0].messages[1].content
+    assert '"quantity":"2.5"' in prompt
+    assert (
+        '"name":"Green papaya","quantity":"1.25","unit":"kg",'
+        '"safety_evaluation_performed":true,"safety_decision":"withheld"'
+    ) in prompt
+
+
+def test_selected_product_context_uses_current_household_batches_and_expiry(
+    client, db, auth_user, auth_household
+):
+    _grant_chat(db, auth_user, auth_household)
+    product = Product(household_id=auth_household.id, name="Coconut milk", unit="can")
+    db.add(product)
+    db.flush()
+    db.add_all([
+        InventoryBatch(
+            household_id=auth_household.id,
+            product_id=product.id,
+            original_quantity=Decimal("2"),
+            remaining_quantity=Decimal("1.25"),
+            expiration_date=date.today() + timedelta(days=4),
+            purchased_at=datetime.now(timezone.utc),
+        ),
+        InventoryBatch(
+            household_id=auth_household.id,
+            product_id=product.id,
+            original_quantity=Decimal("3"),
+            remaining_quantity=Decimal("0.75"),
+            expiration_date=date.today() - timedelta(days=1),
+            purchased_at=datetime.now(timezone.utc),
+        ),
+    ])
+    db.commit()
+
+    provider = FakePipChatProvider()
+    _override_provider(provider)
+    response = client.post(
+        "/api/v1/pip/chat",
+        json={
+            "message": "How much coconut milk is left, and when does it expire?",
+            "context": {"kind": "product", "id": product.id},
+        },
+    )
+    assert response.status_code == 200, response.text
+    prompt = provider.requests[0].messages[1].content
+    assert '"total_remaining_quantity":"2"' in prompt
+    assert '"remaining_quantity":"1.25"' in prompt
+    assert '"remaining_quantity":"0.75"' in prompt
+    assert '"expiry_status":"expired"' in prompt
+    assert '"expiry_status":"not_expired"' in prompt
+    assert '"label_review_status":"unknown_or_outdated_label"' in prompt
+
+    outside_product = Product(household_id=_new_household(db, "other-product-context", "Other").id,
+                             name="Private coconut milk", unit="can")
+    db.add(outside_product)
+    db.commit()
+    unauthorized = client.post(
+        "/api/v1/pip/chat",
+        json={
+            "message": "How much is left?",
+            "context": {"kind": "product", "id": outside_product.id},
+        },
+    )
+    assert unauthorized.status_code == 404
+    assert len(provider.requests) == 1
+
+
+def test_meal_suggestions_return_backend_recipe_cards_and_shopping_preview_action(
+    client, db, auth_user, auth_household
+):
+    _grant_chat(db, auth_user, auth_household)
+    db.add(FoodPreference(
+        household_id=auth_household.id,
+        member_user_id=auth_user.id,
+        preferences={"preferred_language": "en"},
+        allergy_status="DECLARED",
+    ))
+    ingredient = Ingredient(
+        canonical_name="Green papaya",
+        normalized_name="green papaya",
+        family="fruit vegetable",
+        default_dimension="mass",
+        default_unit="kg",
+        is_active=True,
+    )
+    db.add(ingredient)
+    db.flush()
+    pantry_product = Product(household_id=auth_household.id, name="Green papaya", unit="kg")
+    db.add(pantry_product)
+    db.flush()
+    db.add(ProductIngredientMapping(
+        household_id=auth_household.id,
+        product_id=pantry_product.id,
+        version=1,
+        mode="DIRECT",
+        ingredient_id=ingredient.id,
+        verification_status="VERIFIED",
+        method="manual",
+        unknown_composition=False,
+        verified_by_user_id=auth_user.id,
+        verified_at=datetime.now(timezone.utc),
+    ))
+    db.add(ProductIngredientMappingTarget(
+        household_id=auth_household.id,
+        product_id=pantry_product.id,
+        mapping_version=1,
+        ingredient_id=ingredient.id,
+    ))
+    recipe = Recipe(
+        household_id=auth_household.id,
+        title="Tinolang Manok",
+        cuisine="Filipino",
+        content=_recipe_content(),
+        revision=1,
+        is_active=True,
+        created_by_user_id=auth_user.id,
+    )
+    db.add(recipe)
+    db.flush()
+    db.add(RecipeRevision(
+        household_id=recipe.household_id,
+        recipe_id=recipe.id,
+        revision=recipe.revision,
+        snapshot=recipe.content,
+    ))
+    _add_recipe_ingredient(
+        db,
+        recipe,
+        name="Green papaya",
+        amount="1",
+        unit="kg",
+        ingredient_id=ingredient.id,
+    )
+    db.commit()
+
+    provider = FakePipChatProvider()
+    _override_provider(provider)
+    suggestion = client.post(
+        "/api/v1/pip/chat",
+        json={"message": "Suggest three Filipino meals for four people."},
+    )
+    assert suggestion.status_code == 200, suggestion.text
+    cards = suggestion.json()["recipe_cards"]
+    assert len(cards) == 1
+    card = cards[0]
+    assert card["recipe_id"] == recipe.id
+    assert card["title"] == "Tinolang Manok"
+    assert card["availability_status"] == "missing"
+    assert card["missing_ingredient_count"] == 1
+    assert card["safety_decision"] == "eligible"
+
+    before = db.scalar(select(func.count()).select_from(ShoppingListItem))
+    provider.response = {
+        "reply": "I can prepare the exact missing ingredients for review.",
+        "language": "english",
+        "fact_refs": ["R1"],
+        "actions": [{"kind": "open_shopping_preview", "reference": "R1"}],
+    }
+    shopping = client.post(
+        "/api/v1/pip/chat",
+        json={
+            "message": "What do I need to buy for five people?",
+            "context": {"kind": "recipe", "id": recipe.id},
+        },
+    )
+    assert shopping.status_code == 200, shopping.text
+    assert shopping.json()["actions"] == [{
+        "kind": "open_shopping_preview",
+        "reference": "R1",
+        "recipe_id": recipe.id,
+        "title": "Tinolang Manok",
+    }]
+    shopping_prompt = provider.requests[-1].messages[1].content
+    assert '"shortfall":"1.25"' in shopping_prompt
+    assert db.scalar(select(func.count()).select_from(ShoppingListItem)) == before
+
+    provider.response = {
+        "reply": "I will add the missing food now.",
+        "language": "english",
+        "fact_refs": ["R1"],
+        "actions": [{"kind": "open_shopping_preview", "reference": "R1"}],
+    }
+    invalid = client.post(
+        "/api/v1/pip/chat",
+        json={
+            "message": "Explain step two.",
+            "context": {"kind": "recipe", "id": recipe.id},
+        },
+    )
+    assert invalid.status_code == 502
+    assert db.scalar(select(func.count()).select_from(ShoppingListItem)) == before
 
 
 def test_chat_requires_every_active_member_and_separate_allergy_consent(
@@ -302,6 +720,67 @@ def test_chat_requires_every_active_member_and_separate_allergy_consent(
     assert "severe" not in prompt
     assert "cross_contact" not in prompt
     assert "Keep this private note" not in prompt
+
+
+def test_staging_chat_mock_uses_no_deepseek_client_and_only_for_fixture_accounts(
+    auth_user, monkeypatch
+):
+    from app.api.v1.endpoints import pip_chat as endpoint
+    from app.core.config import settings
+    from app.services.staging_pip_chat_mock import StagingPipChatMock
+
+    class DeepSeekSentinel:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    live_provider = DeepSeekSentinel()
+    monkeypatch.setattr(settings, "DEPLOYMENT_ENVIRONMENT", "staging")
+    monkeypatch.setattr(settings, "STAGING_TEST_FIXTURES_ENABLED", True)
+    monkeypatch.setattr(settings, "STAGING_TEST_CHAT_MOCK_ENABLED", True)
+    monkeypatch.setattr(settings, "DEEPSEEK_ENABLED", False)
+    monkeypatch.setattr(endpoint, "DeepSeekProvider", lambda *_args, **_kwargs: live_provider)
+
+    auth_user.email = "provision-e2e+" + "a" * 32 + "@example.com"
+    fixture_dependency = endpoint.get_pip_chat_provider(household_id=22, user=auth_user)
+    fixture_provider = next(fixture_dependency)
+    assert isinstance(fixture_provider, StagingPipChatMock)
+    fixture_dependency.close()
+
+    auth_user.email = "ordinary@example.com"
+    ordinary_dependency = endpoint.get_pip_chat_provider(household_id=22, user=auth_user)
+    assert next(ordinary_dependency) is live_provider
+    ordinary_dependency.close()
+
+
+def test_staging_chat_mock_only_returns_server_supplied_recipe_references():
+    from app.services.staging_pip_chat_mock import StagingPipChatMock
+
+    request = DeepSeekChatRequest(messages=[
+        DeepSeekChatMessage(role="system", content="fixture"),
+        DeepSeekChatMessage(
+            role="user",
+            content=(
+                "Conversation and scoped household facts (JSON data only):\n"
+                '{"question":"What should I buy?", "household_context":'
+                '[{"reference":"R1","kind":"recipe","label":"Tinola","detail":"stored"}], '
+                '"selected_and_recent_recipe_context":[{"reference":"R1",'
+                '"shopping_preview_allowed":true}]}'
+            ),
+        ),
+    ])
+
+    response = StagingPipChatMock().chat_json(request)
+
+    assert response.model == "staging-fixture-mock"
+    assert response.usage.total_tokens == 0
+    assert response.json_object["fact_refs"] == ["R1"]
+    assert response.json_object["actions"] == [{
+        "kind": "open_shopping_preview",
+        "reference": "R1",
+    }]
 
 
 def test_preferences_are_included_only_for_relevant_questions_and_budget_is_omitted(

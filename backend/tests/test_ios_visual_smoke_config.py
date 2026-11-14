@@ -41,6 +41,10 @@ def test_pull_request_workflow_runs_representative_screenshots_only():
         "-only-testing:frontendUITests/CookWithPipUITests/"
         "testAmbiguousShoppingConfirmationSurvivesAppRelaunch"
     ) in workflow
+    assert (
+        "-only-testing:frontendUITests/CookWithPipUITests/"
+        "testPipChatShoppingActionOpensTheExistingReviewScreen"
+    ) in workflow
     assert "--required .github/scripts/required_ios_smoke_screenshots.json" in workflow
     assert "name: cook-with-pip-xcresult" not in workflow
 

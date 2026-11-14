@@ -5,10 +5,13 @@ private actor PipChatServiceSpy: PipChatService {
     private var consent: PipChatConsent
     private var requests: [PipChatRequest] = []
     private let failsOffline: Bool
+    private let response: PipChatResponse
 
-    init(consent: PipChatConsent, failsOffline: Bool = false) {
+    init(consent: PipChatConsent, failsOffline: Bool = false,
+         response: PipChatResponse = PipChatResponse(reply: "Sige, let's cook together.", language: "taglish")) {
         self.consent = consent
         self.failsOffline = failsOffline
+        self.response = response
     }
 
     func fetchPipChatConsent(scope: HouseholdScope) async throws -> PipChatConsent {
@@ -49,7 +52,7 @@ private actor PipChatServiceSpy: PipChatService {
                 localGuidance: true
             )
         }
-        return PipChatResponse(reply: "Sige, let's cook together.", language: "taglish")
+        return response
     }
 
     func recordedRequests() -> [PipChatRequest] { requests }
@@ -111,6 +114,45 @@ final class PipChatViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.messages.isEmpty)
         let requests = await service.recordedRequests()
         XCTAssertTrue(requests.isEmpty)
+    }
+
+    func testContextAndRecentRecipesStayBoundedToTheConversation() async throws {
+        let card = PipChatRecipeCard(
+            reference: "R1",
+            recipe_id: 301,
+            title: "Tinolang Manok",
+            summary: nil,
+            cuisine: "Filipino",
+            availability_status: "partial",
+            missing_ingredient_count: 1,
+            safety_decision: "eligible",
+            safety_reasons: []
+        )
+        let service = PipChatServiceSpy(
+            consent: PipChatConsent(
+                chatGranted: true,
+                allMembersChatGranted: true,
+                providerEnabled: true,
+                notice: "Test notice"
+            ),
+            response: PipChatResponse(reply: "Review this stored recipe.", language: "english", recipeCards: [card])
+        )
+        let context = PipChatContext(kind: .product, id: 88)
+        let viewModel = PipChatViewModel(scope: scope, context: context, service: service)
+
+        await viewModel.loadConsent()
+        viewModel.draft = "Suggest a meal with this product."
+        await viewModel.send()
+        viewModel.draft = "What was that recipe?"
+        await viewModel.send()
+
+        let requests = await service.recordedRequests()
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertEqual(requests[0].context, context)
+        XCTAssertEqual(requests[0].recent_recipe_ids, [])
+        XCTAssertEqual(requests[1].context, context)
+        XCTAssertEqual(requests[1].recent_recipe_ids, [301])
+        XCTAssertEqual(viewModel.messages.last?.recipeCards.map(\.recipe_id), [301])
     }
 
     func testOfflineSendKeepsDraftAndShowsOfflineState() async {

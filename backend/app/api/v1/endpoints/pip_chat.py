@@ -8,16 +8,30 @@ from app.api.v1.dependencies import get_current_household_id
 from app.api.v1.endpoints.auth import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.staging_fixtures import is_staging_test_account
 from app.models.user import User
 from app.schemas.pip_chat import PipChatRead, PipChatRequest
 from app.services.deepseek_budget import PostgresDeepSeekBudget
 from app.services.deepseek_provider import DeepSeekProvider, DeepSeekProviderError
 from app.services.pip_chat import generate_pip_chat
+from app.services.staging_pip_chat_mock import StagingPipChatMock
 
 router = APIRouter()
 
 
-def get_pip_chat_provider(household_id: int = Depends(get_current_household_id)):
+def get_pip_chat_provider(
+    household_id: int = Depends(get_current_household_id),
+    user: User = Depends(get_current_user),
+):
+    if (
+        settings.DEPLOYMENT_ENVIRONMENT == "staging"
+        and settings.STAGING_TEST_FIXTURES_ENABLED
+        and settings.STAGING_TEST_CHAT_MOCK_ENABLED
+        and is_staging_test_account(user.email)
+    ):
+        yield StagingPipChatMock()
+        return
+
     budget = PostgresDeepSeekBudget(settings, household_id=household_id)
     if settings.DEEPSEEK_ENABLED:
         try:

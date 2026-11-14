@@ -1,10 +1,18 @@
 import SwiftUI
 
 public struct PipChatView: View {
+    private struct Destination: Hashable, Identifiable {
+        let recipeID: Int
+        let opensShoppingPreview: Bool
+        var id: String { "\(recipeID)-\(opensShoppingPreview)" }
+    }
+
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @StateObject private var viewModel: PipChatViewModel
+    @State private var selectedDestination: Destination?
     @FocusState private var composerFocused: Bool
     private let scope: HouseholdScope
+    private let context: PipChatContext?
     private let chatService: any PipChatService
     private let recipeService: any CookWithPipService
     private let workflowService: any CookWithPipWorkflowService
@@ -14,6 +22,7 @@ public struct PipChatView: View {
 
     public init(
         scope: HouseholdScope,
+        context: PipChatContext? = nil,
         chatService: any PipChatService = APIClient.shared,
         recipeService: any CookWithPipService = APIClient.shared,
         workflowService: any CookWithPipWorkflowService = APIClient.shared,
@@ -22,13 +31,16 @@ public struct PipChatView: View {
         onNavigateToShopping: @escaping () -> Void = {}
     ) {
         self.scope = scope
+        self.context = context
         self.chatService = chatService
         self.recipeService = recipeService
         self.workflowService = workflowService
         self.pendingStore = pendingStore
         self.onShoppingConfirmed = onShoppingConfirmed
         self.onNavigateToShopping = onNavigateToShopping
-        _viewModel = StateObject(wrappedValue: PipChatViewModel(scope: scope, service: chatService))
+        _viewModel = StateObject(wrappedValue: PipChatViewModel(
+            scope: scope, context: context, service: chatService
+        ))
     }
 
     public var body: some View {
@@ -112,6 +124,9 @@ public struct PipChatView: View {
                         .accessibilityIdentifier("pip-chat-clear")
                 }
             }
+        }
+        .navigationDestination(item: $selectedDestination) { destination in
+            recipeDetail(for: destination.recipeID, opensShoppingPreview: destination.opensShoppingPreview)
         }
         .task {
             if !viewModel.hasLoadedConsent {
@@ -232,27 +247,41 @@ public struct PipChatView: View {
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(ProvisionTheme.surfaceSecondary, in: RoundedRectangle(cornerRadius: 10))
+                .accessibilityIdentifier("pip-chat-fact-\(fact.reference)")
+            }
+
+            ForEach(message.recipeCards) { card in
+                Button {
+                    selectedDestination = Destination(recipeID: card.recipe_id, opensShoppingPreview: false)
+                } label: {
+                    recipeCardLabel(card)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("pip-chat-recipe-card-\(card.recipe_id)")
             }
 
             ForEach(message.actions) { action in
-                if action.kind == "open_recipe" {
-                    NavigationLink {
-                        RecipeDetailView(
+                if action.kind == "open_recipe" || action.kind == "open_shopping_preview" {
+                    Button {
+                        selectedDestination = Destination(
                             recipeID: action.recipe_id,
-                            scope: scope,
-                            service: recipeService,
-                            workflowService: workflowService,
-                            pendingStore: pendingStore,
-                            onShoppingConfirmed: onShoppingConfirmed,
-                            onNavigateToShopping: onNavigateToShopping
+                            opensShoppingPreview: action.kind == "open_shopping_preview"
                         )
                     } label: {
-                        Label("Open \(action.title)", systemImage: "book.closed")
+                        Label(
+                            action.kind == "open_shopping_preview"
+                                ? "Review shopping for \(action.title)"
+                                : "Open \(action.title)",
+                            systemImage: action.kind == "open_shopping_preview" ? "cart" : "book.closed"
+                        )
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(ProvisionTheme.provisionGreen)
                             .frame(minHeight: 44)
                     }
-                    .accessibilityIdentifier("pip-chat-open-recipe-\(action.recipe_id)")
+                    .accessibilityIdentifier(
+                        "pip-chat-open-\(action.kind == "open_shopping_preview" ? "shopping-preview" : "recipe")-\(action.recipe_id)"
+                    )
+                    .buttonStyle(.plain)
                 }
             }
 
@@ -270,6 +299,90 @@ public struct PipChatView: View {
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(ProvisionTheme.border, lineWidth: 1))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(message.role == .assistant ? "pip-chat-message-assistant" : "pip-chat-message-user")
+    }
+
+    private func recipeDetail(for recipeID: Int, opensShoppingPreview: Bool = false) -> some View {
+        RecipeDetailView(
+            recipeID: recipeID,
+            scope: scope,
+            service: recipeService,
+            chatService: chatService,
+            workflowService: workflowService,
+            pendingStore: pendingStore,
+            opensShoppingPreview: opensShoppingPreview,
+            onShoppingConfirmed: onShoppingConfirmed,
+            onNavigateToShopping: onNavigateToShopping
+        )
+    }
+
+    private func recipeCardLabel(_ card: PipChatRecipeCard) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(card.title)
+                        .font(.headline)
+                        .foregroundStyle(ProvisionTheme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(card.cuisine)
+                        .font(.caption)
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(ProvisionTheme.textTertiary)
+                    .accessibilityHidden(true)
+            }
+            if let summary = card.summary {
+                Text(summary)
+                    .font(.subheadline)
+                    .foregroundStyle(ProvisionTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Label(availabilityText(card), systemImage: availabilitySymbol(card.availability_status))
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(ProvisionTheme.textSecondary)
+            Label("Safety check: \(safetyText(card.safety_decision))", systemImage: "checkmark.shield")
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(card.safety_decision == "blocked" ? ProvisionTheme.redAlert : ProvisionTheme.textSecondary)
+            ForEach(Array(card.safety_reasons.enumerated()), id: \.offset) { item in
+                Text(ReasonText.display(item.element))
+                    .font(.caption)
+                    .foregroundStyle(ProvisionTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(ProvisionTheme.surfaceSecondary, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(ProvisionTheme.border, lineWidth: 1))
+        .contentShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func availabilityText(_ card: PipChatRecipeCard) -> String {
+        switch card.availability_status {
+        case "full": "Pantry has the required ingredients"
+        case "partial": "Some ingredients are missing (\(card.missing_ingredient_count))"
+        case "missing": "Missing ingredients: \(card.missing_ingredient_count)"
+        default: "Ingredient availability needs review"
+        }
+    }
+
+    private func availabilitySymbol(_ status: String) -> String {
+        switch status {
+        case "full": "checkmark.circle"
+        case "partial": "minus.circle"
+        case "missing": "cart"
+        default: "questionmark.circle"
+        }
+    }
+
+    private func safetyText(_ decision: String) -> String {
+        switch decision {
+        case "eligible": "eligible"
+        case "blocked": "blocked"
+        default: "review required"
+        }
     }
 
     private var composer: some View {

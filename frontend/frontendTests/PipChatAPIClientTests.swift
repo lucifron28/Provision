@@ -36,7 +36,7 @@ private final class PipChatRequestProtocol: URLProtocol {
         Self.lastRequestBody = body
         Self.lock.unlock()
 
-        let responseBody = #"{"reply":"Try a household recipe.","language":"english","facts":[],"actions":[],"model":"fake","usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7},"local_guidance":false,"safety_notice":"Verify safety in Cook with Pip."}"#
+        let responseBody = #"{"reply":"Try a household recipe.","language":"english","facts":[],"actions":[],"recipe_cards":[],"model":"fake","usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7},"local_guidance":false,"safety_notice":"Verify safety in Cook with Pip."}"#
         let response = HTTPURLResponse(
             url: request.url!,
             statusCode: 200,
@@ -100,7 +100,12 @@ final class PipChatAPIClientTests: XCTestCase {
 
         let history = [PipChatHistoryTurn(role: "user", content: "Anong lulutuin?")]
         let response = try await client.sendPipChat(
-            PipChatRequest(message: "Let's make dinner", history: history),
+            PipChatRequest(
+                message: "Let's make dinner",
+                history: history,
+                context: PipChatContext(kind: .recipe, id: 305),
+                recentRecipeIDs: [303]
+            ),
             scope: scope
         )
         XCTAssertEqual(response.reply, "Try a household recipe.")
@@ -116,5 +121,9 @@ final class PipChatAPIClientTests: XCTestCase {
         XCTAssertEqual(payload["message"] as? String, "Let's make dinner")
         let encodedHistory = try XCTUnwrap(payload["history"] as? [[String: String]])
         XCTAssertEqual(encodedHistory, [["role": "user", "content": "Anong lulutuin?"]])
+        let context = try XCTUnwrap(payload["context"] as? [String: Any])
+        XCTAssertEqual(context["kind"] as? String, "recipe")
+        XCTAssertEqual(context["id"] as? Int, 305)
+        XCTAssertEqual(payload["recent_recipe_ids"] as? [Int], [303])
     }
 }

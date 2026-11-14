@@ -4,21 +4,28 @@ public struct RecipeDetailView: View {
     @StateObject private var viewModel: RecipeDetailViewModel
     private let scope: HouseholdScope
     private let service: any CookWithPipService
+    private let chatService: any PipChatService
     private let workflowService: any CookWithPipWorkflowService
     private let pendingStore: any PendingRecipeShoppingStore
+    private let opensShoppingPreview: Bool
     private let onShoppingConfirmed: () async -> Void
     private let onNavigateToShopping: () -> Void
     @State private var showingSubstitutionEditor = false
+    @State private var navigateToShoppingPreview = false
 
     public init(recipeID: Int, scope: HouseholdScope, service: any CookWithPipService = APIClient.shared,
+                chatService: any PipChatService = APIClient.shared,
                 workflowService: any CookWithPipWorkflowService = APIClient.shared,
                 pendingStore: any PendingRecipeShoppingStore = KeychainStore.shared,
+                opensShoppingPreview: Bool = false,
                 onShoppingConfirmed: @escaping () async -> Void = {},
                 onNavigateToShopping: @escaping () -> Void = {}) {
         self.scope = scope
         self.service = service
+        self.chatService = chatService
         self.workflowService = workflowService
         self.pendingStore = pendingStore
+        self.opensShoppingPreview = opensShoppingPreview
         self.onShoppingConfirmed = onShoppingConfirmed
         self.onNavigateToShopping = onNavigateToShopping
         _viewModel = StateObject(wrappedValue: RecipeDetailViewModel(recipeID: recipeID, scope: scope, service: service))
@@ -63,6 +70,8 @@ public struct RecipeDetailView: View {
                         isSourceOffline: viewModel.isSourceOffline,
                         isLoadingSourceReference: viewModel.isLoadingSourceReference,
                         retrySourceReference: { Task { await viewModel.retrySourceReference() } },
+                        recipeService: service,
+                        chatService: chatService,
                         workflowService: workflowService,
                         pendingStore: pendingStore,
                         onCustomizeSubstitutions: { showingSubstitutionEditor = true },
@@ -86,6 +95,21 @@ public struct RecipeDetailView: View {
         .accessibilityIdentifier("recipe-detail-scroll")
         .task {
             if !viewModel.hasLoadedOnce { await viewModel.load() }
+            if opensShoppingPreview, viewModel.recipe != nil {
+                navigateToShoppingPreview = true
+            }
+        }
+        .navigationDestination(isPresented: $navigateToShoppingPreview) {
+            if let recipe = viewModel.recipe {
+                RecipeShoppingReviewView(
+                    recipe: recipe,
+                    scope: scope,
+                    service: workflowService,
+                    pendingStore: pendingStore,
+                    onShoppingConfirmed: onShoppingConfirmed,
+                    onNavigateToShopping: onNavigateToShopping
+                )
+            }
         }
         .sheet(isPresented: $showingSubstitutionEditor) {
             if let recipe = viewModel.recipe {
@@ -111,6 +135,8 @@ private struct RecipeDetailContents: View {
     let isSourceOffline: Bool
     let isLoadingSourceReference: Bool
     let retrySourceReference: () -> Void
+    let recipeService: any CookWithPipService
+    let chatService: any PipChatService
     let workflowService: any CookWithPipWorkflowService
     let pendingStore: any PendingRecipeShoppingStore
     let onCustomizeSubstitutions: () -> Void
@@ -182,6 +208,23 @@ private struct RecipeDetailContents: View {
                 }
                 .accessibilityIdentifier("recipe-review-substitutions")
             }
+            NavigationLink {
+                PipChatView(
+                    scope: scope,
+                    context: PipChatContext(kind: .recipe, id: recipe.id),
+                    chatService: chatService,
+                    recipeService: recipeService,
+                    workflowService: workflowService,
+                    pendingStore: pendingStore,
+                    onShoppingConfirmed: onShoppingConfirmed,
+                    onNavigateToShopping: onNavigateToShopping
+                )
+                .id("pip-chat-\(scope.storageKey)-recipe-\(recipe.id)")
+            } label: {
+                Label("Ask Pip about this recipe", systemImage: "bubble.left.and.bubble.right")
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            }
+            .accessibilityIdentifier("recipe-ask-pip-link")
             NavigationLink {
                 CookWithPipPreferencesView(scope: scope, service: workflowService,
                                            onProfileUpdated: refreshEvaluation)

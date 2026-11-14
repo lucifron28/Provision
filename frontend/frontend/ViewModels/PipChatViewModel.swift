@@ -12,16 +12,19 @@ nonisolated public struct PipChatDisplayMessage: Identifiable, Sendable {
     let text: String
     let facts: [PipChatFact]
     let actions: [PipChatAction]
+    let recipeCards: [PipChatRecipeCard]
     let safetyNotice: String?
     let includeInProviderHistory: Bool
 
     init(role: PipChatMessageRole, text: String, facts: [PipChatFact] = [],
-         actions: [PipChatAction] = [], safetyNotice: String? = nil,
+         actions: [PipChatAction] = [], recipeCards: [PipChatRecipeCard] = [],
+         safetyNotice: String? = nil,
          includeInProviderHistory: Bool = true) {
         self.role = role
         self.text = text
         self.facts = facts
         self.actions = actions
+        self.recipeCards = recipeCards
         self.safetyNotice = safetyNotice
         self.includeInProviderHistory = includeInProviderHistory
     }
@@ -40,10 +43,14 @@ public final class PipChatViewModel: ObservableObject {
     @Published public private(set) var errorMessage: String?
 
     private let scope: HouseholdScope
+    private let context: PipChatContext?
     private let service: any PipChatService
+    private var recentRecipeIDs: [Int] = []
 
-    public init(scope: HouseholdScope, service: any PipChatService) {
+    public init(scope: HouseholdScope, context: PipChatContext? = nil,
+                service: any PipChatService) {
         self.scope = scope
+        self.context = context
         self.service = service
     }
 
@@ -121,9 +128,24 @@ public final class PipChatViewModel: ObservableObject {
         defer { isSending = false }
         do {
             let response = try await service.sendPipChat(
-                PipChatRequest(message: message, history: history),
+                PipChatRequest(
+                    message: message,
+                    history: history,
+                    context: context,
+                    recentRecipeIDs: recentRecipeIDs.filter { id in
+                        context?.kind != .recipe || context?.id != id
+                    }
+                ),
                 scope: scope
             )
+            let responseRecipeIDs = response.recipe_cards.map(\.recipe_id)
+                + response.actions.map(\.recipe_id)
+            var nextRecipeIDs: [Int] = []
+            for id in responseRecipeIDs + recentRecipeIDs where !nextRecipeIDs.contains(id) {
+                nextRecipeIDs.append(id)
+                if nextRecipeIDs.count == 3 { break }
+            }
+            recentRecipeIDs = nextRecipeIDs
             messages.append(PipChatDisplayMessage(
                 role: .user,
                 text: message,
@@ -134,6 +156,7 @@ public final class PipChatViewModel: ObservableObject {
                 text: response.reply,
                 facts: response.facts,
                 actions: response.actions,
+                recipeCards: response.recipe_cards,
                 safetyNotice: response.safety_notice,
                 includeInProviderHistory: !response.local_guidance
             ))
@@ -147,6 +170,7 @@ public final class PipChatViewModel: ObservableObject {
 
     public func clearConversation() {
         messages.removeAll()
+        recentRecipeIDs.removeAll()
         draft = ""
     }
 
