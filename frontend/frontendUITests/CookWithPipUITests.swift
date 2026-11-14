@@ -502,7 +502,7 @@ final class CookWithPipUITests: XCTestCase {
         capture("Shopping_Duplicate_Consolidation_Opt_In", app: app)
 
         element("recipe-shopping-confirm", in: app).tap()
-        let confirmAction = app.alerts.buttons.matching(identifier: "recipe-shopping-confirm-action").firstMatch
+        let confirmAction = app.buttons.matching(identifier: "recipe-shopping-confirm-action").firstMatch
         XCTAssertTrue(confirmAction.waitForExistence(timeout: 5))
         confirmAction.tap()
         XCTAssertTrue(element("recipe-shopping-result-counts", in: app).waitForExistence(timeout: 10))
@@ -601,7 +601,7 @@ final class CookWithPipUITests: XCTestCase {
         let staleApp = launch(scenario: "shopping-stale")
         openShoppingPreview(staleApp)
         element("recipe-shopping-confirm", in: staleApp).tap()
-        let staleConfirmAction = staleApp.alerts.buttons
+        let staleConfirmAction = staleApp.buttons
             .matching(identifier: "recipe-shopping-confirm-action").firstMatch
         XCTAssertTrue(staleConfirmAction.waitForExistence(timeout: 5))
         staleConfirmAction.tap()
@@ -627,7 +627,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(confirm.isEnabled,
                       "An eligible current preview with selected lines enables explicit confirmation")
         confirm.tap()
-        let confirmAction = app.alerts.buttons.matching(identifier: "recipe-shopping-confirm-action").firstMatch
+        let confirmAction = app.buttons.matching(identifier: "recipe-shopping-confirm-action").firstMatch
         XCTAssertTrue(confirmAction.waitForExistence(timeout: 10))
         XCTAssertTrue(confirmAction.isEnabled,
                       "The explicit confirmation choice stays enabled for the reviewed request")
@@ -1066,7 +1066,7 @@ extension CookWithPipUITests {
         passwordField.typeText(password)
         app.buttons["login-submit"].tap()
         XCTAssertTrue(app.buttons["Home"].waitForExistence(timeout: 40))
-        dismissSavePasswordPromptIfPresent()
+        dismissSavePasswordPromptIfPresent(in: app)
 
         let homeEntry = element("cook-with-pip-entry", in: app)
         XCTAssertTrue(homeEntry.waitForExistence(timeout: 20))
@@ -1141,7 +1141,7 @@ extension CookWithPipUITests {
 
         let inventoryTab = app.buttons["Inventory"]
         XCTAssertTrue(inventoryTab.waitForExistence(timeout: 40), "Staging login did not establish an authorized household session")
-        dismissSavePasswordPromptIfPresent()
+        dismissSavePasswordPromptIfPresent(in: app)
         capture("Staging_Authenticated_Home", app: app)
 
         app.terminate()
@@ -1172,7 +1172,7 @@ extension CookWithPipUITests {
         passwordField.typeText(password)
         signIn.tap()
         XCTAssertTrue(inventoryTab.waitForExistence(timeout: 40), "The synthetic staging account could not log in again")
-        dismissSavePasswordPromptIfPresent()
+        dismissSavePasswordPromptIfPresent(in: app)
         app.terminate()
         app.launchArguments = []
         app.launch()
@@ -1180,12 +1180,11 @@ extension CookWithPipUITests {
         capture("Staging_Relogin_Relaunch_Recovery", app: app)
     }
 
-    private func dismissSavePasswordPromptIfPresent() {
-        // Synthetic staging credentials trigger iOS Passwords AutoFill. Decline
-        // saving them so the system sheet cannot obscure the app during UI checks.
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        let notNowButton = springboard.buttons["Not Now"]
-        guard notNowButton.waitForExistence(timeout: 3) else { return }
+    private func dismissSavePasswordPromptIfPresent(in app: XCUIApplication) {
+        // The AutoFill sheet and its button are exposed in the target app's
+        // accessibility tree, and the prompt can arrive after login completes.
+        let notNowButton = app.buttons["Not Now"]
+        guard notNowButton.waitForExistence(timeout: 15) else { return }
         notNowButton.tap()
         waitUntilGone(notNowButton)
     }
