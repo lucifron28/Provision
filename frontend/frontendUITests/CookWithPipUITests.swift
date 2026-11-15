@@ -203,17 +203,42 @@ final class CookWithPipUITests: XCTestCase {
         let cookNowRecipe = app.buttons["recipe-card-301"]
         XCTAssertTrue(cookNowRecipe.waitForExistence(timeout: 10))
         XCTAssertTrue(cookNowRecipe.isHittable)
+        XCTAssertEqual(cookNowRecipe.value as? String, "Recommendation")
         capture("Cook_Now", app: app)
 
-        element("cook-mode-almostThere", in: app).tap()
-        let almostThereRecipe = element("recipe-card-302", in: app)
+        let almostThereMode = element("cook-mode-almostThere", in: app)
+        almostThereMode.tap()
+        let almostThereSelected = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "Selected"), object: almostThereMode
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [almostThereSelected], timeout: 10), .completed,
+                       "Almost There becomes selected before its results are captured")
+        let almostThereRecipe = app.buttons["recipe-card-302"]
         XCTAssertTrue(almostThereRecipe.waitForExistence(timeout: 10))
-        XCTAssertTrue(almostThereRecipe.label.contains("2 missing"))
+        let recommendationType = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "Recommendation"), object: almostThereRecipe
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [recommendationType], timeout: 10), .completed,
+                       "The card is a server recommendation, not a household recipe")
+        let recommendationLoaded = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label CONTAINS %@", "2 missing"), object: almostThereRecipe
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [recommendationLoaded], timeout: 10), .completed,
+                       "Almost There shows the recommendation and its server-reported missing count")
+        XCTAssertTrue(almostThereRecipe.isHittable,
+                      "The captured Almost There card is the visible recommendation, not a stale household card")
         capture("Almost_There", app: app)
 
-        element("cook-mode-myRecipes", in: app).tap()
+        let myRecipesMode = element("cook-mode-myRecipes", in: app)
+        myRecipesMode.tap()
+        let myRecipesSelected = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "Selected"), object: myRecipesMode
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [myRecipesSelected], timeout: 10), .completed,
+                       "My Recipes becomes selected before household recipes are captured")
         let householdRecipe = element("recipe-card-303", in: app)
         XCTAssertTrue(householdRecipe.waitForExistence(timeout: 10))
+        XCTAssertEqual(householdRecipe.value as? String, "Household recipe")
         capture("My_Recipes", app: app)
         householdRecipe.tap()
 
@@ -478,11 +503,13 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertFalse(reviewRevision.exists, "Revision metadata starts collapsed")
         technicalDetails.tap()
         XCTAssertTrue(reviewRevision.waitForExistence(timeout: 5))
+        XCTAssertEqual(technicalDetails.value as? String, "Expanded")
         scrollTargetIntoView(reviewRevision, inside: labelForm, progressAnchor: technicalDetails, in: app)
         XCTAssertTrue(reviewRevision.label.contains("v1"))
         assertReachable(reviewRevision, in: app)
         technicalDetails.tap()
         waitUntilGone(reviewRevision)
+        XCTAssertEqual(technicalDetails.value as? String, "Collapsed")
         let mappingVerified = labelForm.switches["pip-label-mapping-verified"]
         let mappingType = labelForm.descendants(matching: .any)
             .matching(identifier: "pip-label-mapping-type").firstMatch
@@ -547,12 +574,14 @@ final class CookWithPipUITests: XCTestCase {
         capture("Product_Label_Review_Large_Text", app: largeLabel)
         technicalDetails.tap()
         XCTAssertTrue(serverVersion.waitForExistence(timeout: 5))
+        XCTAssertEqual(technicalDetails.value as? String, "Expanded")
         scrollTargetIntoView(serverVersion, inside: labelForm, progressAnchor: technicalDetails, in: largeLabel)
         XCTAssertTrue(serverVersion.label.contains("2026-11-09T00:00:00Z"))
         assertReachable(serverVersion, in: largeLabel)
         scrollTargetIntoView(technicalDetails, inside: labelForm, progressAnchor: serverVersion, in: largeLabel)
         technicalDetails.tap()
         waitUntilGone(serverVersion)
+        XCTAssertEqual(technicalDetails.value as? String, "Collapsed")
         let mappingVerified = labelForm.switches["pip-label-mapping-verified"]
         scrollTargetIntoView(mappingVerified, inside: labelForm, progressAnchor: technicalDetails, in: largeLabel)
         assertReachable(mappingVerified, in: largeLabel)
@@ -1284,7 +1313,9 @@ final class CookWithPipUITests: XCTestCase {
     }
 
     private func typeTextAndWait(_ text: String, in field: XCUIElement) {
-        let expectedValue = (field.value as? String ?? "") + text
+        let currentValue = field.value as? String
+        let currentText = currentValue == (field.placeholderValue as? String) ? "" : currentValue ?? ""
+        let expectedValue = currentText + text
         field.typeText(text)
         let typedText = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "value == %@", expectedValue),

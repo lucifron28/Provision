@@ -464,6 +464,7 @@ private struct RecipeDetailContents: View {
             Text("Instructions")
                 .font(ProvisionTypography.sectionSerif)
                 .foregroundStyle(ProvisionTheme.textPrimary)
+                .accessibilityIdentifier("recipe-instructions")
             ForEach(Array(recipe.instructions.enumerated()), id: \.offset) { step in
                 HStack(alignment: .top, spacing: 12) {
                     Text("\(step.offset + 1)")
@@ -485,7 +486,6 @@ private struct RecipeDetailContents: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .provisionCard()
-        .accessibilityIdentifier("recipe-instructions")
     }
 
     private var regionText: String {

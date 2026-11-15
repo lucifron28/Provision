@@ -284,6 +284,7 @@ public struct CookWithPipView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("recipe-card-\(recipe.id)")
+                    .accessibilityValue("Household recipe")
                 }
             } else {
                 ForEach(viewModel.recommendations, id: \.recipe.id) { recommendation in
@@ -294,6 +295,7 @@ public struct CookWithPipView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("recipe-card-\(recommendation.recipe.id)")
+                    .accessibilityValue("Recommendation")
                 }
             }
         }
