@@ -66,10 +66,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - shard: preferences-allergy
-            tests: -only-testing:frontendUITests/CookWithPipUITests/testPreferencesAllergySettings
-          - shard: product-label-review
-            tests: -only-testing:frontendUITests/CookWithPipUITests/testProductLabelReviewScreens
+          - shard: preferences-product-label
+            tests: >-
+              -only-testing:frontendUITests/CookWithPipUITests/testPreferencesAllergySettings
+              -only-testing:frontendUITests/CookWithPipUITests/testProductLabelReviewScreens
           - shard: recipes-chat-accessibility
             tests: >-
               -only-testing:frontendUITests/CookWithPipUITests/testFormsStayReadableInDarkModeAndLargeText
