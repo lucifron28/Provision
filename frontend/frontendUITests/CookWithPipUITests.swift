@@ -1204,6 +1204,7 @@ final class CookWithPipUITests: XCTestCase {
         var anchorExists = anchor.exists
         var previousTargetFrame = targetExists ? measurableFrame(of: target, exists: true) : nil
         var previousAnchorFrame = anchorExists ? measurableFrame(of: anchor, exists: true) : nil
+        var consecutiveNoProgressSwipes = 0
 
         for swipeNumber in 1...maximumSwipes {
             let direction: ScrollDirection
@@ -1234,12 +1235,15 @@ final class CookWithPipUITests: XCTestCase {
             let currentAnchorFrame = anchorExists ? measurableFrame(of: anchor, exists: true) : nil
             let madeProgress = frameMoved(from: previousTargetFrame, to: currentTargetFrame)
                 || frameMoved(from: previousAnchorFrame, to: currentAnchorFrame)
-            guard madeProgress else {
+            consecutiveNoProgressSwipes = madeProgress ? 0 : consecutiveNoProgressSwipes + 1
+            guard consecutiveNoProgressSwipes < 2 else {
                 XCTFail(
                     "Scrolling stopped before \(targetName) became hittable. "
                     + "container='\(container.identifier)', targetFrame=\(describe(currentTargetFrame)), "
                     + "anchorFrame=\(describe(currentAnchorFrame)), "
-                    + "completedSwipes=\(swipeNumber), targetExists=\(targetExists), "
+                    + "completedSwipes=\(swipeNumber), "
+                    + "consecutiveNoProgressSwipes=\(consecutiveNoProgressSwipes), "
+                    + "targetExists=\(targetExists), "
                     + "appState=\(app.state)"
                 )
                 return
