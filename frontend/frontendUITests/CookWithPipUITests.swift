@@ -852,7 +852,8 @@ final class CookWithPipUITests: XCTestCase {
         let confirmationAlert = staleApp.alerts.firstMatch
         XCTAssertTrue(confirmationAlert.waitForExistence(timeout: 5),
                       "Explicit confirmation appears before submitting the reviewed shopping changes")
-        let staleConfirmAction = confirmationAlert.buttons["recipe-shopping-confirm-action"]
+        let staleConfirmAction = confirmationAlert.buttons
+            .matching(identifier: "recipe-shopping-confirm-action").firstMatch
         XCTAssertTrue(staleConfirmAction.waitForExistence(timeout: 5))
         staleConfirmAction.tap()
         let confirmationDismissed = XCTNSPredicateExpectation(
