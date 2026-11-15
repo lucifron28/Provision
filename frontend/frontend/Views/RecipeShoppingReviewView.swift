@@ -46,6 +46,7 @@ public struct RecipeShoppingReviewView: View {
                         .font(.subheadline)
                         .foregroundStyle(ProvisionTheme.provisionGreen)
                         .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("recipe-shopping-status-message")
                 }
             }
 

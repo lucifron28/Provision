@@ -849,28 +849,26 @@ final class CookWithPipUITests: XCTestCase {
         let staleApp = launch(scenario: "shopping-stale")
         openShoppingPreview(staleApp)
         element("recipe-shopping-confirm", in: staleApp).tap()
-        let staleConfirmAction = staleApp.buttons
-            .matching(identifier: "recipe-shopping-confirm-action").firstMatch
+        let confirmationAlert = staleApp.alerts.firstMatch
+        XCTAssertTrue(confirmationAlert.waitForExistence(timeout: 5),
+                      "Explicit confirmation appears before submitting the reviewed shopping changes")
+        let staleConfirmAction = confirmationAlert.buttons["recipe-shopping-confirm-action"]
         XCTAssertTrue(staleConfirmAction.waitForExistence(timeout: 5))
         staleConfirmAction.tap()
-        let staleMessage = appText("Inventory or shopping data changed", in: staleApp)
-        scrollTargetIntoView(
-            staleMessage,
-            inside: scrollContainer("recipe-shopping-review-form", in: staleApp),
-            progressAnchor: element("recipe-shopping-safety-status", in: staleApp),
-            in: staleApp,
-            initialDirection: .towardStart
+        let confirmationDismissed = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: confirmationAlert
         )
+        XCTAssertEqual(XCTWaiter.wait(for: [confirmationDismissed], timeout: 10), .completed,
+                       "The confirmation alert closes before stale-preview recovery is shown")
+        let staleMessage = element("recipe-shopping-status-message", in: staleApp)
         XCTAssertTrue(staleMessage.waitForExistence(timeout: 10))
+        XCTAssertTrue(staleMessage.label.contains("Inventory or shopping data changed"))
+        XCTAssertTrue(staleMessage.isHittable,
+                      "The stale-preview explanation is visible after the server rejects the outdated preview")
         let refresh = element("recipe-shopping-load-preview", in: staleApp)
-        scrollTargetIntoView(
-            refresh,
-            inside: scrollContainer("recipe-shopping-review-form", in: staleApp),
-            progressAnchor: staleMessage,
-            in: staleApp,
-            initialDirection: .towardStart
-        )
-        XCTAssertTrue(refresh.exists)
+        XCTAssertTrue(refresh.waitForExistence(timeout: 10))
+        XCTAssertTrue(refresh.isHittable,
+                      "A fresh preview can be loaded after the server rejects the outdated preview")
         capture("Shopping_Stale_Preview_Refresh", app: staleApp)
         refresh.tap()
         let staleReady = element("recipe-shopping-safety-status", in: staleApp)
