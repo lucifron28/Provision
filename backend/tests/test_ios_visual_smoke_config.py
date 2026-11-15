@@ -74,8 +74,11 @@ def test_manual_gallery_keeps_full_screenshot_suite_and_result_bundle():
     selected_tests = workflow.split(
         "      - name: Run selected iOS XCUITest suite\n", 1
     )[1].split("\n      - name: Report XCTest durations", 1)[0]
-    focused_run = selected_tests.split(
+    focused_toggle_run = selected_tests.split(
         'if [[ "$GALLERY_SUITE" == "toggle-regressions" ]]; then', 1
+    )[1].split('elif [[ "$GALLERY_SUITE" == "shopping-recovery" ]]', 1)[0]
+    shopping_recovery_run = selected_tests.split(
+        'elif [[ "$GALLERY_SUITE" == "shopping-recovery" ]]; then', 1
     )[1].split("\n          else", 1)[0]
     full_run = selected_tests.split("\n          else", 1)[1]
 
@@ -83,15 +86,20 @@ def test_manual_gallery_keeps_full_screenshot_suite_and_result_bundle():
     assert "schedule:" in workflow
     assert "- full-gallery" in workflow
     assert "- toggle-regressions" in workflow
+    assert "- shopping-recovery" in workflow
     assert "xcodebuild test \"${common_args[@]}\"" in full_run
     assert "-only-testing:" not in full_run
     assert (
         "-only-testing:frontendUITests/CookWithPipUITests/testPipChatConsentControlsGallery"
-        in focused_run
+        in focused_toggle_run
     )
     assert (
         "-only-testing:frontendUITests/CookWithPipUITests/testShoppingPreviewEditsConsolidationAndExplicitConfirmation"
-        in focused_run
+        in focused_toggle_run
+    )
+    assert (
+        "-only-testing:frontendUITests/CookWithPipUITests/testShoppingOfflineRetryAndStalePreviewRecovery"
+        in shopping_recovery_run
     )
     focused_manifest = json.loads(
         (
@@ -106,6 +114,28 @@ def test_manual_gallery_keeps_full_screenshot_suite_and_result_bundle():
         "Shopping_Optional_Ingredients",
     }
     assert set(focused_manifest) <= set(
+        json.loads(
+            (
+                REPOSITORY_ROOT
+                / ".github"
+                / "scripts"
+                / "required_ios_screenshots.json"
+            ).read_text(encoding="utf-8")
+        )["requiredScreenshots"]
+    )
+    recovery_manifest = json.loads(
+        (
+            REPOSITORY_ROOT
+            / ".github"
+            / "scripts"
+            / "required_ios_shopping_recovery_regressions.json"
+        ).read_text(encoding="utf-8")
+    )["requiredScreenshots"]
+    assert set(recovery_manifest) == {
+        "Shopping_Offline_Error_Retry",
+        "Shopping_Stale_Preview_Refresh",
+    }
+    assert set(recovery_manifest) <= set(
         json.loads(
             (
                 REPOSITORY_ROOT

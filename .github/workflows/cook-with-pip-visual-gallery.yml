@@ -10,12 +10,13 @@ on:
         type: boolean
         default: false
       suite:
-        description: Run only the toggle regressions for focused validation, or the complete 55-scenario gallery
+        description: Run a focused regression suite, or the complete 55-scenario gallery
         required: true
         type: choice
         options:
           - full-gallery
           - toggle-regressions
+          - shopping-recovery
         default: full-gallery
   schedule:
     - cron: '30 6 * * 1'
@@ -42,9 +43,9 @@ jobs:
             const suite = context.eventName === "workflow_dispatch"
               ? context.payload.inputs?.suite || "full-gallery"
               : "full-gallery";
-            if (suite === "toggle-regressions") {
+            if (suite !== "full-gallery") {
               core.setOutput("skip", "false");
-              core.info("Running the focused toggle regressions; this does not count as a full gallery.");
+              core.info(`Running focused suite ${suite}; this does not count as a full gallery.`);
               return;
             }
             const force = context.eventName === "workflow_dispatch"
@@ -62,7 +63,8 @@ jobs:
               per_page: 100,
             });
             const priorSuccess = data.workflow_runs.find(run => {
-              const isFocused = run.display_title?.includes("(toggle-regressions)") ?? false;
+              const isFocused = ["toggle-regressions", "shopping-recovery"]
+                .some(suite => run.display_title?.includes(`(${suite})`) ?? false);
               return run.id !== context.runId
                 && run.status === "completed"
                 && run.conclusion === "success"
@@ -108,6 +110,12 @@ jobs:
               CODE_SIGNING_ALLOWED=YES \
               CODE_SIGN_IDENTITY=- \
               2>&1 | tee artifacts/xcodebuild.log
+          elif [[ "$GALLERY_SUITE" == "shopping-recovery" ]]; then
+            xcodebuild test "${common_args[@]}" \
+              -only-testing:frontendUITests/CookWithPipUITests/testShoppingOfflineRetryAndStalePreviewRecovery \
+              CODE_SIGNING_ALLOWED=YES \
+              CODE_SIGN_IDENTITY=- \
+              2>&1 | tee artifacts/xcodebuild.log
           else
             xcodebuild test "${common_args[@]}" \
               CODE_SIGNING_ALLOWED=YES \
@@ -142,8 +150,18 @@ jobs:
           --only-required
           --commit-sha "$GITHUB_SHA"
           --test-outcome "${{ steps.ios-tests.outcome }}"
+      - name: Organize and verify shopping recovery screenshots
+        if: ${{ always() && github.event.inputs.suite == 'shopping-recovery' }}
+        run: >-
+          python .github/scripts/organize_ios_screenshots.py
+          --input artifacts/raw-cook-with-pip-screenshots
+          --output artifacts/cook-with-pip-screenshots
+          --required .github/scripts/required_ios_shopping_recovery_regressions.json
+          --only-required
+          --commit-sha "$GITHUB_SHA"
+          --test-outcome "${{ steps.ios-tests.outcome }}"
       - name: Organize and verify all 55 required screenshots
-        if: ${{ always() && github.event.inputs.suite != 'toggle-regressions' }}
+        if: ${{ always() && github.event.inputs.suite != 'toggle-regressions' && github.event.inputs.suite != 'shopping-recovery' }}
         run: >-
           python .github/scripts/organize_ios_screenshots.py
           --input artifacts/raw-cook-with-pip-screenshots
