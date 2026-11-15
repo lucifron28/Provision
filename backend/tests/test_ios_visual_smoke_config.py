@@ -40,8 +40,9 @@ def test_pull_request_workflow_runs_representative_screenshots_only():
         "testShoppingOfflineRetryAndStalePreviewRecovery",
     }
     assert "-only-testing:frontendTests" in workflow
-    assert workflow.count("- shard: ") == 4
-    assert "- shard: preferences-product-label" in workflow
+    assert workflow.count("- shard: ") == 5
+    assert "- shard: preferences\n" in workflow
+    assert "- shard: product-label\n" in workflow
     assert all(
         f"-only-testing:frontendUITests/CookWithPipUITests/{test}" in workflow
         for test in smoke_tests
