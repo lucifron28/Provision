@@ -430,6 +430,7 @@ final class CookWithPipUITests: XCTestCase {
         app.buttons["cook-with-pip-product-labels-link"].tap()
         let labelList = app.buttons["pip-label-product-9903"]
         XCTAssertTrue(labelList.waitForExistence(timeout: 10))
+        XCTAssertTrue(labelList.isHittable, "The loaded product-label list exposes the selected fixture")
         capture("Product_Label_List", app: app)
         labelList.tap()
         let labelForm = scrollContainer("pip-label-review-form", in: app)
@@ -552,7 +553,11 @@ final class CookWithPipUITests: XCTestCase {
             screen: "Cook with Pip management"
         )
         darkApp.buttons["cook-with-pip-product-labels-link"].tap()
-        darkApp.buttons["pip-label-product-9903"].tap()
+        let darkProduct = darkApp.buttons["pip-label-product-9903"]
+        XCTAssertTrue(darkProduct.waitForExistence(timeout: 10),
+                      "The dark-mode product list finishes loading before its product is opened")
+        XCTAssertTrue(darkProduct.isHittable)
+        darkProduct.tap()
         let darkLabelForm = scrollContainer("pip-label-review-form", in: darkApp)
         let darkProductTitle = darkLabelForm.staticTexts["pip-label-product-title"]
         XCTAssertTrue(darkProductTitle.waitForExistence(timeout: 10))
@@ -564,7 +569,11 @@ final class CookWithPipUITests: XCTestCase {
         openCookWithPip(largeLabel)
         largeLabel.buttons["cook-with-pip-management"].tap()
         largeLabel.buttons["cook-with-pip-product-labels-link"].tap()
-        largeLabel.buttons["pip-label-product-9903"].tap()
+        let largeProduct = largeLabel.buttons["pip-label-product-9903"]
+        XCTAssertTrue(largeProduct.waitForExistence(timeout: 10),
+                      "The large-text product list finishes loading before its product is opened")
+        XCTAssertTrue(largeProduct.isHittable)
+        largeProduct.tap()
         let labelForm = scrollContainer("pip-label-review-form", in: largeLabel)
         let productTitle = labelForm.staticTexts["pip-label-product-title"]
         XCTAssertTrue(productTitle.waitForExistence(timeout: 10))
@@ -623,7 +632,11 @@ final class CookWithPipUITests: XCTestCase {
         openCookWithPip(app)
         app.buttons["cook-with-pip-management"].tap()
         app.buttons["cook-with-pip-product-labels-link"].tap()
-        app.buttons["pip-label-product-9903"].tap()
+        let staleProduct = app.buttons["pip-label-product-9903"]
+        XCTAssertTrue(staleProduct.waitForExistence(timeout: 10),
+                      "The stale-review product list finishes loading before its product is opened")
+        XCTAssertTrue(staleProduct.isHittable)
+        staleProduct.tap()
 
         let labelForm = scrollContainer("pip-label-review-form", in: app)
         let productTitle = labelForm.staticTexts["pip-label-product-title"]
