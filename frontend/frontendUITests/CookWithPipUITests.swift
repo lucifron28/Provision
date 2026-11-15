@@ -449,7 +449,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertEqual(milkDeclaration.value as? String, "Declared on label")
 
         let source = labelForm.textFields["pip-label-source-reference"]
-        scrollTargetIntoView(source, inside: labelForm, progressAnchor: milkDeclaration, in: app)
+        scrollTargetIntoView(source, inside: labelForm, progressAnchor: productTitle, in: app)
         source.tap()
         let keyboard = app.keyboards.firstMatch
         XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
