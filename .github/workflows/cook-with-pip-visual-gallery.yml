@@ -1,4 +1,5 @@
 name: Cook with Pip visual gallery
+run-name: Cook with Pip visual gallery (${{ github.event.inputs.suite || 'full-gallery' }})
 
 on:
   workflow_dispatch:
@@ -8,6 +9,14 @@ on:
         required: false
         type: boolean
         default: false
+      suite:
+        description: Run only the toggle regressions for focused validation, or the complete 55-scenario gallery
+        required: true
+        type: choice
+        options:
+          - full-gallery
+          - toggle-regressions
+        default: full-gallery
   schedule:
     - cron: '30 6 * * 1'
 
@@ -30,6 +39,14 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            const suite = context.eventName === "workflow_dispatch"
+              ? context.payload.inputs?.suite || "full-gallery"
+              : "full-gallery";
+            if (suite === "toggle-regressions") {
+              core.setOutput("skip", "false");
+              core.info("Running the focused toggle regressions; this does not count as a full gallery.");
+              return;
+            }
             const force = context.eventName === "workflow_dispatch"
               && context.payload.inputs?.force === "true";
             if (force) {
@@ -44,9 +61,13 @@ jobs:
               head_sha: context.sha,
               per_page: 100,
             });
-            const priorSuccess = data.workflow_runs.find(run =>
-              run.id !== context.runId && run.status === "completed" && run.conclusion === "success"
-            );
+            const priorSuccess = data.workflow_runs.find(run => {
+              const isFocused = run.display_title?.includes("(toggle-regressions)") ?? false;
+              return run.id !== context.runId
+                && run.status === "completed"
+                && run.conclusion === "success"
+                && !isFocused;
+            });
             core.setOutput("skip", priorSuccess ? "true" : "false");
             if (priorSuccess) core.info(`Gallery already passed for this commit in run ${priorSuccess.id}.`);
 
@@ -66,27 +87,41 @@ jobs:
         run: python -m pip install --disable-pip-version-check Pillow
       - name: Test screenshot organizer with synthetic PNG fixtures
         run: python -m unittest discover -s .github/scripts/tests -p "test_*.py"
-      - name: Prepare full gallery artifact folders
+      - name: Prepare screenshot artifact folders
         run: mkdir -p artifacts/raw-cook-with-pip-screenshots artifacts/cook-with-pip-screenshots
-      - name: Run full iOS XCTest and screenshot gallery
+      - name: Run selected iOS XCUITest suite
         id: ios-tests
+        env:
+          GALLERY_SUITE: ${{ github.event.inputs.suite || 'full-gallery' }}
         run: |
           set -o pipefail
-          xcodebuild test \
-            -project frontend/frontend.xcodeproj \
-            -scheme frontend \
-            -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
-            -resultBundlePath artifacts/frontend.xcresult \
-            CODE_SIGNING_ALLOWED=YES \
-            CODE_SIGN_IDENTITY=- 2>&1 | tee artifacts/xcodebuild.log
-      - name: Report full XCTest durations
+          common_args=(
+            -project frontend/frontend.xcodeproj
+            -scheme frontend
+            -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
+            -resultBundlePath artifacts/frontend.xcresult
+          )
+          if [[ "$GALLERY_SUITE" == "toggle-regressions" ]]; then
+            xcodebuild test "${common_args[@]}" \
+              -only-testing:frontendUITests/CookWithPipUITests/testPipChatConsentControlsGallery \
+              -only-testing:frontendUITests/CookWithPipUITests/testShoppingPreviewEditsConsolidationAndExplicitConfirmation \
+              CODE_SIGNING_ALLOWED=YES \
+              CODE_SIGN_IDENTITY=- \
+              2>&1 | tee artifacts/xcodebuild.log
+          else
+            xcodebuild test "${common_args[@]}" \
+              CODE_SIGNING_ALLOWED=YES \
+              CODE_SIGN_IDENTITY=- \
+              2>&1 | tee artifacts/xcodebuild.log
+          fi
+      - name: Report XCTest durations
         if: always()
         run: >-
           python .github/scripts/report_xcode_test_durations.py
           --input-log artifacts/xcodebuild.log
-          --json-output artifacts/test-durations-full-gallery.json
+          --json-output "artifacts/test-durations-${{ github.event.inputs.suite || 'full-gallery' }}.json"
           --summary "$GITHUB_STEP_SUMMARY"
-      - name: Export full simulator screenshot gallery
+      - name: Export simulator screenshot attachments
         if: always()
         run: |
           if [ -d artifacts/frontend.xcresult ]; then
@@ -97,8 +132,18 @@ jobs:
             echo "No xcresult bundle was produced." >&2
             exit 1
           fi
-      - name: Organize and verify all required screenshots
-        if: always()
+      - name: Organize and verify screenshots for the selected suite
+        if: ${{ always() && github.event.inputs.suite == 'toggle-regressions' }}
+        run: >-
+          python .github/scripts/organize_ios_screenshots.py
+          --input artifacts/raw-cook-with-pip-screenshots
+          --output artifacts/cook-with-pip-screenshots
+          --required .github/scripts/required_ios_toggle_regressions.json
+          --only-required
+          --commit-sha "$GITHUB_SHA"
+          --test-outcome "${{ steps.ios-tests.outcome }}"
+      - name: Organize and verify all 55 required screenshots
+        if: ${{ always() && github.event.inputs.suite != 'toggle-regressions' }}
         run: >-
           python .github/scripts/organize_ios_screenshots.py
           --input artifacts/raw-cook-with-pip-screenshots
@@ -106,7 +151,7 @@ jobs:
           --required .github/scripts/required_ios_screenshots.json
           --commit-sha "$GITHUB_SHA"
           --test-outcome "${{ steps.ios-tests.outcome }}"
-      - name: Package full gallery for visual review
+      - name: Package selected screenshots for review
         if: always()
         run: |
           if [ -d artifacts/cook-with-pip-screenshots ]; then
@@ -117,25 +162,25 @@ jobs:
             echo "Organized screenshot folder is missing." >&2
             exit 1
           fi
-      - name: Upload full screenshot gallery ZIP
+      - name: Upload screenshot review ZIP
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cook-with-pip-visual-gallery
+          name: cook-with-pip-${{ github.event.inputs.suite || 'full-gallery' }}-review
           path: artifacts/cook-with-pip-visual-gallery.zip
           if-no-files-found: error
       - name: Upload organized screenshots and manifest
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cook-with-pip-gallery-screenshots
+          name: cook-with-pip-${{ github.event.inputs.suite || 'full-gallery' }}-screenshots
           path: artifacts/cook-with-pip-screenshots
           if-no-files-found: error
       - name: Upload full Xcode result bundle
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cook-with-pip-xcresult
+          name: cook-with-pip-${{ github.event.inputs.suite || 'full-gallery' }}-xcresult
           path: artifacts/frontend.xcresult
           if-no-files-found: error
           compression-level: 0
@@ -143,8 +188,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cook-with-pip-xctest-durations
+          name: cook-with-pip-${{ github.event.inputs.suite || 'full-gallery' }}-durations
           path: |
-            artifacts/test-durations-full-gallery.json
+            artifacts/test-durations-${{ github.event.inputs.suite || 'full-gallery' }}.json
             artifacts/xcodebuild.log
           if-no-files-found: warn

@@ -106,7 +106,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [allergyConsentReady], timeout: 10), .completed,
                        "Separate allergy consent becomes available after chat consent finishes loading")
 
-        allergyConsent.tap()
+        tapSwitchControl(allergyConsent)
         let allergyConsentEnabled = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "value == %@", "1"), object: allergyConsent
         )
@@ -712,7 +712,7 @@ final class CookWithPipUITests: XCTestCase {
         let includeOptional = app.switches["recipe-shopping-include-optional"]
         scrollTargetIntoView(includeOptional, inside: shoppingForm, in: app,
                              initialDirection: .towardStart)
-        setSwitch(includeOptional, to: "1")
+        guard setSwitch(includeOptional, to: "1") else { return }
         let stalePreview = element("recipe-shopping-stale-preview", in: app)
         XCTAssertTrue(stalePreview.waitForExistence(timeout: 5))
         let refreshPreview = app.buttons["recipe-shopping-refresh-preview"]
@@ -1332,17 +1332,27 @@ final class CookWithPipUITests: XCTestCase {
         )
     }
 
-    private func setSwitch(_ toggle: XCUIElement, to value: String) {
-        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+    private func tapSwitchControl(_ toggle: XCUIElement) {
+        XCTAssertTrue(toggle.isHittable, "Expected \(toggle.identifier) to be interactable before tapping")
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+    }
+
+    @discardableResult
+    private func setSwitch(_ toggle: XCUIElement, to value: String) -> Bool {
+        guard toggle.waitForExistence(timeout: 5) else {
+            XCTFail("Expected \(toggle.identifier) to exist before changing its value")
+            return false
+        }
         if toggle.value as? String != value {
-            XCTAssertTrue(toggle.isHittable)
-            toggle.tap()
+            tapSwitchControl(toggle)
         }
         let expectedValue = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "value == %@", value), object: toggle
         )
-        XCTAssertEqual(XCTWaiter.wait(for: [expectedValue], timeout: 5), .completed,
-                        "Expected \(toggle.identifier) to have value \(value); found \(String(describing: toggle.value))")
+        let result = XCTWaiter.wait(for: [expectedValue], timeout: 5)
+        XCTAssertEqual(result, .completed,
+                       "Expected \(toggle.identifier) to have value \(value); found \(String(describing: toggle.value))")
+        return result == .completed
     }
 
     private func replaceText(_ field: XCUIElement, with value: String) {

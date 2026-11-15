@@ -1,0 +1,10 @@
+{
+  "requiredScreenshots": [
+    "Pip_Chat_Consent_Controls",
+    "Shopping_Optional_Ingredients"
+  ],
+  "scenarioDescriptions": {
+    "Pip_Chat_Consent_Controls": "Pip Chat consent switches reflect separate chat and allergy sharing choices after an explicit interaction.",
+    "Shopping_Optional_Ingredients": "The shopping preview refreshes after opting into optional ingredients and displays the resulting ingredient row."
+  }
+}
