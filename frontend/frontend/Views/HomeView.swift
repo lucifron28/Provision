@@ -290,6 +290,7 @@ public struct HomeView: View {
                 Text("Pantry Health")
                     .font(.system(size: 17, weight: .semibold, design: .serif))
                     .foregroundStyle(ProvisionTheme.textPrimary)
+                    .accessibilityIdentifier("home-dashboard-loaded")
                 Spacer()
                 Image(systemName: "chart.line.uptrend.xyaxis")
                     .font(.system(size: 16))
