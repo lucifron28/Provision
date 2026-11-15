@@ -299,6 +299,9 @@ public struct CookWithPipView: View {
                 }
             }
         }
+        // A recipe ID can appear in both the household and recommendation collections.
+        // Reset row identity when changing modes so SwiftUI cannot reuse a stale card.
+        .id(viewModel.mode)
     }
 
     private var emptyState: some View {

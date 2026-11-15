@@ -1095,6 +1095,13 @@ final class CookWithPipUITests: XCTestCase {
     private func openCookWithPip(_ app: XCUIApplication, timeout: TimeInterval = 10) {
         let entry = element("cook-with-pip-entry", in: app)
         XCTAssertTrue(entry.waitForExistence(timeout: timeout))
+        let homeGuidance = element("home-empty-pantry-guidance", in: app)
+        XCTAssertTrue(homeGuidance.waitForExistence(timeout: timeout),
+                      "The home dashboard finishes rendering before navigation")
+        XCTAssertTrue(homeGuidance.isHittable,
+                      "The home dashboard is interactable before opening Cook with Pip")
+        XCTAssertTrue(entry.isHittable,
+                      "The Cook with Pip navigation link is visible before it is tapped")
         entry.tap()
         XCTAssertTrue(element("cook-with-pip-introduction", in: app).waitForExistence(timeout: timeout))
     }
