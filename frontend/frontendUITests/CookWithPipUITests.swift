@@ -231,10 +231,10 @@ final class CookWithPipUITests: XCTestCase {
 
         let myRecipesMode = element("cook-mode-myRecipes", in: app)
         myRecipesMode.tap()
-        let myRecipesSelected = XCTNSPredicateExpectation(
+        let householdModeSelected = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "value == %@", "Selected"), object: myRecipesMode
         )
-        XCTAssertEqual(XCTWaiter.wait(for: [myRecipesSelected], timeout: 10), .completed,
+        XCTAssertEqual(XCTWaiter.wait(for: [householdModeSelected], timeout: 10), .completed,
                        "My Recipes becomes selected before household recipes are captured")
         let householdRecipe = element("recipe-card-303", in: app)
         XCTAssertTrue(householdRecipe.waitForExistence(timeout: 10))
