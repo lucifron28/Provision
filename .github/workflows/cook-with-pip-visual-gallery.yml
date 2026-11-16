@@ -117,6 +117,7 @@ jobs:
                 "testStaleProductLabelReviewIsShownAsStale",
                 "testProductLabelReviewScreens",
                 "testDarkModeLargeTextAndSearchKeyboard",
+                "testHomeNavigationAndCaptureRecipeScreens",
               ])],
               "toggle-regressions": [focused("toggle-regressions", [
                 "testPipChatConsentControlsGallery",

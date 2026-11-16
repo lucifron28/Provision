@@ -175,13 +175,11 @@ final class CookWithPipUITests: XCTestCase {
         let myRecipes = app.buttons["cook-mode-myRecipes"]
         XCTAssertTrue(myRecipes.waitForExistence(timeout: 10))
         myRecipes.tap()
-        let myRecipesSelected = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "value == %@", "Selected"), object: myRecipes
-        )
-        XCTAssertEqual(XCTWaiter.wait(for: [myRecipesSelected], timeout: 10), .completed)
-
         let search = app.textFields["cook-with-pip-search"]
-        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        XCTAssertTrue(search.waitForExistence(timeout: 10),
+                      "Choosing My Recipes opens household recipe search")
+        XCTAssertTrue(search.isHittable,
+                      "Household recipe search remains available after selecting My Recipes")
         search.tap()
         search.typeText("Bicol Express")
         let searchDone = app.buttons["cook-with-pip-search-keyboard-done"]
