@@ -59,7 +59,13 @@ class ScreenshotOrganizerTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-    def run_organizer(self, *, outcome: str = "success", only_required: bool = False) -> subprocess.CompletedProcess[str]:
+    def run_organizer(
+        self,
+        *,
+        outcome: str = "success",
+        only_required: bool = False,
+        strict_names: bool = False,
+    ) -> subprocess.CompletedProcess[str]:
         command = [
             sys.executable,
             str(SCRIPT),
@@ -76,6 +82,8 @@ class ScreenshotOrganizerTests(unittest.TestCase):
         ]
         if only_required:
             command.append("--only-required")
+        if strict_names:
+            command.append("--strict-names")
         return subprocess.run(command, capture_output=True, text=True, check=False)
 
     def manifest(self) -> dict[str, object]:
@@ -90,6 +98,8 @@ class ScreenshotOrganizerTests(unittest.TestCase):
         self.assertEqual(manifest["captureIntegrityStatus"], "passed")
         self.assertEqual(manifest["visualReviewStatus"], "not_reviewed_automatically")
         self.assertIn("do not assess visual quality", manifest["verificationScope"])
+        self.assertEqual(manifest["capturedRequiredCount"], 2)
+        self.assertEqual(manifest["capturedSupplementalCount"], 0)
         captured = {item["scenario"]: item for item in manifest["capturedScreenshots"]}
         self.assertEqual(
             captured["Cook_Now"]["testIdentifier"],
@@ -163,6 +173,68 @@ class ScreenshotOrganizerTests(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertTrue(any("testIdentifier" in error for error in self.manifest()["errors"]))
+
+    def test_strict_full_gallery_rejects_unexpected_screenshot_names(self) -> None:
+        self.write_png("Unexpected_Scenario", "unexpected.png", (90, 100, 110), mode="RGB")
+        self.write_export_manifest()
+
+        result = self.run_organizer(strict_names=True)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue(
+            any("Unexpected screenshot scenario name" in error for error in self.manifest()["errors"])
+        )
+
+    def test_strict_gallery_accepts_declared_supplemental_scenarios(self) -> None:
+        self.write_png("Extra_Scene", "extra.png", (30, 80, 120), mode="RGB")
+        self.write_export_manifest()
+        self.required_path.write_text(
+            json.dumps(
+                {
+                    "requiredScreenshots": ["Cook_with_Pip", "Cook_Now"],
+                    "supplementalScreenshots": ["Extra_Scene"],
+                    "scenarioDescriptions": {
+                        "Cook_Now": "Selected recipe mode.",
+                        "Extra_Scene": "A supplemental capture.",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = self.run_organizer(strict_names=True)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        manifest = self.manifest()
+        self.assertEqual(manifest["requiredScreenshots"], ["Cook_with_Pip", "Cook_Now"])
+        self.assertEqual(manifest["supplementalScreenshots"], ["Extra_Scene"])
+        self.assertEqual(manifest["capturedRequiredCount"], 2)
+        self.assertEqual(manifest["capturedSupplementalCount"], 1)
+
+    def test_pixel_duplicate_check_includes_supplemental_gallery_screenshots(self) -> None:
+        self.write_png("Extra_Scene", "extra.png", (10, 180, 30), mode="RGB")
+        self.write_export_manifest()
+        self.required_path.write_text(
+            json.dumps(
+                {
+                    "requiredScreenshots": ["Cook_with_Pip", "Cook_Now"],
+                    "supplementalScreenshots": ["Extra_Scene"],
+                    "scenarioDescriptions": {
+                        "Cook_Now": "Selected recipe mode.",
+                        "Extra_Scene": "A supplemental capture.",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = self.run_organizer(strict_names=True)
+
+        self.assertNotEqual(result.returncode, 0)
+        pairs = self.manifest()["duplicateImagePairs"]
+        self.assertEqual(len(pairs), 1)
+        self.assertEqual(pairs[0]["first"], "Cook_Now")
+        self.assertEqual(pairs[0]["second"], "Extra_Scene")
 
 
 if __name__ == "__main__":

@@ -345,6 +345,7 @@ private struct RecipeDetailContents: View {
                         Label(ReasonText.display(item.element), systemImage: "info.circle")
                             .font(.footnote)
                             .foregroundStyle(ProvisionTheme.textSecondary)
+                            .accessibilityIdentifier("recipe-safety-reason-\(item.offset)")
                     }
                 }
             }

@@ -52,7 +52,7 @@ def _validate_png(path: Path) -> tuple[str, str]:
     return _digest_file(path), pixel_digest
 
 
-def _load_requirements(path: Path) -> tuple[list[str], dict[str, str]]:
+def _load_requirements(path: Path) -> tuple[list[str], list[str], dict[str, str]]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise TypeError("required screenshot manifest must be a JSON object")
@@ -65,13 +65,23 @@ def _load_requirements(path: Path) -> tuple[list[str], dict[str, str]]:
     if len(required) != len(set(required)):
         raise ValueError("required screenshot manifest contains duplicate scenario names")
 
+    supplemental = data.get("supplementalScreenshots", [])
+    if not isinstance(supplemental, list) or any(
+        not isinstance(name, str) or not SCENARIO_NAME.fullmatch(name) for name in supplemental
+    ):
+        raise TypeError("supplementalScreenshots must be an array of safe scenario names")
+    if len(supplemental) != len(set(supplemental)) or set(required) & set(supplemental):
+        raise ValueError("supplemental screenshot names must be unique and separate from required names")
+
     descriptions = data.get("scenarioDescriptions", {})
     if not isinstance(descriptions, dict) or any(
-        name not in required or not isinstance(description, str) or not description.strip()
+        name not in set(required) | set(supplemental)
+        or not isinstance(description, str)
+        or not description.strip()
         for name, description in descriptions.items()
     ):
-        raise TypeError("scenarioDescriptions must map required names to non-empty descriptions")
-    return required, descriptions
+        raise TypeError("scenarioDescriptions must map declared names to non-empty descriptions")
+    return required, supplemental, descriptions
 
 
 def main() -> int:
@@ -90,6 +100,11 @@ def main() -> int:
         action="store_true",
         help="copy only required scenarios (used for the small pull-request smoke gallery)",
     )
+    parser.add_argument(
+        "--strict-names",
+        action="store_true",
+        help="fail when a captured PNG scenario is not listed as required or supplemental",
+    )
     parser.add_argument("--commit-sha", required=True, help="full commit SHA that produced the test run")
     parser.add_argument(
         "--test-outcome",
@@ -104,7 +119,7 @@ def main() -> int:
         return 1
 
     try:
-        required, descriptions = _load_requirements(args.required)
+        required, supplemental, descriptions = _load_requirements(args.required)
         exported_tests: list[tuple[Path, dict[str, Any]]] = []
         for input_dir in args.input:
             source_manifest = input_dir / "manifest.json"
@@ -169,6 +184,9 @@ def main() -> int:
             if not SCENARIO_NAME.fullmatch(scenario):
                 errors.append(f"Invalid screenshot scenario name: {scenario!r}")
                 continue
+            if args.strict_names and scenario not in set(required) | set(supplemental):
+                errors.append(f"Unexpected screenshot scenario name: {scenario!r}")
+                continue
             occurrence_counts[scenario] += 1
             if occurrence_counts[scenario] > 1:
                 errors.append(f"Screenshot scenario {scenario!r} occurs more than once")
@@ -208,16 +226,16 @@ def main() -> int:
 
     missing = sorted(name for name in required if name not in scenario_hashes)
     duplicate_screenshots = sorted(
-        name for name in required if occurrence_counts[name] > 1
+        name for name, count in occurrence_counts.items() if count > 1
     )
     if missing:
         errors.append("Missing required screenshot(s): " + ", ".join(missing))
 
     duplicate_image_pairs: list[dict[str, Any]] = []
-    available_required = [name for name in required if name in scenario_hashes]
-    for index, first_name in enumerate(available_required):
+    captured_scenarios = sorted(scenario_hashes)
+    for index, first_name in enumerate(captured_scenarios):
         first_byte_hash, first_pixel_hash = scenario_hashes[first_name]
-        for second_name in available_required[index + 1 :]:
+        for second_name in captured_scenarios[index + 1 :]:
             second_byte_hash, second_pixel_hash = scenario_hashes[second_name]
             byte_identical = first_byte_hash == second_byte_hash
             pixel_identical = first_pixel_hash == second_pixel_hash
@@ -249,9 +267,12 @@ def main() -> int:
         "visualReviewStatus": VISUAL_REVIEW_STATUS,
         "verificationScope": (
             "Checks required scenario completeness, test attribution, PNG decoding, and exact or pixel-identical "
-            "required captures. Automated checks do not assess visual quality."
+            "captured scenarios. Automated checks do not assess visual quality."
         ),
         "requiredScreenshots": required,
+        "supplementalScreenshots": supplemental,
+        "capturedRequiredCount": sum(name in scenario_hashes for name in required),
+        "capturedSupplementalCount": sum(name in scenario_hashes for name in supplemental),
         "capturedScreenshots": sorted(scenarios, key=lambda item: str(item["scenario"])),
         "missingScreenshots": missing,
         "duplicateScreenshots": duplicate_screenshots,
