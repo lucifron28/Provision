@@ -168,6 +168,11 @@ jobs:
     if: needs.gallery-plan.outputs.skip != 'true'
     runs-on: macos-26
     timeout-minutes: 45
+    environment: staging
+    env:
+      PROVISION_EXPECTED_RENDER_COMMIT: ${{ github.sha }}
+      PROVISION_STAGING_API_BASE_URL: ${{ vars.PROVISION_STAGING_API_BASE_URL }}
+      PROVISION_API_BASE_URL: ${{ vars.PROVISION_STAGING_API_BASE_URL }}
     strategy:
       fail-fast: false
       max-parallel: 4
@@ -181,6 +186,33 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - uses: astral-sh/setup-uv@v5
+        if: ${{ matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' }}
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+          python-version: "3.13"
+      - name: Install locked backend runtime dependencies for staging fixtures
+        if: ${{ matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' }}
+        working-directory: backend
+        run: uv sync --frozen --no-dev --no-install-project
+      - name: Verify staging serves the gallery commit
+        if: ${{ matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' }}
+        working-directory: backend
+        run: uv run --no-sync python -m scripts.staging_e2e_smoke preflight
+      - name: Create a unique synthetic household for staging screenshots
+        id: staging-fixture
+        if: ${{ matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' }}
+        working-directory: backend
+        env:
+          PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
+        run: uv run --no-sync python -m scripts.staging_e2e_smoke prepare
+      - name: Verify authenticated staging persistence and Pip Chat mock
+        if: ${{ matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' }}
+        working-directory: backend
+        env:
+          PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
+        run: uv run --no-sync python -m scripts.staging_e2e_smoke api-smoke
       - name: Prepare gallery artifacts
         run: mkdir -p artifacts/raw-cook-with-pip-screenshots
       - name: Build selected gallery UI test products
@@ -202,6 +234,12 @@ jobs:
         id: ios-tests
         env:
           PROVISION_SKIP_CHAT_SCREENSHOTS: "0"
+          TEST_RUNNER_PROVISION_API_BASE_URL: ${{ matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' && env.PROVISION_API_BASE_URL || '' }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_EMAIL: ${{ matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' && env.PROVISION_STAGING_TEST_EMAIL || '' }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_PASSWORD: ${{ matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' && env.PROVISION_STAGING_TEST_PASSWORD || '' }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_HOUSEHOLD_ID: ${{ matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' && env.PROVISION_STAGING_TEST_HOUSEHOLD_ID || '' }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_PRODUCT_ID: ${{ matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' && env.PROVISION_STAGING_TEST_PRODUCT_ID || '' }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_RECIPE_ID: ${{ matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' && env.PROVISION_STAGING_TEST_RECIPE_ID || '' }}
         run: |
           set -o pipefail
           xcodebuild test-without-building \
@@ -258,6 +296,12 @@ jobs:
             artifacts/xcodebuild-build.log
             artifacts/xcodebuild.log
           if-no-files-found: warn
+      - name: Remove the synthetic household used for gallery screenshots
+        if: ${{ always() && matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' && steps.staging-fixture.outcome != 'skipped' }}
+        working-directory: backend
+        env:
+          PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
+        run: uv run --no-sync python -m scripts.staging_e2e_smoke cleanup
 
   gallery-screenshot-evidence:
     name: Gallery screenshot evidence
