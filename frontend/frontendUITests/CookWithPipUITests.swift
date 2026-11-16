@@ -1241,7 +1241,7 @@ final class CookWithPipUITests: XCTestCase {
             return
         }
         var targetExists = target.exists
-        if targetExists && target.isHittable { return }
+        if targetExists && isSafelyHittable(target, inside: container, in: app) { return }
 
         let anchor = progressAnchor ?? container.descendants(matching: .any).firstMatch
         let containerFrame = measurableFrame(of: container, exists: true)
@@ -1252,7 +1252,16 @@ final class CookWithPipUITests: XCTestCase {
 
         for swipeNumber in 1...maximumSwipes {
             let direction: ScrollDirection
-            if let targetFrame = previousTargetFrame, let containerFrame {
+            if let targetFrame = previousTargetFrame,
+               let visibleFrame = unobscuredViewport(in: app, inside: container) {
+                if targetFrame.midY < visibleFrame.minY {
+                    direction = .towardStart
+                } else if targetFrame.midY > visibleFrame.maxY {
+                    direction = .towardEnd
+                } else {
+                    direction = initialDirection
+                }
+            } else if let targetFrame = previousTargetFrame, let containerFrame {
                 if targetFrame.minY < containerFrame.minY {
                     direction = .towardStart
                 } else if targetFrame.maxY > containerFrame.maxY {
@@ -1272,7 +1281,7 @@ final class CookWithPipUITests: XCTestCase {
             }
 
             targetExists = target.exists
-            if targetExists && target.isHittable { return }
+            if targetExists && isSafelyHittable(target, inside: container, in: app) { return }
 
             let currentTargetFrame = targetExists ? measurableFrame(of: target, exists: true) : nil
             anchorExists = anchor.exists
@@ -1282,8 +1291,9 @@ final class CookWithPipUITests: XCTestCase {
             consecutiveNoProgressSwipes = madeProgress ? 0 : consecutiveNoProgressSwipes + 1
             guard consecutiveNoProgressSwipes < 2 else {
                 XCTFail(
-                    "Scrolling stopped before \(targetName) became hittable. "
+                    "Scrolling stopped before \(targetName) entered the unobscured viewport and became hittable. "
                     + "container='\(container.identifier)', targetFrame=\(describe(currentTargetFrame)), "
+                    + "visibleFrame=\(describe(unobscuredViewport(in: app, inside: container))), "
                     + "anchorFrame=\(describe(currentAnchorFrame)), "
                     + "completedSwipes=\(swipeNumber), "
                     + "consecutiveNoProgressSwipes=\(consecutiveNoProgressSwipes), "
@@ -1303,9 +1313,47 @@ final class CookWithPipUITests: XCTestCase {
                 + "anchorFrame=\(describe(measurableFrame(of: anchor, exists: anchor.exists)))"
         )
         XCTAssertTrue(
-            target.isHittable,
-            "Expected \(targetName) to be visible and interactable after \(maximumSwipes) swipes; appState=\(app.state)"
+            isSafelyHittable(target, inside: container, in: app),
+            "Expected \(targetName) to be visible below the navigation bar and interactable after \(maximumSwipes) swipes; "
+                + "targetFrame=\(describe(measurableFrame(of: target, exists: target.exists))), "
+                + "visibleFrame=\(describe(unobscuredViewport(in: app, inside: container))), appState=\(app.state)"
         )
+    }
+
+    private func isSafelyHittable(
+        _ target: XCUIElement,
+        inside container: XCUIElement? = nil,
+        in app: XCUIApplication
+    ) -> Bool {
+        guard target.exists, target.isHittable,
+              let targetFrame = measurableFrame(of: target, exists: true),
+              let visibleFrame = unobscuredViewport(in: app, inside: container) else {
+            return false
+        }
+        return visibleFrame.contains(CGPoint(x: targetFrame.midX, y: targetFrame.midY))
+    }
+
+    private func unobscuredViewport(in app: XCUIApplication, inside container: XCUIElement? = nil) -> CGRect? {
+        let window = app.windows.firstMatch
+        guard let windowFrame = measurableFrame(of: window, exists: window.exists) else { return nil }
+        var viewport = windowFrame
+
+        if let container, container.exists,
+           let containerFrame = measurableFrame(of: container, exists: true) {
+            let intersection = viewport.intersection(containerFrame)
+            guard !intersection.isNull, !intersection.isEmpty else { return nil }
+            viewport = intersection
+        }
+
+        let navigationBar = app.navigationBars.firstMatch
+        if navigationBar.exists, let navigationFrame = measurableFrame(of: navigationBar, exists: true) {
+            let unobscuredTop = max(viewport.minY, navigationFrame.maxY)
+            guard unobscuredTop < viewport.maxY else { return nil }
+            let visibleBottom = viewport.maxY
+            viewport.origin.y = unobscuredTop
+            viewport.size.height = visibleBottom - unobscuredTop
+        }
+        return viewport
     }
 
     private func measurableFrame(of element: XCUIElement, exists: Bool) -> CGRect? {
@@ -1360,14 +1408,16 @@ final class CookWithPipUITests: XCTestCase {
             return
         }
         XCTAssertTrue(
-            target.isHittable,
-            "Expected \(target.identifier) to be visible and interactable; appState=\(app.state)"
+            isSafelyHittable(target, in: app),
+            "Expected \(target.identifier) to be visible below the navigation bar and interactable; "
+                + "targetFrame=\(describe(measurableFrame(of: target, exists: target.exists))), "
+                + "visibleFrame=\(describe(unobscuredViewport(in: app))), appState=\(app.state)"
         )
     }
 
     private func tapSwitchControl(_ toggle: XCUIElement) {
         XCTAssertTrue(toggle.isHittable, "Expected \(toggle.identifier) to be interactable before tapping")
-        toggle.tap()
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
     }
 
     @discardableResult
