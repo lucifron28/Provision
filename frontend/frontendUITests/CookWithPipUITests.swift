@@ -1367,7 +1367,7 @@ final class CookWithPipUITests: XCTestCase {
 
     private func tapSwitchControl(_ toggle: XCUIElement) {
         XCTAssertTrue(toggle.isHittable, "Expected \(toggle.identifier) to be interactable before tapping")
-        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        toggle.tap()
     }
 
     @discardableResult
