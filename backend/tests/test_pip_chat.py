@@ -318,15 +318,19 @@ def test_chat_sends_redacted_question_relevant_context_and_only_authorized_rows(
     assert len(provider.requests) == 1
 
 
-def test_chat_redacts_active_household_member_names_from_messages_and_history(
+def test_chat_redacts_household_member_names_from_messages_history_and_product_context(
     client, db, auth_user, auth_household
 ):
     _grant_chat(db, auth_user, auth_household)
     auth_user.display_name = "Maria Santos"
+    former_member = _new_user(db, "former-name@provision.local")
+    former_member.display_name = "Former Member"
+    former_member.is_active = False
+    _add_member(db, former_member, auth_household, HouseholdRole.MEMBER)
     product = Product(
         household_id=auth_household.id,
         name="Maria Santos rice",
-        brand="Maria Santos Foods",
+        brand="Former Member Foods",
         unit="kg",
     )
     db.add(product)
@@ -366,8 +370,51 @@ def test_chat_redacts_active_household_member_names_from_messages_and_history(
     assert provider_text.count("[redacted household member]") == 5
     assert "[redacted household member] rice" in provider_text
     assert "[redacted household member] Foods" in provider_text
+    assert "Former Member" not in provider_text
     assert "Maria Santos" not in response.json()["reply"]
     assert response.json()["reply"].count("[redacted household member]") == 1
+
+
+def test_chat_does_not_share_retained_allergies_from_inactive_members(
+    client, db, auth_user, auth_household
+):
+    _grant_chat(db, auth_user, auth_household)
+    _grant_allergy_sharing(db, auth_user, auth_household)
+    former_member = _new_user(db, "former-member@provision.local")
+    former_member.display_name = "Former Member"
+    former_member.is_active = False
+    _add_member(db, former_member, auth_household, HouseholdRole.MEMBER)
+    profile = FoodPreference(
+        household_id=auth_household.id,
+        member_user_id=former_member.id,
+        preferences={"diet_patterns": []},
+        allergy_status="DECLARED",
+    )
+    db.add(profile)
+    db.flush()
+    db.add(FoodAllergy(
+        profile_id=profile.id,
+        allergen_code=None,
+        custom_text="PRIVATE former member shellfish note",
+        severity="severe",
+        cross_contact_concern=True,
+        notes="Do not share this inactive member's record.",
+    ))
+    db.commit()
+
+    provider = FakePipChatProvider()
+    _override_provider(provider)
+    response = client.post(
+        "/api/v1/pip/chat",
+        json={"message": "Suggest dinner without shellfish."},
+    )
+
+    assert response.status_code == 200, response.text
+    assert len(provider.requests) == 1
+    provider_text = provider.requests[0].messages[1].content
+    assert "PRIVATE former member shellfish note" not in provider_text
+    assert "inactive member's record" not in provider_text
+    assert '"kind":"allergy"' not in provider_text
 
 
 def test_selected_recipe_context_is_scaled_permission_gated_and_household_scoped(

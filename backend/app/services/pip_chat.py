@@ -556,9 +556,23 @@ def _build_context(
             ))
 
     if include_allergies:
+        active_member_ids = (
+            select(HouseholdMembership.user_id)
+            .join(User, User.id == HouseholdMembership.user_id)
+            .where(
+                HouseholdMembership.household_id == household_id,
+                User.is_active.is_(True),
+            )
+        )
         profiles = db.scalars(
             select(FoodPreference)
-            .where(FoodPreference.household_id == household_id)
+            .where(
+                FoodPreference.household_id == household_id,
+                or_(
+                    FoodPreference.member_user_id.is_(None),
+                    FoodPreference.member_user_id.in_(active_member_ids),
+                ),
+            )
             .order_by(FoodPreference.id)
         ).all()
         labels: set[str] = set()
@@ -849,7 +863,6 @@ def generate_pip_chat(
         .join(HouseholdMembership, HouseholdMembership.user_id == User.id)
         .where(
             HouseholdMembership.household_id == household_id,
-            User.is_active.is_(True),
             User.display_name.is_not(None),
         )
     ).all()
