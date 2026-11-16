@@ -52,6 +52,9 @@ _ALLERGEN_TERMS = (
 _SAFETY_QUERY_PATTERN = re.compile(
     r"\b(?:safe\s+(?:to\s+(?:eat|use|cook)|for|with)|food\s+safety|cross[- ]contact|"
     r"spoiled|food\s+poison(?:ing)?)\b|"
+    r"\b(?:safe|ligtas)\b(?:\s+(?:po|opo))?\s+(?:ba|bang)\b|"
+    r"\b(?:pwede|puwede)\b.{0,24}\b(?:kainin|inumin|lutuin|gamitin)\b|"
+    r"\b(?:okay|alright)\s+(?:to\s+)?(?:eat|consume|use|cook)\b|"
     r"\b(?:can|may)\s+i\s+(?:eat|have|consume)\b|"
     r"\b(?:does|do|is there|are there)\b.{0,35}\b(?:contain|allergen|allergy|"
     r"peanuts?|tree\s+nuts?|milk|dairy|eggs?|fish|shellfish|wheat|gluten|soy|sesame)\b|"
@@ -137,6 +140,14 @@ _NUMBER_WORDS = {
 def _redact_personal_identifiers(value: str) -> str:
     value = _EMAIL_PATTERN.sub("[redacted email]", value)
     return _PHONE_PATTERN.sub("[redacted phone]", value)
+
+
+def _redact_household_member_names(value: str, member_names: list[str]) -> str:
+    names = {name.strip() for name in member_names if name and name.strip()}
+    for name in sorted(names, key=len, reverse=True):
+        pattern = r"(?<!\w)" + r"\s+".join(re.escape(part) for part in name.split()) + r"(?!\w)"
+        value = re.sub(pattern, "[redacted household member]", value, flags=re.IGNORECASE)
+    return value
 
 
 def _clean_label(value: str, *, limit: int = 180) -> str:
@@ -323,6 +334,13 @@ def _recipe_context(
 
 
 def _safety_guidance(text: str) -> tuple[str, str]:
+    has_english_safety_term = bool(re.search(r"\b(?:safe|food safety|allergy|allergen)\b", text, re.I))
+    has_filipino_marker = bool(re.search(r"\b(?:po|opo|ba|pwede|puwede|ano|kainin|ligtas|panis)\b", text, re.I))
+    if has_english_safety_term and has_filipino_marker:
+        return (
+            "I can’t verify food safety in chat. Gamitin ang Cook with Pip safety check at tingnan ang product label bago kumain o magluto.",
+            "taglish",
+        )
     if re.search(r"\b(?:po|opo|ba|pwede|puwede|ano|kainin|ligtas|panis)\b", text, re.I):
         return (
             "Hindi ko mabe-verify ang food safety sa chat. Gamitin ang Cook with Pip safety check at tingnan ang product label bago kumain o magluto.",
@@ -689,18 +707,26 @@ def _chat_request(
     *,
     facts: list[PipChatFact],
     provider_context: dict[str, object],
+    household_member_names: list[str],
 ) -> DeepSeekChatRequest:
     context = [
         {"reference": fact.reference, "kind": fact.kind, "label": fact.label, "detail": fact.detail}
         for fact in facts
     ]
     conversation = [
-        {"role": turn.role, "content": _redact_personal_identifiers(turn.content)}
+        {
+            "role": turn.role,
+            "content": _redact_household_member_names(
+                _redact_personal_identifiers(turn.content), household_member_names
+            ),
+        }
         for turn in request.history
     ]
     payload = {
         "recent_conversation": conversation,
-        "question": _redact_personal_identifiers(request.message),
+        "question": _redact_household_member_names(
+            _redact_personal_identifiers(request.message), household_member_names
+        ),
         "household_context": context,
         "selected_product_context": provider_context.get("selected_product"),
         "selected_and_recent_recipe_context": provider_context.get("recipes", []),
@@ -805,7 +831,21 @@ def generate_pip_chat(
         query_text=query_text,
         include_allergies=all_members_allow_allergy_context,
     )
-    provider_request = _chat_request(request, facts=facts, provider_context=provider_context)
+    household_member_names = db.scalars(
+        select(User.display_name)
+        .join(HouseholdMembership, HouseholdMembership.user_id == User.id)
+        .where(
+            HouseholdMembership.household_id == household_id,
+            User.is_active.is_(True),
+            User.display_name.is_not(None),
+        )
+    ).all()
+    provider_request = _chat_request(
+        request,
+        facts=facts,
+        provider_context=provider_context,
+        household_member_names=household_member_names,
+    )
     db.commit()
     try:
         provider_response = provider.chat_json(provider_request)
@@ -872,7 +912,9 @@ def generate_pip_chat(
     db.commit()
 
     return PipChatRead(
-        reply=_redact_personal_identifiers(model_response.reply),
+        reply=_redact_household_member_names(
+            _redact_personal_identifiers(model_response.reply), household_member_names
+        ),
         language=model_response.language,
         facts=[facts_by_reference[reference] for reference in model_response.fact_refs],
         actions=actions,

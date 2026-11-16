@@ -18,6 +18,14 @@ references, and shopping changes.
 - Requests allow at most eight history turns and three recent recipe IDs. The
   client keeps conversation history in view state; it is not saved as a chat
   transcript in the household account.
+- Before a provider request, recognized email addresses, phone numbers, and
+  active household member display names are redacted from the message and
+  history. Replies are scrubbed for the same identifiers. Other personal
+  details typed into chat may still be sent; the notice asks members not to
+  include them.
+- The server adds no account or household IDs, shopping data, or product-label
+  notes to provider context. Provider errors are sanitized and are not retried
+  automatically, avoiding sensitive body logging and duplicate billable calls.
 
 ## Context and safety
 
@@ -33,6 +41,9 @@ references, and shopping changes.
 - Inventory, unit conversions, availability, allergy decisions, and shopping
   quantities come from deterministic Provision services. Unknown allergy status,
   incomplete composition, or a known conflict is never described as safe.
+- Food-safety questions in English, Filipino, and Taglish receive local guidance
+  without sending those questions to the provider. Model safety claims and
+  malformed responses are rejected in all three supported languages.
 - Model-proposed recipe IDs and actions are checked against server-built
   references. The chat endpoint does not mutate inventory, recipes, or shopping
   records.

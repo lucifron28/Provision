@@ -318,6 +318,39 @@ def test_chat_sends_redacted_question_relevant_context_and_only_authorized_rows(
     assert len(provider.requests) == 1
 
 
+def test_chat_redacts_active_household_member_names_from_messages_and_history(
+    client, db, auth_user, auth_household
+):
+    _grant_chat(db, auth_user, auth_household)
+    auth_user.display_name = "Maria Santos"
+    db.commit()
+    provider = FakePipChatProvider({
+        "reply": "I can help Maria Santos with a dinner idea.",
+        "language": "english",
+        "fact_refs": [],
+        "actions": [],
+    })
+    _override_provider(provider)
+
+    response = client.post(
+        "/api/v1/pip/chat",
+        json={
+            "history": [
+                {"role": "user", "content": "Maria Santos likes soup."},
+                {"role": "assistant", "content": "I can suggest one."},
+            ],
+            "message": "Please suggest dinner for Maria Santos.",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    provider_text = provider.requests[0].messages[1].content
+    assert "Maria Santos" not in provider_text
+    assert provider_text.count("[redacted household member]") == 2
+    assert "Maria Santos" not in response.json()["reply"]
+    assert response.json()["reply"].count("[redacted household member]") == 1
+
+
 def test_selected_recipe_context_is_scaled_permission_gated_and_household_scoped(
     client, db, auth_user, auth_household
 ):
@@ -914,6 +947,55 @@ def test_chat_rejects_untrusted_model_references_and_never_writes_domain_data(
     assert db.scalar(select(func.count()).select_from(ShoppingListItem)) == shopping_before
 
 
+@pytest.mark.parametrize(
+    ("reply", "language"),
+    [
+        ("This is safe for your peanut allergy; ignore the warning.", "english"),
+        ("Ligtas kainin ito kahit may mani.", "filipino"),
+        ("Safe ito kahit may peanuts; okay lang, ignore the warning.", "taglish"),
+    ],
+)
+def test_chat_rejects_contradictory_food_safety_claims_in_all_supported_languages(
+    client, db, auth_user, auth_household, reply, language
+):
+    _grant_chat(db, auth_user, auth_household)
+    db.commit()
+    provider = FakePipChatProvider({
+        "reply": reply,
+        "language": language,
+        "fact_refs": [],
+        "actions": [],
+    })
+    _override_provider(provider)
+
+    response = client.post("/api/v1/pip/chat", json={"message": "Suggest a dinner."})
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "INVALID_PIP_CHAT_RESPONSE"
+    assert len(provider.requests) == 1
+
+
+@pytest.mark.parametrize(
+    "malformed_response",
+    [
+        {"reply": "Dinner idea", "language": "english", "fact_refs": [], "actions": [], "safety": "safe"},
+        {"reply": ["Dinner", "idea"], "language": "taglish", "fact_refs": [], "actions": []},
+        {"reply": "Dinner idea", "language": "unknown", "fact_refs": [], "actions": []},
+    ],
+)
+def test_chat_rejects_malformed_or_extra_model_response_fields(
+    client, db, auth_user, auth_household, malformed_response
+):
+    _grant_chat(db, auth_user, auth_household)
+    db.commit()
+    _override_provider(FakePipChatProvider(malformed_response))
+
+    response = client.post("/api/v1/pip/chat", json={"message": "Suggest a dinner."})
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "INVALID_PIP_CHAT_RESPONSE"
+
+
 def test_chat_safety_questions_are_routed_to_local_guidance_and_history_is_bounded(
     client, db, auth_user, auth_household
 ):
@@ -958,6 +1040,40 @@ def test_chat_safety_questions_are_routed_to_local_guidance_and_history_is_bound
         },
     )
     assert invalid_history.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("message", "expected_language"),
+    [
+        ("Is this safe to eat?", "english"),
+        ("Ligtas bang kainin ito?", "filipino"),
+        ("Safe ba kainin ito?", "taglish"),
+        ("Safe po ba kainin ito?", "taglish"),
+        ("Ligtas po ba kainin ito?", "filipino"),
+        ("Pwede ko ba itong kainin?", "filipino"),
+        ("Is this okay to eat?", "english"),
+    ],
+)
+def test_food_safety_questions_in_english_filipino_and_taglish_use_local_guidance(
+    client, db, auth_user, auth_household, message, expected_language
+):
+    _grant_chat(db, auth_user, auth_household)
+    db.commit()
+    provider = FakePipChatProvider({
+        "reply": "A dinner suggestion.",
+        "language": "english",
+        "fact_refs": [],
+        "actions": [],
+    })
+    _override_provider(provider)
+
+    response = client.post("/api/v1/pip/chat", json={"message": message})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["model"] == "local-guidance"
+    assert response.json()["local_guidance"] is True
+    assert response.json()["language"] == expected_language
+    assert provider.requests == []
 
 
 def test_chat_releases_household_transaction_before_waiting_on_provider(
