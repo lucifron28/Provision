@@ -323,6 +323,22 @@ def test_chat_redacts_active_household_member_names_from_messages_and_history(
 ):
     _grant_chat(db, auth_user, auth_household)
     auth_user.display_name = "Maria Santos"
+    product = Product(
+        household_id=auth_household.id,
+        name="Maria Santos rice",
+        brand="Maria Santos Foods",
+        unit="kg",
+    )
+    db.add(product)
+    db.flush()
+    db.add(InventoryBatch(
+        household_id=auth_household.id,
+        product_id=product.id,
+        original_quantity=Decimal("2"),
+        remaining_quantity=Decimal("1"),
+        expiration_date=date.today() + timedelta(days=18),
+        purchased_at=datetime.now(timezone.utc),
+    ))
     db.commit()
     provider = FakePipChatProvider({
         "reply": "I can help Maria Santos with a dinner idea.",
@@ -339,14 +355,17 @@ def test_chat_redacts_active_household_member_names_from_messages_and_history(
                 {"role": "user", "content": "Maria Santos likes soup."},
                 {"role": "assistant", "content": "I can suggest one."},
             ],
-            "message": "Please suggest dinner for Maria Santos.",
+            "context": {"kind": "product", "id": product.id},
+            "message": "Please suggest a meal for Maria Santos using my pantry.",
         },
     )
 
     assert response.status_code == 200, response.text
     provider_text = provider.requests[0].messages[1].content
     assert "Maria Santos" not in provider_text
-    assert provider_text.count("[redacted household member]") == 2
+    assert provider_text.count("[redacted household member]") == 5
+    assert "[redacted household member] rice" in provider_text
+    assert "[redacted household member] Foods" in provider_text
     assert "Maria Santos" not in response.json()["reply"]
     assert response.json()["reply"].count("[redacted household member]") == 1
 
