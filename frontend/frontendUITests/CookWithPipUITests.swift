@@ -724,8 +724,9 @@ final class CookWithPipUITests: XCTestCase {
         capture("Shopping_Unlinked_Manual_Items", app: app)
 
         let includeOptional = app.switches["recipe-shopping-include-optional"]
-        scrollTargetIntoView(includeOptional, inside: shoppingForm, in: app,
-                             progressAnchor: unlinked, initialDirection: .towardStart)
+        scrollTargetIntoView(includeOptional, inside: shoppingForm,
+                             progressAnchor: unlinked, in: app,
+                             initialDirection: .towardStart)
         guard setSwitch(includeOptional, to: "1") else { return }
         let stalePreview = element("recipe-shopping-stale-preview", in: app)
         XCTAssertTrue(stalePreview.waitForExistence(timeout: 5))
