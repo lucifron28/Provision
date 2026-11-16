@@ -81,6 +81,6 @@
     "Staging_Authenticated_Home": "The synthetic staging account reaches its authenticated household dashboard.",
     "Staging_Logged_Out": "The staging account remains logged out after app relaunch.",
     "Staging_Relaunch_Recovery": "The authenticated synthetic staging session restores its loaded pantry after relaunch.",
-    "Staging_Relogin_Relaunch_Recovery": "A new synthetic staging login restores its pantry after relaunch."
+    "Staging_Relogin_Relaunch_Recovery": "After a new synthetic staging login and relaunch, the fixture product is visible in Inventory."
   }
 }

@@ -630,6 +630,8 @@ final class CookWithPipUITests: XCTestCase {
         let customAllergensField = labelForm.textFields["pip-label-custom-allergens"]
         scrollTargetIntoView(customAllergensHeading, inside: labelForm, progressAnchor: milkDeclaration, in: largeLabel)
         assertReachable(customAllergensHeading, in: largeLabel)
+        scrollTargetIntoView(customAllergensField, inside: labelForm,
+                             progressAnchor: customAllergensHeading, in: largeLabel)
         assertReachable(customAllergensField, in: largeLabel)
 
         let sourceField = labelForm.textFields["pip-label-source-reference"]
@@ -799,6 +801,13 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(confirm.isHittable, "The confirmation action stays reachable at accessibility text sizes")
         let refresh = element("recipe-shopping-refresh-preview", in: largeApp)
         XCTAssertTrue(refresh.isHittable, "Refresh remains visible at accessibility text sizes")
+        let settingsHeading = element("recipe-shopping-preview-settings-heading", in: largeApp)
+        scrollTargetIntoView(settingsHeading, inside: reviewForm,
+                             progressAnchor: servings, in: largeApp, initialDirection: .towardStart)
+        assertReachable(settingsHeading, in: largeApp)
+        XCTAssertTrue(servings.isHittable, "Servings remain visible with the settings heading in view")
+        XCTAssertTrue(confirm.isHittable, "Confirmation remains available in the navigation bar")
+        XCTAssertTrue(refresh.isHittable, "Refresh remains visible after positioning the settings heading")
         capture("Shopping_Preview_Large_Text", app: largeApp)
 
         let revisionDetails = element("recipe-shopping-revision-details", in: largeApp)
@@ -1565,7 +1574,8 @@ extension CookWithPipUITests {
         let environment = ProcessInfo.processInfo.environment
         guard let baseURL = environment["PROVISION_API_BASE_URL"],
               let email = environment["PROVISION_STAGING_TEST_EMAIL"],
-              let password = environment["PROVISION_STAGING_TEST_PASSWORD"] else {
+              let password = environment["PROVISION_STAGING_TEST_PASSWORD"],
+              let productID = environment["PROVISION_STAGING_TEST_PRODUCT_ID"].flatMap(Int.init) else {
             throw XCTSkip("Staging API credentials are supplied only by the manual staging workflow")
         }
         let app = XCUIApplication()
@@ -1626,6 +1636,12 @@ extension CookWithPipUITests {
         app.launch()
         XCTAssertTrue(inventoryTab.waitForExistence(timeout: 40), "The new staging session did not survive relaunch")
         assertStagingDashboardLoaded(app, phase: "The new session restored the dashboard after relaunch")
+        inventoryTab.tap()
+        let recoveredProduct = element("product-row-\(productID)", in: app)
+        XCTAssertTrue(recoveredProduct.waitForExistence(timeout: 30),
+                      "The synthetic pantry product persists after logging in again and relaunching")
+        XCTAssertTrue(recoveredProduct.isHittable,
+                      "The recovered synthetic pantry product is visible in Inventory")
         capture("Staging_Relogin_Relaunch_Recovery", app: app)
     }
 

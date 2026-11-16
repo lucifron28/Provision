@@ -119,7 +119,7 @@ public struct RecipeShoppingReviewView: View {
 
     @ViewBuilder
     private func previewControls(_ preview: RecipeShoppingPreview) -> some View {
-        Section("Preview settings") {
+        Section {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Servings (people)")
                     .font(.subheadline.weight(.medium))
@@ -182,6 +182,9 @@ public struct RecipeShoppingReviewView: View {
             }
             .disabled(viewModel.isLoading || viewModel.isConfirming || viewModel.pendingRecord != nil)
             .accessibilityIdentifier("recipe-shopping-refresh-preview")
+        } header: {
+            Text("Preview settings")
+                .accessibilityIdentifier("recipe-shopping-preview-settings-heading")
         }
     }
 
