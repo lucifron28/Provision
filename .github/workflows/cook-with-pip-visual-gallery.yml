@@ -312,14 +312,21 @@ jobs:
       - name: Package screenshot review archive
         if: always()
         run: |
-          if [[ -d artifacts/cook-with-pip-screenshots ]]; then
-            ditto -c -k --sequesterRsrc --keepParent \
-              artifacts/cook-with-pip-screenshots \
-              artifacts/cook-with-pip-visual-gallery.zip
-          else
-            echo "Organized screenshot folder is missing." >&2
-            exit 1
-          fi
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZIP_DEFLATED, ZipFile
+
+          source = Path("artifacts/cook-with-pip-screenshots")
+          archive = Path("artifacts/cook-with-pip-visual-gallery.zip")
+          if not source.is_dir():
+              raise SystemExit("Organized screenshot folder is missing.")
+
+          with ZipFile(archive, "w", compression=ZIP_DEFLATED) as output:
+              for path in sorted(source.rglob("*")):
+                  if path.is_file():
+                      output.write(path, path.relative_to(source.parent))
+          print(f"Packaged {archive} from {source}.")
+          PY
       - name: Upload screenshot review archive
         if: always()
         uses: actions/upload-artifact@v4
