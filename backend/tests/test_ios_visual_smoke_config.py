@@ -5,14 +5,14 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _read_manifest(name: str) -> list[str]:
+    path = REPOSITORY_ROOT / ".github" / "scripts" / name
+    return json.loads(path.read_text(encoding="utf-8"))["requiredScreenshots"]
+
+
 def test_routine_visual_smoke_requires_12_scenarios_from_the_full_gallery():
-    scripts = REPOSITORY_ROOT / ".github" / "scripts"
-    smoke = json.loads(
-        (scripts / "required_ios_smoke_screenshots.json").read_text(encoding="utf-8")
-    )["requiredScreenshots"]
-    full_gallery = json.loads(
-        (scripts / "required_ios_screenshots.json").read_text(encoding="utf-8")
-    )["requiredScreenshots"]
+    smoke = _read_manifest("required_ios_smoke_screenshots.json")
+    full_gallery = _read_manifest("required_ios_screenshots.json")
 
     assert len(full_gallery) == 55
     assert len(full_gallery) == len(set(full_gallery))
@@ -21,11 +21,10 @@ def test_routine_visual_smoke_requires_12_scenarios_from_the_full_gallery():
     assert set(smoke) <= set(full_gallery)
 
 
-def test_pull_request_workflow_runs_representative_screenshots_only():
+def test_pull_request_workflow_runs_four_ui_shards_and_preserves_safety_coverage():
     workflow = (REPOSITORY_ROOT / ".github" / "workflows" / "tests.yml").read_text(
         encoding="utf-8"
     )
-
     smoke_tests = {
         "testPreferencesAllergySettings",
         "testProductLabelReviewScreens",
@@ -40,9 +39,15 @@ def test_pull_request_workflow_runs_representative_screenshots_only():
         "testShoppingOfflineRetryAndStalePreviewRecovery",
     }
     assert "-only-testing:frontendTests" in workflow
-    assert workflow.count("- shard: ") == 5
+    assert workflow.count("- shard: ") == 4
     assert "- shard: preferences\n" in workflow
     assert "- shard: product-label\n" in workflow
+    assert "max-parallel: 4" in workflow
+    assert "- shard: shopping-recovery" not in workflow
+    confirmation_shard = workflow.split(
+        "- shard: shopping-confirmation", 1
+    )[1].split("- shard:", 1)[0]
+    assert "testShoppingOfflineRetryAndStalePreviewRecovery" in confirmation_shard
     assert all(
         f"-only-testing:frontendUITests/CookWithPipUITests/{test}" in workflow
         for test in smoke_tests
@@ -53,99 +58,95 @@ def test_pull_request_workflow_runs_representative_screenshots_only():
     assert "needs: [swift-unit-tests, backend]" in workflow
     assert "needs: [swift-unit-tests, ios-ui-smoke, ios-screenshot-evidence]" in workflow
     assert "--required .github/scripts/required_ios_smoke_screenshots.json" in workflow
+    assert "build-for-testing" in workflow
+    assert "test-without-building" in workflow
+    assert "-parallel-testing-enabled NO" in workflow
+    assert "id=${SIMULATOR_UDID}" in workflow
     assert "name: cook-with-pip-xcresult" not in workflow
 
 
 def test_required_smoke_screenshots_are_captured_by_the_pr_ui_tests():
-    scripts = REPOSITORY_ROOT / ".github" / "scripts"
-    required = json.loads(
-        (scripts / "required_ios_smoke_screenshots.json").read_text(encoding="utf-8")
-    )["requiredScreenshots"]
     source = (
         REPOSITORY_ROOT / "frontend" / "frontendUITests" / "CookWithPipUITests.swift"
     ).read_text(encoding="utf-8")
+    assert all(
+        f'capture("{scenario}"' in source
+        for scenario in _read_manifest("required_ios_smoke_screenshots.json")
+    )
 
-    assert all(f'capture("{scenario}"' in source for scenario in required)
 
-
-def test_manual_gallery_keeps_full_screenshot_suite_and_result_bundle():
+def test_gallery_covers_all_ui_methods_and_keeps_full_result_bundles():
     workflow = (
         REPOSITORY_ROOT / ".github" / "workflows" / "cook-with-pip-visual-gallery.yml"
     ).read_text(encoding="utf-8")
-    selected_tests = workflow.split(
-        "      - name: Run selected iOS XCUITest suite\n", 1
-    )[1].split("\n      - name: Report XCTest durations", 1)[0]
-    focused_toggle_run = selected_tests.split(
-        'if [[ "$GALLERY_SUITE" == "toggle-regressions" ]]; then', 1
-    )[1].split('elif [[ "$GALLERY_SUITE" == "shopping-recovery" ]]', 1)[0]
-    shopping_recovery_run = selected_tests.split(
-        'elif [[ "$GALLERY_SUITE" == "shopping-recovery" ]]; then', 1
-    )[1].split("\n          else", 1)[0]
-    full_run = selected_tests.split("\n          else", 1)[1]
+    source = (
+        REPOSITORY_ROOT / "frontend" / "frontendUITests" / "CookWithPipUITests.swift"
+    ).read_text(encoding="utf-8")
+    methods = {
+        line.split("func ", 1)[1].split("(", 1)[0]
+        for line in source.splitlines()
+        if "func test" in line
+    }
 
     assert "workflow_dispatch:" in workflow
     assert "schedule:" in workflow
     assert "- full-gallery" in workflow
+    assert "- gallery-regressions" in workflow
     assert "- toggle-regressions" in workflow
     assert "- shopping-recovery" in workflow
-    assert "xcodebuild test \"${common_args[@]}\"" in full_run
-    assert "-only-testing:" not in full_run
-    assert (
-        "-only-testing:frontendUITests/CookWithPipUITests/testPipChatConsentControlsGallery"
-        in focused_toggle_run
-    )
-    assert (
-        "-only-testing:frontendUITests/CookWithPipUITests/testShoppingPreviewEditsConsolidationAndExplicitConfirmation"
-        in focused_toggle_run
-    )
-    assert (
-        "-only-testing:frontendUITests/CookWithPipUITests/testShoppingOfflineRetryAndStalePreviewRecovery"
-        in shopping_recovery_run
-    )
-    focused_manifest = json.loads(
-        (
-            REPOSITORY_ROOT
-            / ".github"
-            / "scripts"
-            / "required_ios_toggle_regressions.json"
-        ).read_text(encoding="utf-8")
-    )["requiredScreenshots"]
-    assert set(focused_manifest) == {
-        "Pip_Chat_Consent_Controls",
-        "Shopping_Optional_Ingredients",
+    assert len(methods) == 24
+    assert all(f'"{method}"' in workflow for method in methods)
+    assert "build-for-testing" in workflow
+    assert "test-without-building" in workflow
+    assert "max-parallel: 4" in workflow
+    assert "-parallel-testing-enabled NO" in workflow
+    assert "id=${SIMULATOR_UDID}" in workflow
+    assert "timeout-minutes: 45" in workflow
+    assert "--strict-names" in workflow
+    assert "cook-with-pip-${{ matrix.suite }}-${{ matrix.shard }}-xcresult" in workflow
+    assert "actions/download-artifact@v4" in workflow
+    assert "report_github_action_timings.py" in workflow
+
+
+def test_focused_gallery_runs_prior_failures_and_duplicate_capture_regressions():
+    workflow = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "cook-with-pip-visual-gallery.yml"
+    ).read_text(encoding="utf-8")
+    manifest = _read_manifest("required_ios_gallery_regressions.json")
+    failures = {
+        "testPipChatConsentControlsGallery",
+        "testShoppingPreviewDarkAndLargeTextStates",
+        "testShoppingPreviewEditsConsolidationAndExplicitConfirmation",
+        "testStaleProductLabelReviewIsShownAsStale",
     }
-    assert set(focused_manifest) <= set(
-        json.loads(
-            (
-                REPOSITORY_ROOT
-                / ".github"
-                / "scripts"
-                / "required_ios_screenshots.json"
-            ).read_text(encoding="utf-8")
-        )["requiredScreenshots"]
-    )
-    recovery_manifest = json.loads(
-        (
-            REPOSITORY_ROOT
-            / ".github"
-            / "scripts"
-            / "required_ios_shopping_recovery_regressions.json"
-        ).read_text(encoding="utf-8")
-    )["requiredScreenshots"]
-    assert set(recovery_manifest) == {
-        "Shopping_Offline_Error_Retry",
-        "Shopping_Stale_Preview_Refresh",
+    duplicate_capture_tests = {
+        "testProductLabelReviewScreens",
+        "testDarkModeLargeTextAndSearchKeyboard",
     }
-    assert set(recovery_manifest) <= set(
-        json.loads(
-            (
-                REPOSITORY_ROOT
-                / ".github"
-                / "scripts"
-                / "required_ios_screenshots.json"
-            ).read_text(encoding="utf-8")
-        )["requiredScreenshots"]
+    assert all(f'"{test}"' in workflow for test in failures)
+    assert all(f'"{test}"' in workflow for test in duplicate_capture_tests)
+    assert len(manifest) == 16
+    assert len(manifest) == len(set(manifest))
+    gallery_manifest = json.loads(
+        (REPOSITORY_ROOT / ".github" / "scripts" / "required_ios_screenshots.json").read_text(
+            encoding="utf-8"
+        )
     )
-    assert "--required .github/scripts/required_ios_screenshots.json" in workflow
-    assert "-resultBundlePath artifacts/frontend.xcresult" in workflow
-    assert "cook-with-pip-${{ github.event.inputs.suite || 'full-gallery' }}-xcresult" in workflow
+    gallery = set(gallery_manifest["requiredScreenshots"])
+    gallery_supplemental = set(gallery_manifest.get("supplementalScreenshots", []))
+    assert set(manifest) <= gallery | gallery_supplemental
+
+
+def test_toggle_and_shopping_recovery_regression_manifests_remain_in_the_gallery():
+    workflow = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "cook-with-pip-visual-gallery.yml"
+    ).read_text(encoding="utf-8")
+    full = set(_read_manifest("required_ios_screenshots.json"))
+    toggle = set(_read_manifest("required_ios_toggle_regressions.json"))
+    recovery = set(_read_manifest("required_ios_shopping_recovery_regressions.json"))
+
+    assert toggle == {"Pip_Chat_Consent_Controls", "Shopping_Optional_Ingredients"}
+    assert recovery == {"Shopping_Offline_Error_Retry", "Shopping_Stale_Preview_Refresh"}
+    assert toggle <= full
+    assert recovery <= full
+    assert ".github/scripts/required_ios_screenshots.json" in workflow

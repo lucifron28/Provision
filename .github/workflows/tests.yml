@@ -7,6 +7,7 @@ on:
     branches: [main]
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -22,23 +23,42 @@ jobs:
       - uses: actions/checkout@v4
       - name: Show Xcode and simulator runtimes
         run: xcodebuild -version && xcrun simctl list devices available
+      - name: Prepare the exact iPhone 17 simulator
+        run: bash .github/scripts/prepare_ios_simulator.sh
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
       - name: Prepare unit test artifacts
         run: mkdir -p artifacts
-      - name: Run Swift unit tests
+      - name: Build Swift unit test products
+        env:
+          PROVISION_SKIP_CHAT_SCREENSHOTS: "1"
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -project frontend/frontend.xcodeproj \
+            -scheme frontend \
+            -destination "platform=iOS Simulator,id=${SIMULATOR_UDID}" \
+            -only-testing:frontendTests \
+            -derivedDataPath artifacts/DerivedData \
+            -parallel-testing-enabled NO \
+            -showBuildTimingSummary \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- 2>&1 | tee artifacts/xcodebuild-build.log
+      - name: Run Swift unit tests without rebuilding
         id: swift-tests
         env:
           PROVISION_SKIP_CHAT_SCREENSHOTS: "1"
         run: |
           set -o pipefail
-          xcodebuild test \
+          xcodebuild test-without-building \
             -project frontend/frontend.xcodeproj \
             -scheme frontend \
-            -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+            -destination "platform=iOS Simulator,id=${SIMULATOR_UDID}" \
             -only-testing:frontendTests \
+            -derivedDataPath artifacts/DerivedData \
             -resultBundlePath artifacts/frontend-unit.xcresult \
+            -parallel-testing-enabled NO \
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGN_IDENTITY=- 2>&1 | tee artifacts/xcodebuild.log
       - name: Report unit test durations
@@ -55,6 +75,7 @@ jobs:
           name: xcode-test-durations-unit
           path: |
             artifacts/test-durations-unit.json
+            artifacts/xcodebuild-build.log
             artifacts/xcodebuild.log
           if-no-files-found: warn
 
@@ -64,6 +85,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
+      max-parallel: 4
       matrix:
         include:
           - shard: preferences
@@ -84,30 +106,47 @@ jobs:
             tests: >-
               -only-testing:frontendUITests/CookWithPipUITests/testShoppingReviewRequiredAndBlockedStates
               -only-testing:frontendUITests/CookWithPipUITests/testAmbiguousShoppingConfirmationSurvivesAppRelaunch
-          - shard: shopping-recovery
-            tests: >-
               -only-testing:frontendUITests/CookWithPipUITests/testShoppingOfflineRetryAndStalePreviewRecovery
     steps:
       - uses: actions/checkout@v4
       - name: Show Xcode and simulator runtimes
         run: xcodebuild -version && xcrun simctl list devices available
+      - name: Prepare the exact iPhone 17 simulator
+        run: bash .github/scripts/prepare_ios_simulator.sh
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
       - name: Prepare UI smoke artifacts
         run: mkdir -p artifacts/raw-cook-with-pip-screenshots
-      - name: Run UI smoke shard
+      - name: Build selected UI test products
+        env:
+          PROVISION_SKIP_CHAT_SCREENSHOTS: "1"
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -project frontend/frontend.xcodeproj \
+            -scheme frontend \
+            -destination "platform=iOS Simulator,id=${SIMULATOR_UDID}" \
+            ${{ matrix.tests }} \
+            -derivedDataPath artifacts/DerivedData \
+            -parallel-testing-enabled NO \
+            -showBuildTimingSummary \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- 2>&1 | tee artifacts/xcodebuild-build.log
+      - name: Run UI smoke without rebuilding
         id: ui-tests
         env:
           PROVISION_SKIP_CHAT_SCREENSHOTS: "1"
         run: |
           set -o pipefail
-          xcodebuild test \
+          xcodebuild test-without-building \
             -project frontend/frontend.xcodeproj \
             -scheme frontend \
-            -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+            -destination "platform=iOS Simulator,id=${SIMULATOR_UDID}" \
             ${{ matrix.tests }} \
+            -derivedDataPath artifacts/DerivedData \
             -resultBundlePath artifacts/frontend-${{ matrix.shard }}.xcresult \
+            -parallel-testing-enabled NO \
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGN_IDENTITY=- 2>&1 | tee artifacts/xcodebuild.log
       - name: Report UI test durations
@@ -143,6 +182,7 @@ jobs:
           name: xcode-test-durations-${{ matrix.shard }}
           path: |
             artifacts/test-durations-${{ matrix.shard }}.json
+            artifacts/xcodebuild-build.log
             artifacts/xcodebuild.log
           if-no-files-found: warn
 
@@ -151,6 +191,7 @@ jobs:
     if: always()
     needs: [ios-ui-smoke]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -221,6 +262,7 @@ jobs:
     if: always()
     needs: [swift-unit-tests, ios-ui-smoke, ios-screenshot-evidence]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - name: Download XCTest duration reports
@@ -237,6 +279,20 @@ jobs:
           python .github/scripts/report_xcode_test_durations.py
           --aggregate-dir artifacts/test-durations
           --summary "$GITHUB_STEP_SUMMARY"
+      - name: Report phase timings and runner allocation
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100" \
+            > artifacts/workflow-jobs.json
+          python .github/scripts/report_github_action_timings.py \
+            --jobs artifacts/workflow-jobs.json \
+            --summary "$GITHUB_STEP_SUMMARY"
       - name: Require unit, UI, and screenshot checks
         if: always()
         env:
@@ -251,6 +307,7 @@ jobs:
 
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:18
@@ -355,6 +412,7 @@ jobs:
     if: ${{ always() && github.event_name == 'pull_request' }}
     needs: [swift-unit-tests, backend]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Require the early Swift and backend results
         env:

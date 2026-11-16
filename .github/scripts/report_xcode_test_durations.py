@@ -15,6 +15,7 @@ CASE_LINE = re.compile(
     r"(?P<result>passed|failed|skipped) "
     r"\((?P<seconds>[0-9]+(?:\.[0-9]+)?) seconds\)"
 )
+SLOW_TEST_THRESHOLD_SECONDS = 240
 
 
 def parse_log(path: Path) -> list[dict[str, object]]:
@@ -44,6 +45,21 @@ def markdown(cases: list[dict[str, object]], title: str) -> str:
         )
     total = sum(float(case["durationSeconds"]) for case in cases)
     lines.extend(["", f"Measured XCTest time: **{total:.3f}s**.", ""])
+    slow_cases = [
+        case for case in ordered
+        if float(case["durationSeconds"]) > SLOW_TEST_THRESHOLD_SECONDS
+    ]
+    if slow_cases:
+        lines.extend([
+            f"Tests above the {SLOW_TEST_THRESHOLD_SECONDS}s performance budget:",
+            "",
+        ])
+        for case in slow_cases:
+            lines.append(
+                f"- `{case['testIdentifier']}` took {float(case['durationSeconds']):.3f}s; "
+                "investigate or document its hardware/simulator reason."
+            )
+        lines.append("")
     return "\n".join(lines)
 
 

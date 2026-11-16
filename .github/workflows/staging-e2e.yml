@@ -9,6 +9,7 @@ on:
         type: string
 
 permissions:
+  actions: read
   contents: read
   pull-requests: read
 
@@ -110,6 +111,28 @@ jobs:
           PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
         run: uv run --no-sync python -m scripts.staging_e2e_smoke api-smoke
 
+      - name: Show Xcode and simulator runtimes
+        run: xcodebuild -version && xcrun simctl list devices available
+      - name: Prepare the exact iPhone 17 simulator
+        run: bash .github/scripts/prepare_ios_simulator.sh
+
+      - name: Build staging iPhone UI test products
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          xcodebuild build-for-testing \
+            -project frontend/frontend.xcodeproj \
+            -scheme frontend \
+            -destination "platform=iOS Simulator,id=${SIMULATOR_UDID}" \
+            -only-testing:frontendUITests/CookWithPipUITests/testStagingLoginAndRelaunch \
+            -only-testing:frontendUITests/CookWithPipUITests/testStagingPipChatContextAndShoppingPreviewRoutes \
+            -only-testing:frontendUITests/CookWithPipUITests/testCookWithPipLoadingEmptyAndOfflineRecovery \
+            -only-testing:frontendUITests/CookWithPipUITests/testShoppingOfflineRetryAndStalePreviewRecovery \
+            -derivedDataPath artifacts/DerivedData \
+            -parallel-testing-enabled NO \
+            -showBuildTimingSummary \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- 2>&1 | tee artifacts/xcodebuild-build.log
       - name: Run staging login, offline recovery, and Keychain relaunch tests on iPhone 17
         id: ios-staging
         env:
@@ -127,18 +150,29 @@ jobs:
           TEST_RUNNER_PROVISION_STAGING_TEST_PRODUCT_ID: ${{ env.PROVISION_STAGING_TEST_PRODUCT_ID }}
           TEST_RUNNER_PROVISION_STAGING_TEST_RECIPE_ID: ${{ env.PROVISION_STAGING_TEST_RECIPE_ID }}
         run: |
+          set -o pipefail
           mkdir -p artifacts
-          xcodebuild test \
+          xcodebuild test-without-building \
             -project frontend/frontend.xcodeproj \
             -scheme frontend \
-            -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+            -destination "platform=iOS Simulator,id=${SIMULATOR_UDID}" \
             -only-testing:frontendUITests/CookWithPipUITests/testStagingLoginAndRelaunch \
             -only-testing:frontendUITests/CookWithPipUITests/testStagingPipChatContextAndShoppingPreviewRoutes \
             -only-testing:frontendUITests/CookWithPipUITests/testCookWithPipLoadingEmptyAndOfflineRecovery \
             -only-testing:frontendUITests/CookWithPipUITests/testShoppingOfflineRetryAndStalePreviewRecovery \
+            -derivedDataPath artifacts/DerivedData \
             -resultBundlePath artifacts/staging-e2e.xcresult \
+            -parallel-testing-enabled NO \
             CODE_SIGNING_ALLOWED=YES \
-            CODE_SIGN_IDENTITY=-
+            CODE_SIGN_IDENTITY=- 2>&1 | tee artifacts/xcodebuild.log
+
+      - name: Report staging XCTest durations
+        if: always()
+        run: >-
+          python .github/scripts/report_xcode_test_durations.py
+          --input-log artifacts/xcodebuild.log
+          --json-output artifacts/test-durations-staging.json
+          --summary "$GITHUB_STEP_SUMMARY"
 
       - name: Export staging simulator screenshots
         if: always()
@@ -160,6 +194,8 @@ jobs:
           path: |
             artifacts/staging-screenshots
             artifacts/staging-e2e.xcresult
+            artifacts/test-durations-staging.json
+            artifacts/xcodebuild.log
           if-no-files-found: warn
           retention-days: 14
 
@@ -169,3 +205,18 @@ jobs:
         env:
           PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
         run: uv run --no-sync python -m scripts.staging_e2e_smoke cleanup
+
+      - name: Report staging phase timings and runner allocation
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100" \
+            > artifacts/workflow-jobs.json
+          python .github/scripts/report_github_action_timings.py \
+            --jobs artifacts/workflow-jobs.json \
+            --summary "$GITHUB_STEP_SUMMARY"
