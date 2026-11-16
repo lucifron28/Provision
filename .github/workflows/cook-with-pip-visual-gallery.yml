@@ -111,6 +111,7 @@ jobs:
               "full-gallery": fullGallery,
               "gallery-regressions": [focused("gallery-regressions", [
                 "testPipChatConsentControlsGallery",
+                "testFormsStayReadableInDarkModeAndLargeText",
                 "testShoppingPreviewDarkAndLargeTextStates",
                 "testShoppingPreviewEditsConsolidationAndExplicitConfirmation",
                 "testStaleProductLabelReviewIsShownAsStale",
