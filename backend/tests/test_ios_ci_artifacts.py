@@ -186,3 +186,30 @@ def test_xcode_duration_aggregator_lists_slowest_cases_first(tmp_path):
     assert result.returncode == 0, result.stderr
     assert result.stdout.index("testSlow") < result.stdout.index("testFast")
     assert "546.100s" in summary.read_text(encoding="utf-8")
+
+
+def test_xcode_duration_report_allows_missing_log_after_build_failure(tmp_path):
+    output = tmp_path / "durations.json"
+    summary = tmp_path / "summary.md"
+    missing_log = tmp_path / "xcodebuild.log"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(DURATION_REPORTER),
+            "--input-log",
+            str(missing_log),
+            "--json-output",
+            str(output),
+            "--summary",
+            str(summary),
+            "--allow-empty",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(output.read_text(encoding="utf-8")) == []
+    assert "No XCTest case durations were found" in summary.read_text(encoding="utf-8")
