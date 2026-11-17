@@ -28,6 +28,13 @@ public struct InventoryView: View {
                     pendingInventoryIntakeUnavailableBanner
                 }
 
+                if let pending = viewModel.pendingInventoryActionRecord {
+                    pendingInventoryActionBanner(pending)
+                } else if viewModel.pendingInventoryActionState == .corrupt
+                            || viewModel.pendingInventoryActionState == .unavailable {
+                    pendingInventoryActionUnavailableBanner
+                }
+
                 // Search Bar
                 searchBar
                     .padding(.horizontal, 16)
@@ -101,6 +108,7 @@ public struct InventoryView: View {
             }
             .task {
                 viewModel.loadPendingManualInventoryIntake()
+                viewModel.loadPendingInventoryAction()
                 if viewModel.products.isEmpty {
                     await viewModel.loadData()
                 }
@@ -173,6 +181,52 @@ public struct InventoryView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
             .accessibilityIdentifier("inventory-pending-intake-unavailable")
+    }
+
+    private func pendingInventoryActionBanner(_ record: PendingInventoryActionRecord) -> some View {
+        let title: String
+        switch record.action {
+        case .consume: title = "Consumption"
+        case .discard: title = "Discarded stock"
+        case .adjust: title = "Stock adjustment"
+        }
+        return Button {
+            Task { await viewModel.retryPendingInventoryAction() }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.clockwise.circle.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Confirm saved \(title.lowercased())")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("Retry the exact inventory action safely")
+                        .font(.system(size: 12))
+                }
+                Spacer(minLength: 4)
+                if viewModel.isRecoveringPendingInventoryAction {
+                    ProgressView().tint(ProvisionTheme.amberWarning)
+                }
+            }
+            .foregroundStyle(ProvisionTheme.textPrimary)
+            .padding(12)
+            .background(ProvisionTheme.amberLight)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(viewModel.isRecoveringPendingInventoryAction)
+        .accessibilityIdentifier("inventory-pending-stock-action-recovery")
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+    }
+
+    private var pendingInventoryActionUnavailableBanner: some View {
+        Label("A saved stock action needs recovery before another change.", systemImage: "exclamationmark.triangle.fill")
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(ProvisionTheme.amberWarning)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .accessibilityIdentifier("inventory-pending-stock-action-unavailable")
     }
     
     private var searchBar: some View {

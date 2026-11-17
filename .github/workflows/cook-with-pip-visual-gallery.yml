@@ -10,7 +10,7 @@ on:
         type: boolean
         default: false
       suite:
-        description: Run a focused regression suite, or the complete 57-scenario gallery
+        description: Run a focused regression suite, or the complete 58-scenario gallery
         required: true
         type: choice
         options:
@@ -90,6 +90,7 @@ jobs:
                   "testFormsStayReadableInDarkModeAndLargeText",
                   "testProductLabelReviewScreens",
                   "testInventoryQuickAddOffersScannerAndMinimalManualEntry",
+                  "testPartialInventoryDiscardUsesActualCountAndUpdatesStock",
                   "testStaleProductLabelReviewIsShownAsStale",
                   "testShoppingPreviewExpiredIsNotConfirmable",
                   "testPipChatConsentConversationAndValidatedRecipeAction",
@@ -121,6 +122,7 @@ jobs:
                 "testDarkModeLargeTextAndSearchKeyboard",
                 "testHomeNavigationAndCaptureRecipeScreens",
                 "testInventoryQuickAddOffersScannerAndMinimalManualEntry",
+                "testPartialInventoryDiscardUsesActualCountAndUpdatesStock",
                 "testPurchasedGroceriesReviewRequiresExplicitDecisions",
               ])],
               "toggle-regressions": [focused("toggle-regressions", [
@@ -265,6 +267,7 @@ jobs:
           --input-log artifacts/xcodebuild.log
           --json-output "artifacts/test-durations-${{ matrix.shard }}.json"
           --summary "$GITHUB_STEP_SUMMARY"
+          --allow-empty
       - name: Export shard screenshots
         if: always()
         run: |

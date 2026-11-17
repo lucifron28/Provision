@@ -40,6 +40,15 @@ public protocol PendingManualInventoryIntakeStore {
 
 extension KeychainStore: PendingManualInventoryIntakeStore {}
 
+public protocol PendingInventoryActionStore {
+    func readPendingInventoryAction(scope: HouseholdScope) -> PendingInventoryActionReadResult
+    @discardableResult func savePendingInventoryAction(_ record: PendingInventoryActionRecord,
+                                                        scope: HouseholdScope) -> Bool
+    @discardableResult func deletePendingInventoryAction(scope: HouseholdScope) -> Bool
+}
+
+extension KeychainStore: PendingInventoryActionStore {}
+
 @MainActor
 public class InventoryViewModel: ObservableObject {
     @Published public var products: [Product] = []
@@ -62,17 +71,23 @@ public class InventoryViewModel: ObservableObject {
     @Published public var toastMessage: String? = nil
     @Published public private(set) var pendingManualIntakeRecord: PendingManualInventoryIntakeRecord?
     @Published public private(set) var pendingManualIntakeState: PendingManualInventoryIntakeReadResult = .missing
+    @Published public private(set) var pendingInventoryActionRecord: PendingInventoryActionRecord?
+    @Published public private(set) var pendingInventoryActionState: PendingInventoryActionReadResult = .missing
+    @Published public private(set) var isRecoveringPendingInventoryAction = false
     private let client: APIClient
     private let pendingManualIntakeStore: any PendingManualInventoryIntakeStore
+    private let pendingInventoryActionStore: any PendingInventoryActionStore
     public let scope: HouseholdScope?
     public var isPreview: Bool
     
     public init(client: APIClient = .shared, isPreview: Bool = false, scope: HouseholdScope? = nil,
-                pendingManualIntakeStore: (any PendingManualInventoryIntakeStore)? = nil) {
+                pendingManualIntakeStore: (any PendingManualInventoryIntakeStore)? = nil,
+                pendingInventoryActionStore: (any PendingInventoryActionStore)? = nil) {
         self.client = client
         self.scope = scope
         self.isPreview = isPreview
         self.pendingManualIntakeStore = pendingManualIntakeStore ?? KeychainStore.shared
+        self.pendingInventoryActionStore = pendingInventoryActionStore ?? KeychainStore.shared
     }
     
     public var categories: [String] {
@@ -193,44 +208,28 @@ public class InventoryViewModel: ObservableObject {
             self.toastMessage = "Successfully consumed \(String(format: "%.1f", quantity)) units"
             return true
         }
-        do {
-            let res = try await client.consumeProduct(productId: productId, quantity: quantity, reason: reason, expectedScope: scope)
-            self.toastMessage = "Successfully consumed \(String(format: "%.1f", res.total_consumed)) units"
-            
-            // Refresh product and batches
-            await loadData()
-            if let updated = products.first(where: { $0.id == productId }) {
-                await selectProduct(updated)
-            }
-            return true
-        } catch {
-            self.errorMessage = error.localizedDescription
-            return false
-        }
+        let request = ConsumeRequest(product_id: productId, quantity: quantity, reason: reason)
+        return await submitInventoryAction(.consume(request))
     }
     
-    public func discardBatch(batchId: Int, reason: String? = "Spoiled / Expired") async -> Bool {
+    public func discardBatch(batchId: Int, quantity: Double? = nil, reason: String? = "Spoiled / Expired",
+                             expectedUpdatedAt: String? = nil) async -> Bool {
         if isPreview {
             self.toastMessage = "Batch discarded"
-            self.productBatches.removeAll { $0.id == batchId }
-            return true
-        }
-        do {
-            _ = try await client.discardBatch(batchId: batchId, reason: reason, expectedScope: scope)
-            self.toastMessage = "Batch discarded"
-            
-            await loadData()
-            if let sel = selectedProduct, let updated = products.first(where: { $0.id == sel.id }) {
-                await selectProduct(updated)
+            if let quantity, let index = productBatches.firstIndex(where: { $0.id == batchId }) {
+                productBatches[index].remaining_quantity = max(0, productBatches[index].remaining_quantity - quantity)
+                if productBatches[index].remaining_quantity == 0 { productBatches.remove(at: index) }
+            } else {
+                self.productBatches.removeAll { $0.id == batchId }
             }
             return true
-        } catch {
-            self.errorMessage = error.localizedDescription
-            return false
         }
+        let request = DiscardRequest(reason: reason, quantity: quantity, expected_updated_at: expectedUpdatedAt)
+        return await submitInventoryAction(.discard(batchID: batchId, request: request))
     }
     
-    public func adjustBatch(batchId: Int, newQuantity: Double, reason: String = "Physical count adjustment") async -> Bool {
+    public func adjustBatch(batchId: Int, newQuantity: Double, reason: String = "Physical count adjustment",
+                            expectedUpdatedAt: String? = nil) async -> Bool {
         if isPreview {
             self.toastMessage = "Batch adjusted to \(newQuantity)"
             if let idx = self.productBatches.firstIndex(where: { $0.id == batchId }) {
@@ -238,19 +237,146 @@ public class InventoryViewModel: ObservableObject {
             }
             return true
         }
-        do {
-            _ = try await client.adjustBatch(batchId: batchId, newQuantity: newQuantity, reason: reason, expectedScope: scope)
-            self.toastMessage = "Batch adjusted to \(newQuantity)"
-            
-            await loadData()
-            if let sel = selectedProduct, let updated = products.first(where: { $0.id == sel.id }) {
-                await selectProduct(updated)
-            }
-            return true
-        } catch {
-            self.errorMessage = error.localizedDescription
+        let request = AdjustmentRequest(new_remaining_quantity: newQuantity, reason: reason,
+                                        expected_updated_at: expectedUpdatedAt)
+        return await submitInventoryAction(.adjust(batchID: batchId, request: request))
+    }
+
+    public func loadPendingInventoryAction() {
+        guard let scope else {
+            updatePendingInventoryActionState(.missing)
+            return
+        }
+        updatePendingInventoryActionState(pendingInventoryActionStore.readPendingInventoryAction(scope: scope))
+    }
+
+    public func retryPendingInventoryAction() async -> Bool {
+        guard let scope else {
+            errorMessage = "Choose a household before retrying this inventory action."
             return false
         }
+        guard case .record(let record) = pendingInventoryActionStore.readPendingInventoryAction(scope: scope),
+              record.scopeStorageKey == scope.storageKey else {
+            loadPendingInventoryAction()
+            errorMessage = "The saved inventory action could not be verified. No request was sent."
+            return false
+        }
+        updatePendingInventoryActionState(.record(record))
+        if await client.isOfflineMode {
+            errorMessage = "You're offline. Reconnect before retrying the saved inventory action."
+            return false
+        }
+        return await sendPendingInventoryAction(record, scope: scope)
+    }
+
+    private func submitInventoryAction(_ action: PendingInventoryAction) async -> Bool {
+        guard let scope else {
+            errorMessage = "A verified household is required before changing inventory."
+            return false
+        }
+        if await client.isOfflineMode {
+            errorMessage = "You're offline. Reconnect before changing inventory."
+            return false
+        }
+        switch pendingInventoryActionStore.readPendingInventoryAction(scope: scope) {
+        case .missing:
+            break
+        case .record(let record):
+            updatePendingInventoryActionState(.record(record))
+            errorMessage = "A saved inventory action needs an exact retry before another stock change."
+            return false
+        case .corrupt:
+            updatePendingInventoryActionState(.corrupt)
+            errorMessage = "A saved inventory action could not be read. No new request was sent."
+            return false
+        case .unavailable:
+            updatePendingInventoryActionState(.unavailable)
+            errorMessage = "Secure saved-request storage is unavailable. No stock change was sent."
+            return false
+        }
+        let record = PendingInventoryActionRecord(scopeStorageKey: scope.storageKey, action: action)
+        guard pendingInventoryActionStore.savePendingInventoryAction(record, scope: scope) else {
+            loadPendingInventoryAction()
+            errorMessage = "This device could not save a retry record, so inventory was not changed."
+            return false
+        }
+        updatePendingInventoryActionState(.record(record))
+        return await sendPendingInventoryAction(record, scope: scope)
+    }
+
+    private func sendPendingInventoryAction(_ record: PendingInventoryActionRecord,
+                                            scope: HouseholdScope) async -> Bool {
+        guard record.scopeStorageKey == scope.storageKey else {
+            errorMessage = "The saved inventory action belongs to a different household."
+            return false
+        }
+        isRecoveringPendingInventoryAction = true
+        errorMessage = nil
+        do {
+            switch record.action {
+            case .consume(let request):
+                let result = try await client.consumeProduct(
+                    productId: request.product_id, quantity: request.quantity, reason: request.reason,
+                    notes: request.notes, idempotencyKey: request.idempotency_key, expectedScope: scope
+                )
+                toastMessage = "Consumed \(String(format: "%.2f", result.total_consumed)) units"
+            case .discard(let batchID, let request):
+                _ = try await client.discardBatch(
+                    batchId: batchID, reason: request.reason, notes: request.notes, quantity: request.quantity,
+                    expectedUpdatedAt: request.expected_updated_at, idempotencyKey: request.idempotency_key,
+                    expectedScope: scope
+                )
+                toastMessage = "Discarded stock was recorded"
+            case .adjust(let batchID, let request):
+                _ = try await client.adjustBatch(
+                    batchId: batchID, newQuantity: request.new_remaining_quantity, reason: request.reason,
+                    notes: request.notes, expectedUpdatedAt: request.expected_updated_at,
+                    idempotencyKey: request.idempotency_key, expectedScope: scope
+                )
+                toastMessage = "Stock count adjustment saved"
+            }
+            if pendingInventoryActionStore.deletePendingInventoryAction(scope: scope) {
+                updatePendingInventoryActionState(.missing)
+            } else {
+                updatePendingInventoryActionState(.record(record))
+                toastMessage = "Inventory changed. Retry the saved action to confirm it safely."
+            }
+            await refreshInventoryAfterStockChange()
+            isRecoveringPendingInventoryAction = false
+            return true
+        } catch {
+            if Self.isDefinitiveNoWriteFailure(error),
+               pendingInventoryActionStore.deletePendingInventoryAction(scope: scope) {
+                updatePendingInventoryActionState(.missing)
+                errorMessage = "The server rejected this request before changing stock. Refresh the batch and try again. \(error.localizedDescription)"
+            } else {
+                updatePendingInventoryActionState(.record(record))
+                errorMessage = "We couldn't confirm the result. Retry this exact saved action before editing it."
+            }
+            isRecoveringPendingInventoryAction = false
+            return false
+        }
+    }
+
+    private func refreshInventoryAfterStockChange() async {
+        await loadData()
+        if let selectedProduct, let updated = products.first(where: { $0.id == selectedProduct.id }) {
+            await selectProduct(updated)
+        }
+    }
+
+    private func updatePendingInventoryActionState(_ state: PendingInventoryActionReadResult) {
+        pendingInventoryActionState = state
+        if case .record(let record) = state {
+            pendingInventoryActionRecord = record
+        } else {
+            pendingInventoryActionRecord = nil
+        }
+    }
+
+    private static func isDefinitiveNoWriteFailure(_ error: Error) -> Bool {
+        guard case APIError.http(let status, _, _) = error else { return false }
+        return [400, 404, 409, 422].contains(status)
     }
     
     public func updateProductMetadata(productId: Int, update: ProductUpdate) async -> Bool {

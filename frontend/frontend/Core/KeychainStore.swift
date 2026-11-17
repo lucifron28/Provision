@@ -30,6 +30,7 @@ public final class KeychainStore: CredentialStore {
     private let pendingShoppingPrefix = "pendingRecipeShopping-"
     private let pendingManualInventoryPrefix = "pendingManualInventoryIntake-"
     private let pendingPurchasedGroceriesPrefix = "pendingPurchasedGroceries-"
+    private let pendingInventoryActionPrefix = "pendingInventoryAction-"
     
     private init() {
         service = APIEnvironment.keychainServiceIdentifier
@@ -254,6 +255,54 @@ public final class KeychainStore: CredentialStore {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: pendingPurchasedGroceriesPrefix + scope.storageKey
+        ]
+        let status = SecItemDelete(query as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
+    }
+
+    @discardableResult
+    public func savePendingInventoryAction(_ record: PendingInventoryActionRecord,
+                                           scope: HouseholdScope) -> Bool {
+        guard record.scopeStorageKey == scope.storageKey,
+              let data = try? JSONEncoder().encode(record) else { return false }
+        let item: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: pendingInventoryActionPrefix + scope.storageKey,
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        ]
+        return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
+    }
+
+    public func readPendingInventoryAction(scope: HouseholdScope) -> PendingInventoryActionReadResult {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: pendingInventoryActionPrefix + scope.storageKey,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        return Self.pendingInventoryActionReadResult(status: status, data: result as? Data, scope: scope)
+    }
+
+    static func pendingInventoryActionReadResult(status: OSStatus, data: Data?,
+                                                 scope: HouseholdScope) -> PendingInventoryActionReadResult {
+        if status == errSecItemNotFound { return .missing }
+        guard status == errSecSuccess, let data else { return .unavailable }
+        guard let record = try? JSONDecoder().decode(PendingInventoryActionRecord.self, from: data),
+              record.scopeStorageKey == scope.storageKey else { return .corrupt }
+        return .record(record)
+    }
+
+    @discardableResult
+    public func deletePendingInventoryAction(scope: HouseholdScope) -> Bool {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: pendingInventoryActionPrefix + scope.storageKey
         ]
         let status = SecItemDelete(query as CFDictionary)
         return status == errSecSuccess || status == errSecItemNotFound

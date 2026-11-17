@@ -8,7 +8,7 @@ public struct ProductDetailView: View {
     
     @State private var showingConsumeSheet: Bool = false
     @State private var showingAdjustSheet: Bool = false
-    @State private var showingDiscardAlert: Bool = false
+    @State private var showingDiscardSheet: Bool = false
     
     @State private var showingAddStockSheet: Bool = false
     @State private var showingEditProductSheet: Bool = false
@@ -22,8 +22,12 @@ public struct ProductDetailView: View {
     @State private var adjustAmountText: String = "1"
     @State private var adjustReason: String = "Physical inventory count"
     @State private var adjustErrorMessage: String? = nil
+    @State private var adjustExpectedUpdatedAt: String? = nil
     
     @State private var selectedBatchForDiscard: InventoryBatch? = nil
+    @State private var discardAmountText: String = ""
+    @State private var discardReason: String = "Spoiled / Expired"
+    @State private var discardErrorMessage: String? = nil
     @State private var showingDiscardBatchSelection: Bool = false
     @State private var isDiscarding: Bool = false
     @State private var isConsuming: Bool = false
@@ -103,38 +107,19 @@ public struct ProductDetailView: View {
         .sheet(isPresented: $showingAdjustSheet) {
             adjustSheet
         }
+        .sheet(isPresented: $showingDiscardSheet) {
+            discardSheet
+        }
         .confirmationDialog("Select Batch to Discard", isPresented: $showingDiscardBatchSelection, titleVisibility: .visible) {
             ForEach(viewModel.productBatches) { batch in
                 Button("\(formatQuantity(batch.remaining_quantity)) \(currentProduct.displayUnit) • Exp: \(batch.displayExpiration)") {
-                    selectedBatchForDiscard = batch
-                    showingDiscardAlert = true
+                    prepareDiscard(batch)
                 }
+                .accessibilityIdentifier("inventory-discard-select-batch-\(batch.id)")
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Choose the specific inventory batch you want to log as discarded waste.")
-        }
-        .alert("Discard Batch?", isPresented: $showingDiscardAlert) {
-            Button("Cancel", role: .cancel) {}
-            Button("Discard", role: .destructive) {
-                if let batch = selectedBatchForDiscard, !isDiscarding {
-                    isDiscarding = true
-                    Task {
-                        let success = await viewModel.discardBatch(batchId: batch.id)
-                        isDiscarding = false
-                        if success {
-                            HapticFeedback.warning()
-                        }
-                    }
-                }
-            }
-            .disabled(isDiscarding)
-        } message: {
-            if let batch = selectedBatchForDiscard {
-                Text("Are you sure you want to discard \(formatQuantity(batch.remaining_quantity)) \(currentProduct.displayUnit) expiring \(batch.displayExpiration)? This will log a waste event.")
-            } else {
-                Text("Are you sure you want to discard this batch?")
-            }
         }
         .overlay(alignment: .bottom) {
             if let msg = viewModel.toastMessage {
@@ -157,7 +142,7 @@ public struct ProductDetailView: View {
                 Text("Invalid stock unit: \"\(currentProduct.displayUnit)\"")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(ProvisionTheme.textPrimary)
-                Text("Edit product to correct it before adding stock or consuming.")
+                Text("Use whole numbers to consume, discard, or adjust this item. Edit the unit to add stock or record fractional amounts.")
                     .font(.system(size: 11))
                     .foregroundStyle(ProvisionTheme.textSecondary)
             }
@@ -265,20 +250,19 @@ public struct ProductDetailView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(currentProduct.isOutOfStock || !isUnitValid ? ProvisionTheme.surfaceSecondary : ProvisionTheme.provisionGreen)
-                .foregroundStyle(currentProduct.isOutOfStock || !isUnitValid ? ProvisionTheme.textTertiary : ProvisionTheme.onAccent)
+                .background(currentProduct.isOutOfStock ? ProvisionTheme.surfaceSecondary : ProvisionTheme.provisionGreen)
+                .foregroundStyle(currentProduct.isOutOfStock ? ProvisionTheme.textTertiary : ProvisionTheme.onAccent)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .shadow(color: currentProduct.isOutOfStock || !isUnitValid ? .clear : ProvisionTheme.provisionGreen.opacity(0.25), radius: 6, y: 3)
+                .shadow(color: currentProduct.isOutOfStock ? .clear : ProvisionTheme.provisionGreen.opacity(0.25), radius: 6, y: 3)
             }
-            .disabled(currentProduct.isOutOfStock || !isUnitValid)
+            .disabled(currentProduct.isOutOfStock)
             
             // Secondary Actions: Discard and Adjust
             HStack(spacing: 10) {
                 // Discard Button
                 Button {
                     if viewModel.productBatches.count == 1, let only = viewModel.productBatches.first {
-                        selectedBatchForDiscard = only
-                        showingDiscardAlert = true
+                        prepareDiscard(only)
                     } else if viewModel.productBatches.count > 1 {
                         showingDiscardBatchSelection = true
                     }
@@ -300,12 +284,14 @@ public struct ProductDetailView: View {
                     )
                 }
                 .disabled(viewModel.productBatches.isEmpty || isDiscarding)
+                .accessibilityIdentifier("inventory-discard-action")
                 
                 // Adjust Button
                 Button {
                     if let earliest = viewModel.productBatches.first {
                         adjustBatchId = earliest.id
                         adjustAmountText = formatQuantity(earliest.remaining_quantity)
+                        adjustExpectedUpdatedAt = earliest.updated_at
                         adjustErrorMessage = nil
                         showingAdjustSheet = true
                     }
@@ -422,6 +408,7 @@ public struct ProductDetailView: View {
                 Text("\(formatQuantity(batch.remaining_quantity)) \(currentProduct.displayUnit)")
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(ProvisionTheme.textPrimary)
+                    .accessibilityIdentifier("inventory-batch-quantity-\(batch.id)")
                 
                 Menu {
                     Button {
@@ -433,6 +420,7 @@ public struct ProductDetailView: View {
                     Button {
                         adjustBatchId = batch.id
                         adjustAmountText = formatQuantity(batch.remaining_quantity)
+                        adjustExpectedUpdatedAt = batch.updated_at
                         adjustErrorMessage = nil
                         showingAdjustSheet = true
                     } label: {
@@ -440,8 +428,7 @@ public struct ProductDetailView: View {
                     }
                     
                     Button(role: .destructive) {
-                        selectedBatchForDiscard = batch
-                        showingDiscardAlert = true
+                        prepareDiscard(batch)
                     } label: {
                         Label("Discard Batch", systemImage: "trash")
                     }
@@ -506,8 +493,7 @@ public struct ProductDetailView: View {
             
             Menu {
                 Button(role: .destructive) {
-                    selectedBatchForDiscard = batch
-                    showingDiscardAlert = true
+                    prepareDiscard(batch)
                 } label: {
                     Label("Discard Batch", systemImage: "trash")
                 }
@@ -521,6 +507,7 @@ public struct ProductDetailView: View {
                 Button {
                     adjustBatchId = batch.id
                     adjustAmountText = formatQuantity(batch.remaining_quantity)
+                    adjustExpectedUpdatedAt = batch.updated_at
                     adjustErrorMessage = nil
                     showingAdjustSheet = true
                 } label: {
@@ -536,8 +523,129 @@ public struct ProductDetailView: View {
         .padding(14)
         .provisionCard()
     }
+
+    private func prepareDiscard(_ batch: InventoryBatch) {
+        selectedBatchForDiscard = batch
+        discardAmountText = formatQuantity(batch.remaining_quantity)
+        discardReason = "Spoiled / Expired"
+        discardErrorMessage = nil
+        showingDiscardSheet = true
+    }
     
     // MARK: - Sheets
+
+    private var discardSheet: some View {
+        NavigationStack {
+            Form {
+                if let batch = selectedBatchForDiscard {
+                    Section("Selected batch") {
+                        LabeledContent("Available", value: "\(formatQuantity(batch.remaining_quantity)) \(currentProduct.displayUnit)")
+                        LabeledContent("Expires", value: batch.displayExpiration)
+                    }
+                }
+                Section("Discarded quantity") {
+                    if let batch = selectedBatchForDiscard, ProductUnits.isCount(currentProduct.unit) {
+                        HStack {
+                            Button {
+                                adjustDiscardQuantity(by: -1, maximum: batch.remaining_quantity)
+                            } label: {
+                                Image(systemName: "minus.circle.fill").font(.title2)
+                            }
+                            .disabled((Double(discardAmountText) ?? 1) <= 1)
+                            .accessibilityLabel("Decrease discarded quantity")
+                            .accessibilityIdentifier("discard-quantity-decrement")
+
+                            TextField("Quantity", text: $discardAmountText)
+                                .keyboardType(.numberPad)
+                                .multilineTextAlignment(.center)
+                                .accessibilityIdentifier("discard-quantity-field")
+
+                            Button {
+                                adjustDiscardQuantity(by: 1, maximum: batch.remaining_quantity)
+                            } label: {
+                                Image(systemName: "plus.circle.fill").font(.title2)
+                            }
+                            .disabled((Double(discardAmountText) ?? 0) >= batch.remaining_quantity)
+                            .accessibilityLabel("Increase discarded quantity")
+                            .accessibilityIdentifier("discard-quantity-increment")
+                        }
+                    } else {
+                        TextField("Quantity", text: $discardAmountText)
+                            .keyboardType(.decimalPad)
+                            .accessibilityIdentifier("discard-quantity-field")
+                    }
+                    TextField("Reason", text: $discardReason)
+                        .accessibilityIdentifier("discard-reason-field")
+                }
+                if let discardErrorMessage {
+                    Section {
+                        Text(discardErrorMessage)
+                            .foregroundStyle(ProvisionTheme.redAlert)
+                    }
+                }
+            }
+            .navigationTitle("Record discarded stock")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { showingDiscardSheet = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Confirm discard", role: .destructive) {
+                        confirmDiscard()
+                    }
+                    .disabled(isDiscarding)
+                    .accessibilityIdentifier("discard-confirm-button")
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func confirmDiscard() {
+        discardErrorMessage = nil
+        guard let batch = selectedBatchForDiscard else {
+            discardErrorMessage = "Choose the batch to update."
+            return
+        }
+        guard let quantity = Double(discardAmountText.replacingOccurrences(of: ",", with: ".")),
+              quantity.isFinite, quantity > 0 else {
+            discardErrorMessage = "Enter the actual quantity discarded."
+            return
+        }
+        guard quantity <= batch.remaining_quantity else {
+            discardErrorMessage = "Discarded quantity cannot exceed the available amount."
+            return
+        }
+                    if ProductUnits.isCount(currentProduct.unit) && floor(quantity) != quantity {
+            discardErrorMessage = "Enter a whole number for this unit."
+            return
+        }
+        guard viewModel.isPreview || batch.updated_at != nil else {
+            discardErrorMessage = "Refresh this batch before recording a change."
+            return
+        }
+        guard !isDiscarding else { return }
+        isDiscarding = true
+        Task {
+            let succeeded = await viewModel.discardBatch(
+                batchId: batch.id, quantity: quantity, reason: discardReason,
+                expectedUpdatedAt: batch.updated_at
+            )
+            isDiscarding = false
+            if succeeded {
+                HapticFeedback.warning()
+                showingDiscardSheet = false
+            } else {
+                discardErrorMessage = viewModel.errorMessage
+            }
+        }
+    }
+
+    private func adjustDiscardQuantity(by change: Double, maximum: Double) {
+        let current = Double(discardAmountText) ?? maximum
+        discardAmountText = formatQuantity(min(maximum, max(1, current + change)))
+    }
     
     private var consumeSheet: some View {
         NavigationStack {
@@ -570,12 +678,13 @@ public struct ProductDetailView: View {
                             .keyboardType(ProductUnits.isMeasured(currentProduct.unit) ? .decimalPad : .numberPad)
                             .font(.system(size: 36, weight: .bold, design: .serif))
                             .multilineTextAlignment(.trailing)
+                            .accessibilityIdentifier("inventory-consume-quantity-field")
                         Text(currentProduct.displayUnit)
                             .font(.system(size: 20, weight: .bold))
                             .foregroundStyle(ProvisionTheme.provisionGreen)
                     }
                     
-                    if ProductUnits.isValid(currentProduct.unit) && ProductUnits.isCount(currentProduct.unit) {
+                    if ProductUnits.isCount(currentProduct.unit) {
                         Stepper("", onIncrement: {
                             let cur = Int(Double(consumeAmountText.replacingOccurrences(of: ",", with: ".")) ?? 0)
                             let maxVal = Int(currentProduct.total_remaining_quantity ?? 1000)
@@ -618,7 +727,7 @@ public struct ProductDetailView: View {
                         consumeErrorMessage = "Cannot consume more than available stock (\(formatQuantity(maxAvailable)) \(currentProduct.displayUnit))."
                         return
                     }
-                    if ProductUnits.isValid(currentProduct.unit) && ProductUnits.isCount(currentProduct.unit) && floor(amount) != amount {
+                    if ProductUnits.isCount(currentProduct.unit) && floor(amount) != amount {
                         consumeErrorMessage = "Enter a whole number for this unit."
                         return
                     }
@@ -656,6 +765,7 @@ public struct ProductDetailView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .disabled(isConsuming)
+                .accessibilityIdentifier("inventory-consume-confirm-button")
             }
             .padding(20)
             .background(ProvisionTheme.background.ignoresSafeArea())
@@ -693,12 +803,13 @@ public struct ProductDetailView: View {
                             .keyboardType(ProductUnits.isMeasured(currentProduct.unit) ? .decimalPad : .numberPad)
                             .font(.system(size: 36, weight: .bold, design: .serif))
                             .multilineTextAlignment(.trailing)
+                            .accessibilityIdentifier("inventory-adjust-quantity-field")
                         Text(currentProduct.displayUnit)
                             .font(.system(size: 20, weight: .bold))
                             .foregroundStyle(ProvisionTheme.textPrimary)
                     }
                     
-                    if ProductUnits.isValid(currentProduct.unit) && ProductUnits.isCount(currentProduct.unit) {
+                    if ProductUnits.isCount(currentProduct.unit) {
                         Stepper("", onIncrement: {
                             let cur = Int(Double(adjustAmountText.replacingOccurrences(of: ",", with: ".")) ?? 0)
                             adjustAmountText = "\(cur + 1)"
@@ -727,8 +838,16 @@ public struct ProductDetailView: View {
                         adjustErrorMessage = "Please enter a valid amount."
                         return
                     }
-                    if ProductUnits.isValid(currentProduct.unit) && ProductUnits.isCount(currentProduct.unit) && floor(newAmount) != newAmount {
+                    if ProductUnits.isCount(currentProduct.unit) && floor(newAmount) != newAmount {
                         adjustErrorMessage = "Enter a whole number for this unit."
+                        return
+                    }
+                    guard !adjustReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                        adjustErrorMessage = "Enter a reason for this stock count."
+                        return
+                    }
+                    guard viewModel.isPreview || adjustExpectedUpdatedAt != nil else {
+                        adjustErrorMessage = "Refresh this batch before recording a change."
                         return
                     }
                     
@@ -760,7 +879,8 @@ public struct ProductDetailView: View {
                         let success = await viewModel.adjustBatch(
                             batchId: adjustBatchId,
                             newQuantity: parsed,
-                            reason: adjustReason
+                            reason: adjustReason,
+                            expectedUpdatedAt: adjustExpectedUpdatedAt
                         )
                         isAdjusting = false
                         if success {

@@ -764,6 +764,41 @@ final class CookWithPipUITests: XCTestCase {
         capture("Inventory_Quick_Add_Minimal", app: app)
     }
 
+    func testPartialInventoryDiscardUsesActualCountAndUpdatesStock() {
+        let app = launch(screen: "inventory-stock-actions")
+        let discard = element("inventory-discard-action", in: app)
+        XCTAssertTrue(discard.waitForExistence(timeout: 10))
+        XCTAssertTrue(discard.isHittable)
+        discard.tap()
+
+        let firstBatch = element("inventory-discard-select-batch-3", in: app)
+        XCTAssertTrue(firstBatch.waitForExistence(timeout: 5))
+        firstBatch.tap()
+
+        let quantity = element("discard-quantity-field", in: app)
+        XCTAssertTrue(quantity.waitForExistence(timeout: 5))
+        XCTAssertEqual(quantity.value as? String, "4")
+        let decrease = element("discard-quantity-decrement", in: app)
+        XCTAssertTrue(decrease.isHittable)
+        decrease.tap()
+        XCTAssertEqual(quantity.value as? String, "3", "The user can record a partial count of discarded stock")
+
+        let reason = element("discard-reason-field", in: app)
+        XCTAssertTrue(reason.waitForExistence(timeout: 5))
+        XCTAssertEqual(reason.value as? String, "Spoiled / Expired")
+        let confirm = element("discard-confirm-button", in: app)
+        XCTAssertTrue(confirm.isHittable)
+        confirm.tap()
+
+        let remaining = element("inventory-batch-quantity-3", in: app)
+        let updatedQuantity = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label == %@", "3 cans"), object: remaining
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [updatedQuantity], timeout: 10), .completed,
+                       "The remaining batch quantity reflects the partial disposal")
+        capture("Inventory_Partial_Discard_Recorded", app: app)
+    }
+
     func testPurchasedGroceriesReviewRequiresExplicitDecisions() {
         let app = launch(scenario: "shopping-reconciliation")
         let reviewButton = element("shopping-review-purchased", in: app)

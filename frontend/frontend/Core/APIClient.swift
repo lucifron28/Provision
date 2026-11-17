@@ -788,35 +788,44 @@ public actor APIClient {
     
     // MARK: - Consume & Discard Operations
     
-    public func consumeProduct(productId: Int, quantity: Double, reason: String? = nil, notes: String? = nil, expectedScope: HouseholdScope? = nil) async throws -> ConsumeResponse {
+    public func consumeProduct(productId: Int, quantity: Double, reason: String? = nil, notes: String? = nil,
+                               idempotencyKey: String = UUID().uuidString,
+                               expectedScope: HouseholdScope? = nil) async throws -> ConsumeResponse {
         let url = baseURL.appendingPathComponent("inventory/consume")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        let body = ConsumeRequest(product_id: productId, quantity: quantity, reason: reason, notes: notes)
+        let body = ConsumeRequest(product_id: productId, quantity: quantity, reason: reason, notes: notes,
+                                  idempotency_key: idempotencyKey)
         request.httpBody = try encoder.encode(body)
         return try await execute(request, expectedScope: expectedScope)
     }
     
-    public func discardBatch(batchId: Int, reason: String? = nil, notes: String? = nil, expectedScope: HouseholdScope? = nil) async throws -> InventoryBatch {
+    public func discardBatch(batchId: Int, reason: String? = nil, notes: String? = nil, quantity: Double? = nil,
+                             expectedUpdatedAt: String? = nil, idempotencyKey: String = UUID().uuidString,
+                             expectedScope: HouseholdScope? = nil) async throws -> InventoryBatch {
         let url = baseURL.appendingPathComponent("inventory/batches/\(batchId)/discard")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        let body = DiscardRequest(reason: reason, notes: notes)
+        let body = DiscardRequest(reason: reason, notes: notes, quantity: quantity,
+                                  expected_updated_at: expectedUpdatedAt, idempotency_key: idempotencyKey)
         request.httpBody = try encoder.encode(body)
         return try await execute(request, expectedScope: expectedScope)
     }
     
-    public func adjustBatch(batchId: Int, newQuantity: Double, reason: String, notes: String? = nil, expectedScope: HouseholdScope? = nil) async throws -> InventoryBatch {
+    public func adjustBatch(batchId: Int, newQuantity: Double, reason: String, notes: String? = nil,
+                            expectedUpdatedAt: String? = nil, idempotencyKey: String = UUID().uuidString,
+                            expectedScope: HouseholdScope? = nil) async throws -> InventoryBatch {
         let url = baseURL.appendingPathComponent("inventory/batches/\(batchId)/adjust")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        let body = AdjustmentRequest(new_remaining_quantity: newQuantity, reason: reason, notes: notes)
+        let body = AdjustmentRequest(new_remaining_quantity: newQuantity, reason: reason, notes: notes,
+                                     expected_updated_at: expectedUpdatedAt, idempotency_key: idempotencyKey)
         request.httpBody = try encoder.encode(body)
         return try await execute(request, expectedScope: expectedScope)
     }

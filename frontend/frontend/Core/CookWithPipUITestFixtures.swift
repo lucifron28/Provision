@@ -652,7 +652,11 @@ struct CookWithPipUITestHost: View {
                 ShoppingItem(id: 9982, name: "Synthetic mangga", quantity: 3, unit: "pcs",
                              is_bought: true, updated_at: "2026-11-18T10:01:00Z")
             ]
-            shoppingViewModel.products = [Self.product]
+            shoppingViewModel.products = [Product(
+                id: 9903, name: "Test Product: Gata", brand: "Synthetic fixture",
+                category: "Canned goods", package_size: 400, unit: "mL",
+                updated_at: "2026-11-09T00:00:00Z"
+            )]
             shoppingViewModel.locations = [StorageLocation(id: 9904, name: "Pantry", location_type: "pantry")]
         }
         _shoppingViewModel = StateObject(wrappedValue: shoppingViewModel)
@@ -689,7 +693,9 @@ struct CookWithPipUITestHost: View {
                 NavigationStack {
                     ShoppingListView(viewModel: shoppingViewModel)
                 }
-            } else if Self.launchArgument("-pip-ui-screen") == "product-chat-context" {
+            } else if ["product-chat-context", "inventory-stock-actions"].contains(
+                Self.launchArgument("-pip-ui-screen") ?? ""
+            ) {
                 NavigationStack {
                     ProductDetailView(
                         viewModel: productViewModel,
