@@ -25,9 +25,13 @@ def test_fefo_consumption_multi_batch(client):
         "product_id": product_id,
         "quantity": 4.0,
         "reason": "Family dinner recipe",
+        "idempotency_key": "family-dinner-0001",
     }
     res = client.post("/api/v1/inventory/consume", json=consume_payload)
+    replay = client.post("/api/v1/inventory/consume", json=consume_payload)
     assert res.status_code == 200
+    assert replay.status_code == 200
+    assert replay.json() == res.json()
     data = res.json()
     assert data["total_consumed"] == 4.0
     assert data["new_total_stock"] == 4.0  # 8 - 4 = 4
@@ -50,6 +54,12 @@ def test_fefo_consumption_multi_batch(client):
     assert ev_res.status_code == 200
     events = ev_res.json()
     assert len(events) == 2
+
+    changed_payload = {**consume_payload, "quantity": 1.0}
+    conflict = client.post("/api/v1/inventory/consume", json=changed_payload)
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"] == "IDEMPOTENCY_KEY_REUSED"
+    assert len(client.get("/api/v1/inventory/events?event_type=CONSUMED").json()) == 2
 
 
 def test_insufficient_stock_error(client):
@@ -109,3 +119,129 @@ def test_discard_and_adjust_batch(client):
     assert ev_adj.status_code == 200
     assert len(ev_adj.json()) == 1
     assert "delta: +2.00" in ev_adj.json()[0]["reason"]
+
+
+def test_partial_discard_and_adjustment_retries_preserve_distinct_events(client):
+    product = client.post("/api/v1/products/", json={"name": "Flour", "unit": "kg"}).json()
+    batch = client.post(
+        "/api/v1/batches/",
+        json={"product_id": product["id"], "original_quantity": "2.50"},
+    ).json()
+
+    discard_request = {
+        "quantity": "0.75",
+        "reason": "Spilled some flour",
+        "expected_updated_at": batch["updated_at"],
+        "idempotency_key": "flour-discard-0001",
+    }
+    discard = client.post(f"/api/v1/inventory/batches/{batch['id']}/discard", json=discard_request)
+    discard_retry = client.post(f"/api/v1/inventory/batches/{batch['id']}/discard", json=discard_request)
+    assert discard.status_code == 200
+    assert discard_retry.json() == discard.json()
+    assert discard.json()["remaining_quantity"] == 1.75
+    discarded_events = client.get(
+        f"/api/v1/inventory/events?batch_id={batch['id']}&event_type=DISCARDED"
+    ).json()
+    assert len(discarded_events) == 1
+    assert discarded_events[0]["quantity"] == 0.75
+
+    adjustment_request = {
+        "new_remaining_quantity": "1.25",
+        "reason": "Checked the bag on the scale",
+        "expected_updated_at": discard.json()["updated_at"],
+        "idempotency_key": "flour-adjust-0001",
+    }
+    adjustment = client.post(
+        f"/api/v1/inventory/batches/{batch['id']}/adjust", json=adjustment_request
+    )
+    adjustment_retry = client.post(
+        f"/api/v1/inventory/batches/{batch['id']}/adjust", json=adjustment_request
+    )
+    assert adjustment.status_code == 200
+    assert adjustment_retry.json() == adjustment.json()
+    assert adjustment.json()["remaining_quantity"] == 1.25
+    adjustment_events = client.get(
+        f"/api/v1/inventory/events?batch_id={batch['id']}&event_type=ADJUSTMENT"
+    ).json()
+    assert len(adjustment_events) == 1
+    assert adjustment_events[0]["quantity"] == -0.5
+
+
+def test_stock_actions_reject_stale_batch_updates_and_fractional_count_use(client):
+    product = client.post("/api/v1/products/", json={"name": "Eggs", "unit": "pcs"}).json()
+    batch = client.post(
+        "/api/v1/batches/",
+        json={"product_id": product["id"], "original_quantity": 6},
+    ).json()
+    fractional = client.post(
+        "/api/v1/inventory/consume",
+        json={"product_id": product["id"], "quantity": "1.50", "idempotency_key": "egg-use-0001"},
+    )
+    valid_consume = client.post(
+        "/api/v1/inventory/consume",
+        json={"product_id": product["id"], "quantity": "1.00", "idempotency_key": "egg-use-0002"},
+    )
+    latest_batch = client.get(f"/api/v1/batches/{batch['id']}").json()
+    stale_adjustment = client.post(
+        f"/api/v1/inventory/batches/{batch['id']}/adjust",
+        json={
+            "new_remaining_quantity": 5,
+            "reason": "Old count",
+            "expected_updated_at": batch["updated_at"],
+            "idempotency_key": "egg-adjust-0001",
+        },
+    )
+
+    assert fractional.status_code == 400
+    assert "whole-number" in fractional.json()["detail"]
+    assert valid_consume.status_code == 200
+    assert stale_adjustment.status_code == 409
+    assert stale_adjustment.json()["detail"] == "INVENTORY_BATCH_CHANGED"
+    assert latest_batch["remaining_quantity"] == 5.0
+    assert len(client.get(f"/api/v1/inventory/events?batch_id={batch['id']}&event_type=ADJUSTMENT").json()) == 0
+
+
+def test_unrecognized_product_units_are_treated_as_count_based(client):
+    product = client.post(
+        "/api/v1/products/", json={"name": "Unknown scoop unit", "unit": "scoop"}
+    ).json()
+    batch = client.post(
+        "/api/v1/batches/",
+        json={"product_id": product["id"], "original_quantity": 2},
+    ).json()
+
+    response = client.post(
+        "/api/v1/inventory/consume",
+        json={"product_id": product["id"], "quantity": "0.5", "idempotency_key": "unknown-scoop-0001"},
+    )
+
+    assert response.status_code == 400
+    assert "whole-number" in response.json()["detail"]
+    unchanged = client.get(f"/api/v1/batches/{batch['id']}").json()
+    assert unchanged["remaining_quantity"] == 2
+    assert client.get(
+        f"/api/v1/inventory/events?batch_id={batch['id']}&event_type=CONSUMED"
+    ).json() == []
+
+
+def test_stock_action_reasons_cannot_be_blank(client):
+    product = client.post(
+        "/api/v1/products/", json={"name": "Blank reason test", "unit": "kg"}
+    ).json()
+    batch = client.post(
+        "/api/v1/batches/",
+        json={"product_id": product["id"], "original_quantity": 2},
+    ).json()
+
+    discard = client.post(
+        f"/api/v1/inventory/batches/{batch['id']}/discard",
+        json={"quantity": 1, "reason": "   "},
+    )
+    adjustment = client.post(
+        f"/api/v1/inventory/batches/{batch['id']}/adjust",
+        json={"new_remaining_quantity": 1, "reason": "   "},
+    )
+
+    assert discard.status_code == 422
+    assert adjustment.status_code == 422
+    assert client.get(f"/api/v1/batches/{batch['id']}").json()["remaining_quantity"] == 2

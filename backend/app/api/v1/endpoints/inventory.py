@@ -48,11 +48,12 @@ def create_manual_intake(
 @router.post("/consume", response_model=ConsumeResponse)
 def consume_product(
     req: ConsumeRequest,
+    current_user: User = Depends(get_current_user),
     household_id: int = Depends(get_current_household_id_for_write),
     db: Session = Depends(get_db),
 ):
     try:
-        return InventoryService.consume_product_fefo(db, household_id, req)
+        return InventoryService.consume_product_fefo(db, household_id, req, actor_id=current_user.id)
     except ValueError as e:
         detail = str(e)
         status_code = status.HTTP_404_NOT_FOUND if "not found" in detail.lower() else status.HTTP_400_BAD_REQUEST
@@ -63,11 +64,12 @@ def consume_product(
 def discard_batch(
     batch_id: int,
     req: DiscardRequest,
+    current_user: User = Depends(get_current_user),
     household_id: int = Depends(get_current_household_id_for_write),
     db: Session = Depends(get_db),
 ):
     try:
-        return InventoryService.discard_batch(db, household_id, batch_id, req)
+        return InventoryService.discard_batch(db, household_id, batch_id, req, actor_id=current_user.id)
     except ValueError as e:
         detail = str(e)
         status_code = status.HTTP_404_NOT_FOUND if "not found" in detail.lower() else status.HTTP_400_BAD_REQUEST
@@ -78,11 +80,12 @@ def discard_batch(
 def adjust_batch(
     batch_id: int,
     req: AdjustmentRequest,
+    current_user: User = Depends(get_current_user),
     household_id: int = Depends(get_current_household_id_for_write),
     db: Session = Depends(get_db),
 ):
     try:
-        return InventoryService.adjust_batch(db, household_id, batch_id, req)
+        return InventoryService.adjust_batch(db, household_id, batch_id, req, actor_id=current_user.id)
     except ValueError as e:
         detail = str(e)
         status_code = status.HTTP_404_NOT_FOUND if "not found" in detail.lower() else status.HTTP_400_BAD_REQUEST
