@@ -630,9 +630,11 @@ struct CookWithPipUITestHost: View {
     }
     @State private var service: CookWithPipUITestService
     @State private var showingShoppingList = false
+    @State private var showingQuickAddInventory = false
     @State private var loadingReleased = false
     @StateObject private var shoppingViewModel: ShoppingViewModel
     @StateObject private var productViewModel: InventoryViewModel
+    @StateObject private var quickAddInventoryViewModel: InventoryViewModel
     @State private var pendingShoppingStore: any PendingRecipeShoppingStore
 
     init() {
@@ -665,6 +667,10 @@ struct CookWithPipUITestHost: View {
         productViewModel.selectedProduct = PreviewData.centuryTuna
         productViewModel.productBatches = PreviewData.centuryTunaBatches
         _productViewModel = StateObject(wrappedValue: productViewModel)
+        let quickAddViewModel = InventoryViewModel(isPreview: true, scope: scope)
+        quickAddViewModel.products = PreviewData.products
+        quickAddViewModel.locations = PreviewData.locations
+        _quickAddInventoryViewModel = StateObject(wrappedValue: quickAddViewModel)
         let pendingStore: any PendingRecipeShoppingStore = Self.launchArgument("-pip-ui-use-keychain") == "1"
             ? KeychainStore.shared
             : CookWithPipUITestPendingShoppingStore()
@@ -709,6 +715,7 @@ struct CookWithPipUITestHost: View {
                     viewModel: HomeViewModel(isPreview: true),
                     authVM: PreviewData.makeAuthViewModel(),
                     onNavigateToShopping: { showingShoppingList = true },
+                    onQuickAddGroceries: { showingQuickAddInventory = true },
                     onShoppingConfirmed: {
                         shoppingViewModel.items = (try? await service.fetchShoppingListFromServer(scope: scope)) ?? []
                     },
@@ -719,6 +726,9 @@ struct CookWithPipUITestHost: View {
                     cookWithPipPendingStore: pendingShoppingStore
                 )
             }
+        }
+        .sheet(isPresented: $showingQuickAddInventory) {
+            AddInventoryView(viewModel: quickAddInventoryViewModel)
         }
         .overlay(alignment: .topTrailing) {
             if Self.launchArgument("-pip-ui-scenario") == "recipes-loading" {

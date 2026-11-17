@@ -5,6 +5,7 @@ public struct HomeView: View {
     @ObservedObject var authVM: AuthViewModel
     var onNavigateToInventory: (InventoryQuickFilter?) -> Void
     var onNavigateToShopping: () -> Void
+    var onQuickAddGroceries: () -> Void
     var onShoppingConfirmed: () async -> Void
 
     @State private var showingProfileSheet: Bool = false
@@ -25,6 +26,7 @@ public struct HomeView: View {
         authVM: AuthViewModel,
         onNavigateToInventory: @escaping (InventoryQuickFilter?) -> Void = { _ in },
         onNavigateToShopping: @escaping () -> Void = {},
+        onQuickAddGroceries: @escaping () -> Void = {},
         onShoppingConfirmed: @escaping () async -> Void = {},
         cookWithPipScope: HouseholdScope? = nil,
         cookWithPipService: any CookWithPipService = APIClient.shared,
@@ -36,6 +38,7 @@ public struct HomeView: View {
         self.authVM = authVM
         self.onNavigateToInventory = onNavigateToInventory
         self.onNavigateToShopping = onNavigateToShopping
+        self.onQuickAddGroceries = onQuickAddGroceries
         self.onShoppingConfirmed = onShoppingConfirmed
         self.cookWithPipScope = cookWithPipScope
         self.cookWithPipService = cookWithPipService
@@ -49,6 +52,7 @@ public struct HomeView: View {
         authVM: AuthViewModel,
         onNavigateToInventory: @escaping () -> Void,
         onNavigateToShopping: @escaping () -> Void = {},
+        onQuickAddGroceries: @escaping () -> Void = {},
         onShoppingConfirmed: @escaping () async -> Void = {},
         cookWithPipScope: HouseholdScope? = nil,
         cookWithPipService: any CookWithPipService = APIClient.shared,
@@ -61,6 +65,7 @@ public struct HomeView: View {
             authVM: authVM,
             onNavigateToInventory: { _ in onNavigateToInventory() },
             onNavigateToShopping: onNavigateToShopping,
+            onQuickAddGroceries: onQuickAddGroceries,
             onShoppingConfirmed: onShoppingConfirmed,
             cookWithPipScope: cookWithPipScope,
             cookWithPipService: cookWithPipService,
@@ -82,6 +87,7 @@ public struct HomeView: View {
                                 || viewModel.pendingInventoryActionState == .unavailable {
                         pendingInventoryActionUnavailableBanner
                     }
+                    homeQuickActions
                     cookWithPipEntryCard
                     if viewModel.isLoading && !viewModel.hasLoadedOnce {
                         VStack(spacing: 12) {
@@ -176,6 +182,35 @@ public struct HomeView: View {
     }
 
     // MARK: - Subviews
+
+    private var homeQuickActions: some View {
+        HStack(spacing: 10) {
+            homeQuickAction(title: "Add groceries", symbol: "plus.circle.fill",
+                            identifier: "home-quick-add-groceries", action: onQuickAddGroceries)
+            homeQuickAction(title: "Shopping", symbol: "cart.fill",
+                            identifier: "home-quick-shopping", action: onNavigateToShopping)
+        }
+    }
+
+    private func homeQuickAction(title: String, symbol: String, identifier: String,
+                                 action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(ProvisionTheme.provisionGreen)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .padding(.horizontal, 8)
+                .background(ProvisionTheme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(ProvisionTheme.border, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibleTouchTarget()
+        .accessibilityIdentifier(identifier)
+    }
 
     private func pendingInventoryActionBanner(_ record: PendingInventoryActionRecord) -> some View {
         let title: String

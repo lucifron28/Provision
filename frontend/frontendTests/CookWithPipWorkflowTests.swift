@@ -388,7 +388,7 @@ final class CookWithPipWorkflowTests: XCTestCase {
 
         XCTAssertTrue(KeychainStore.shared.savePendingInventoryAction(record, scope: scope))
         XCTAssertEqual(KeychainStore.shared.readPendingInventoryAction(scope: scope), .record(record))
-        XCTAssertEqual(KeychainStore.shared.readPendingInventoryAction(HouseholdScope(
+        XCTAssertEqual(KeychainStore.shared.readPendingInventoryAction(scope: HouseholdScope(
             userID: scope.userID, householdID: scope.householdID + 1, serverID: scope.serverID
         )), .missing)
     }
