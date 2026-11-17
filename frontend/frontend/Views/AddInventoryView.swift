@@ -12,6 +12,7 @@ public struct AddInventoryView: View {
     
     // Product Selection (Existing)
     @State private var selectedProductId: Int?
+    @State private var recentlyUsedProductIDs: [Int] = []
     @State private var showingProductDetails = false
     @State private var showingOptionalDetails = false
     
@@ -129,7 +130,8 @@ public struct AddInventoryView: View {
                                 SearchableProductSelector(
                                     products: viewModel.products,
                                     selectedProductId: $selectedProductId,
-                                    placeholder: "Search catalog by name, brand, or barcode..."
+                                    placeholder: "Search catalog by name, brand, or barcode...",
+                                    recentlyUsedProductIDs: recentlyUsedProductIDs
                                 )
                                 
                                 if let selectedId = selectedProductId, let p = viewModel.products.first(where: { $0.id == selectedId }) {
@@ -326,6 +328,9 @@ public struct AddInventoryView: View {
             }
             .task {
                 viewModel.loadPendingManualInventoryIntake()
+                if let scope = viewModel.scope {
+                    recentlyUsedProductIDs = await LocalCacheStore.shared.loadRecentlyUsedProductIDs(scope: scope)
+                }
                 await fetchLocations()
             }
             .sheet(isPresented: $showingExpirationOCRSheet) {

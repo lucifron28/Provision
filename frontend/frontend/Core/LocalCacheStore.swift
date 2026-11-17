@@ -48,6 +48,19 @@ public actor LocalCacheStore {
 
     public func saveProducts(_ values: [Product], scope: HouseholdScope) { write(values, filename: "products.json", scope: scope) }
     public func loadProducts(scope: HouseholdScope) -> [Product]? { read([Product].self, filename: "products.json", scope: scope) }
+    public func loadRecentlyUsedProductIDs(scope: HouseholdScope) -> [Int] {
+        Self.normalizedRecentProductIDs(read([Int].self, filename: "recent-products.json", scope: scope) ?? [])
+    }
+    public func recordRecentlyUsedProduct(_ productID: Int, scope: HouseholdScope) {
+        guard productID > 0 else { return }
+        let recent = Self.normalizedRecentProductIDs([productID] + loadRecentlyUsedProductIDs(scope: scope))
+        write(recent, filename: "recent-products.json", scope: scope)
+    }
+    nonisolated public static func normalizedRecentProductIDs(_ ids: [Int], limit: Int = 6) -> [Int] {
+        guard limit > 0 else { return [] }
+        var seen = Set<Int>()
+        return ids.filter { $0 > 0 && seen.insert($0).inserted }.prefix(limit).map { $0 }
+    }
     public func saveLocations(_ values: [StorageLocation], scope: HouseholdScope) { write(values, filename: "locations.json", scope: scope) }
     public func loadLocations(scope: HouseholdScope) -> [StorageLocation]? { read([StorageLocation].self, filename: "locations.json", scope: scope) }
     private func batchFilename(productID: Int?, activeOnly: Bool) -> String {

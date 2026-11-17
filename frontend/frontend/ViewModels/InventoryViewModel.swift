@@ -480,6 +480,7 @@ public class InventoryViewModel: ObservableObject {
         errorMessage = nil
         do {
             let result = try await client.createManualInventoryIntake(record.request, expectedScope: scope)
+            await LocalCacheStore.shared.recordRecentlyUsedProduct(result.product_id, scope: scope)
             let deleted = pendingManualIntakeStore.deletePendingManualInventoryIntake(scope: scope)
             if deleted {
                 updatePendingManualInventoryIntakeState(.missing)

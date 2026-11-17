@@ -5,6 +5,7 @@ import SwiftUI
 
 public struct SearchableProductSelector: View {
     public let products: [Product]
+    public var recentlyUsedProductIDs: [Int] = []
     @Binding public var selectedProductId: Int?
     public var onSelect: ((Product) -> Void)? = nil
     public var placeholder: String = "Select from catalog..."
@@ -37,9 +38,11 @@ public struct SearchableProductSelector: View {
         selectedProductId: Binding<Int?>,
         placeholder: String = "Select from catalog...",
         isPresented: Binding<Bool>? = nil,
+        recentlyUsedProductIDs: [Int] = [],
         onSelect: ((Product) -> Void)? = nil
     ) {
         self.products = products
+        self.recentlyUsedProductIDs = recentlyUsedProductIDs
         self._selectedProductId = selectedProductId
         self.placeholder = placeholder
         self.externalSheetBinding = isPresented
@@ -71,6 +74,18 @@ public struct SearchableProductSelector: View {
 
     public var filteredProducts: [Product] {
         filteredProducts(matching: searchQuery, category: selectedCategory)
+    }
+    public var recentProducts: [Product] {
+        guard searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              selectedCategory == nil else { return [] }
+        let productsByID = Dictionary(products.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return LocalCacheStore.normalizedRecentProductIDs(recentlyUsedProductIDs)
+            .compactMap { productsByID[$0] }
+    }
+
+    public var otherFilteredProducts: [Product] {
+        let recentIDs = Set(recentProducts.map(\.id))
+        return filteredProducts.filter { !recentIDs.contains($0.id) }
     }
     public func openSheet() {
         searchQuery = ""
@@ -294,16 +309,17 @@ public struct SearchableProductSelector: View {
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 8) {
-                            ForEach(filteredProducts) { prod in
-                                let isCurrent = selectedProductId == prod.id
-
-                                Button {
-                                    selectProduct(prod)
-                                } label: {
-                                    catalogRow(product: prod, isSelected: isCurrent)
+                            if !recentProducts.isEmpty {
+                                sectionHeading("Recent products")
+                                ForEach(recentProducts) { prod in
+                                    catalogProductButton(prod)
                                 }
-                                .buttonStyle(.plain)
-                                .accessibleTouchTarget()
+                                if !otherFilteredProducts.isEmpty {
+                                    sectionHeading("Other products")
+                                }
+                            }
+                            ForEach(otherFilteredProducts) { prod in
+                                catalogProductButton(prod)
                             }
                         }
                         .padding(.horizontal, 16)
@@ -324,6 +340,26 @@ public struct SearchableProductSelector: View {
                 }
             }
         }
+    }
+
+    private func sectionHeading(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(ProvisionTheme.textSecondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 6)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private func catalogProductButton(_ product: Product) -> some View {
+        let isCurrent = selectedProductId == product.id
+        return Button {
+            selectProduct(product)
+        } label: {
+            catalogRow(product: product, isSelected: isCurrent)
+        }
+        .buttonStyle(.plain)
+        .accessibleTouchTarget()
     }
 
     private func categoryPill(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
