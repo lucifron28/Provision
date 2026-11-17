@@ -415,7 +415,7 @@ public struct HomeView: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("TOTAL VALUE")
+                Text("PRICED STOCK VALUE")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(ProvisionTheme.textSecondary)
                     .tracking(0.8)
@@ -423,6 +423,11 @@ public struct HomeView: View {
                 Text("₱\(formatCurrency(viewModel.valuation.total_value))")
                     .font(.system(size: 32, weight: .bold, design: .serif))
                     .foregroundStyle(ProvisionTheme.textPrimary)
+
+                Text(viewModel.valuation.valueDisclosure)
+                    .font(ProvisionTypography.caption)
+                    .foregroundStyle(ProvisionTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Divider()
