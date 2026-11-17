@@ -19,6 +19,7 @@ from app.models.recipe import Recipe, RecipeIngredient, RecipeRevision, SavedRec
 from app.models.recipe_source import RecipeSource, RecipeSourceReference, RecipeSourceReview
 from app.models.recipe_shopping import RecipeShoppingIdempotency
 from app.models.manual_inventory_intake import ManualInventoryIntakeIdempotency
+from app.models.shopping_reconciliation import ShoppingPantryReconciliationIdempotency
 from app.models.meal_plan import MealPlan, MealPlanEntry, MealPlanRevision
 from app.models.cooking import CookingSession, CookingConsumption, CookingIdempotency
 from app.models.leftover import Leftover, LeftoverEvent, LeftoverEventType
@@ -67,6 +68,7 @@ __all__ = [
     "RecipeSourceReview",
     "RecipeShoppingIdempotency",
     "ManualInventoryIntakeIdempotency",
+    "ShoppingPantryReconciliationIdempotency",
     "MealPlan",
     "MealPlanEntry",
     "MealPlanRevision",
