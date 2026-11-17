@@ -159,6 +159,33 @@ def test_reconcile_rejects_duplicate_new_product_barcodes_before_writes(client, 
     assert db.scalar(select(func.count(Product.id))) == 0
 
 
+def test_overlapping_reconciliation_keys_cannot_add_the_same_purchase_twice(client, db: Session):
+    _, bought = _purchased_item(client, "Milk")
+    product = client.post("/api/v1/products/", json={"name": "Milk", "unit": "L"}).json()
+    resolution = _resolution(
+        bought,
+        action="add",
+        product_id=product["id"],
+        quantity="1.50",
+        inventory_unit="L",
+    )
+
+    first = client.post(
+        "/api/v1/shopping-list/reconcile-purchased",
+        json={"idempotency_key": "member-a-milk-0001", "items": [resolution]},
+    )
+    overlapping = client.post(
+        "/api/v1/shopping-list/reconcile-purchased",
+        json={"idempotency_key": "member-b-milk-0001", "items": [resolution]},
+    )
+
+    assert first.status_code == 201
+    assert overlapping.status_code == 409
+    assert overlapping.json()["detail"] == "SHOPPING_ITEM_NOT_PENDING_REVIEW"
+    assert db.scalar(select(func.count(InventoryBatch.id))) == 1
+    assert db.scalar(select(func.count(InventoryEvent.id))) == 1
+
+
 def test_reconcile_validates_every_row_before_writing_and_is_household_scoped(
     client, db: Session, auth_household
 ):
