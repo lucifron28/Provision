@@ -158,8 +158,7 @@ public struct InventoryView: View {
             ?? viewModel.products.first(where: { $0.id == record.request.product_id })?.name
             ?? "Saved grocery"
         return Button {
-            startWithNewProduct = false
-            showingAddSheet = true
+            addInventoryRoute = .existingProduct
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "arrow.clockwise.circle.fill")
