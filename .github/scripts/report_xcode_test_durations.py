@@ -70,16 +70,16 @@ def main() -> int:
     source.add_argument("--aggregate-dir", type=Path, help="directory of per-job duration JSON files")
     parser.add_argument("--json-output", type=Path, help="write parsed case durations as JSON")
     parser.add_argument("--summary", type=Path, help="append Markdown to this GitHub step summary")
+    parser.add_argument(
+        "--allow-empty",
+        action="store_true",
+        help="report an empty duration list without failing when Xcode did not run any test cases",
+    )
     args = parser.parse_args()
 
     try:
         if args.input_log:
             cases = parse_log(args.input_log)
-            if args.json_output:
-                args.json_output.parent.mkdir(parents=True, exist_ok=True)
-                args.json_output.write_text(
-                    json.dumps(cases, indent=2) + "\n", encoding="utf-8"
-                )
         else:
             files = sorted(args.aggregate_dir.glob("*.json"))
             cases = []
@@ -88,9 +88,25 @@ def main() -> int:
                 if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
                     raise ValueError(f"Expected an XCTest duration list in {path}")
                 cases.extend(value)
+    except FileNotFoundError as error:
+        if not args.allow_empty:
+            print(f"Could not collect XCTest durations: {error}", file=sys.stderr)
+            return 1
+        print(f"No XCTest duration log was produced: {error}")
+        cases = []
     except (OSError, json.JSONDecodeError, ValueError) as error:
         print(f"Could not collect XCTest durations: {error}", file=sys.stderr)
         return 1
+
+    if args.input_log and args.json_output:
+        try:
+            args.json_output.parent.mkdir(parents=True, exist_ok=True)
+            args.json_output.write_text(
+                json.dumps(cases, indent=2) + "\n", encoding="utf-8"
+            )
+        except OSError as error:
+            print(f"Could not write XCTest duration JSON: {error}", file=sys.stderr)
+            return 1
 
     title = "XCTest case durations" if args.input_log else "All XCTest case durations"
     report = markdown(cases, title)
@@ -102,7 +118,7 @@ def main() -> int:
         except OSError as error:
             print(f"Could not update GitHub step summary: {error}", file=sys.stderr)
             return 1
-    return 0 if cases else 1
+    return 0 if cases or args.allow_empty else 1
 
 
 if __name__ == "__main__":

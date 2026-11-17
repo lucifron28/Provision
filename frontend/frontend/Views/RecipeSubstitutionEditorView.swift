@@ -5,7 +5,7 @@ public struct RecipeSubstitutionEditorView: View {
     let recipe: HouseholdRecipe
     let scope: HouseholdScope
     let service: any CookWithPipService
-    let onApply: (RecipeEvaluation, [RecipeSubstitution]) -> Void
+    let onApply: (RecipeEvaluation, [RecipeSubstitution], ExactQuantity, Bool) -> Void
     @State private var selectedOptions: [Int: Int] = [:]
     @State private var includeOptional = true
     @State private var servingsText: String
@@ -14,7 +14,7 @@ public struct RecipeSubstitutionEditorView: View {
 
     public init(recipe: HouseholdRecipe, scope: HouseholdScope,
                 service: any CookWithPipService = APIClient.shared,
-                onApply: @escaping (RecipeEvaluation, [RecipeSubstitution]) -> Void) {
+                onApply: @escaping (RecipeEvaluation, [RecipeSubstitution], ExactQuantity, Bool) -> Void) {
         self.recipe = recipe
         self.scope = scope
         self.service = service
@@ -154,7 +154,7 @@ public struct RecipeSubstitutionEditorView: View {
                 ),
                 scope: scope
             )
-            onApply(result, substitutions)
+            onApply(result, substitutions, ExactQuantity(servings), includeOptional)
             dismiss()
         } catch {
             if let apiError = error as? APIError, apiError.serverErrorCode == "RECIPE_REVISION_CONFLICT" {

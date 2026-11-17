@@ -3,6 +3,7 @@ import SwiftUI
 public struct ShoppingListView: View {
     @ObservedObject var viewModel: ShoppingViewModel
     @State private var showingClearDoneConfirmation: Bool = false
+    @State private var showingPurchasedReview: Bool = false
     @State private var itemToDelete: ShoppingItem? = nil
     
     public init(viewModel: ShoppingViewModel) {
@@ -21,6 +22,21 @@ public struct ShoppingListView: View {
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
+
+                if viewModel.pendingPurchasedGroceriesRecord != nil {
+                    pendingPurchaseRecoveryBanner
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 8)
+                } else if viewModel.pendingPurchasedGroceriesState == .corrupt
+                            || viewModel.pendingPurchasedGroceriesState == .unavailable {
+                    purchasedRecoveryBlockedBanner
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 8)
+                } else if !viewModel.purchasedItemsNeedingReview.isEmpty {
+                    purchasedReviewBanner
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 8)
+                }
                 
                 // Low-Stock Auto Suggestion Bar
                 autoGenerateBanner
@@ -48,13 +64,21 @@ public struct ShoppingListView: View {
             .navigationTitle("Shopping List")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    if viewModel.items.contains(where: { $0.is_bought }) {
-                        Button("Clear Done") {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    if viewModel.canReviewPurchasedItems {
+                        Button("Add to Pantry") {
+                            showingPurchasedReview = true
+                        }
+                        .font(.system(size: 13, weight: .semibold))
+                        .accessibilityIdentifier("shopping-review-purchased")
+                    }
+                    if viewModel.reviewedPurchasedCount > 0 {
+                        Button("Clear Reviewed") {
                             showingClearDoneConfirmation = true
                         }
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(ProvisionTheme.redAlert)
+                        .accessibilityIdentifier("shopping-clear-reviewed")
                     }
                 }
             }
@@ -62,15 +86,21 @@ public struct ShoppingListView: View {
                 if viewModel.items.isEmpty {
                     await viewModel.loadItems()
                 }
+                viewModel.loadPendingPurchasedGroceries()
+                if viewModel.isPreview {
+                    viewModel.prepareDraftsForPendingPurchases()
+                }
             }
-            .alert("Clear Completed Items?", isPresented: $showingClearDoneConfirmation) {
+            .sheet(isPresented: $showingPurchasedReview) {
+                PurchasedGroceriesReviewSheet(viewModel: viewModel)
+            }
+            .alert("Clear Reviewed Purchases?", isPresented: $showingClearDoneConfirmation) {
                 Button("Cancel", role: .cancel) {}
-                Button("Clear All", role: .destructive) {
+                Button("Clear Reviewed", role: .destructive) {
                     Task { await viewModel.clearCompleted() }
                 }
             } message: {
-                let count = viewModel.items.filter { $0.is_bought }.count
-                Text("Are you sure you want to remove \(count) completed item(s) from your shopping list?")
+                Text("This removes \(viewModel.reviewedPurchasedCount) purchases already added to the pantry or intentionally excluded. Purchases awaiting review stay on your list.")
             }
             .alert("Delete Item?", isPresented: Binding(get: { itemToDelete != nil }, set: { if !$0 { itemToDelete = nil } })) {
                 Button("Cancel", role: .cancel) { itemToDelete = nil }
@@ -96,6 +126,79 @@ public struct ShoppingListView: View {
     }
     
     // MARK: - Subviews
+
+    private var purchasedReviewBanner: some View {
+        Button {
+            showingPurchasedReview = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "basket.fill")
+                    .foregroundStyle(ProvisionTheme.provisionGreen)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Review purchased groceries")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(ProvisionTheme.textPrimary)
+                    Text("\(viewModel.purchasedItemsNeedingReview.count) items need pantry review")
+                        .font(.caption)
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(ProvisionTheme.provisionGreen)
+            }
+            .frame(minHeight: 44)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(ProvisionTheme.provisionGreenLight)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("shopping-purchased-review-banner")
+    }
+
+    private var pendingPurchaseRecoveryBanner: some View {
+        Button {
+            Task { await viewModel.retryPendingPurchasedGroceries() }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.clockwise.circle.fill")
+                    .foregroundStyle(ProvisionTheme.amberWarning)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Finish saved pantry update")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(ProvisionTheme.textPrimary)
+                    Text("Retry the exact saved request to check its result.")
+                        .font(.caption)
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                }
+                Spacer(minLength: 4)
+                if viewModel.isReconcilingPurchasedGroceries { ProgressView() }
+                else { Image(systemName: "arrow.right").foregroundStyle(ProvisionTheme.amberWarning) }
+            }
+            .frame(minHeight: 44)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(ProvisionTheme.amberWarning.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(viewModel.isReconcilingPurchasedGroceries)
+        .accessibilityIdentifier("shopping-retry-saved-reconciliation")
+    }
+
+    private var purchasedRecoveryBlockedBanner: some View {
+        Label("A saved pantry update needs recovery before new purchases can be reviewed.",
+              systemImage: "exclamationmark.triangle.fill")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(ProvisionTheme.amberWarning)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(ProvisionTheme.amberWarning.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .accessibilityIdentifier("shopping-reconciliation-recovery-blocked")
+    }
     
     private var autoGenerateBanner: some View {
         Button {
@@ -178,29 +281,36 @@ public struct ShoppingListView: View {
             ForEach(viewModel.filteredItems) { item in
                 HStack(spacing: 12) {
                     // Checkbox button with haptic feedback and accessible touch target
-                    Button {
-                        HapticFeedback.light()
-                        Task { await viewModel.toggleItem(item) }
-                    } label: {
+                    if item.is_bought && item.reconciliationStatus != "pending" {
                         ZStack {
-                            Circle()
-                                .stroke(item.is_bought ? ProvisionTheme.provisionGreen : ProvisionTheme.border, lineWidth: 2)
-                                .frame(width: 24, height: 24)
-                            
-                            if item.is_bought {
-                                Circle()
-                                    .fill(ProvisionTheme.provisionGreen)
-                                    .frame(width: 16, height: 16)
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(ProvisionTheme.onAccent)
-                            }
+                            Circle().fill(ProvisionTheme.provisionGreen).frame(width: 24, height: 24)
+                            Image(systemName: item.reconciliationStatus == "added_to_pantry" ? "checkmark" : "minus")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(ProvisionTheme.onAccent)
                         }
-                        .accessibleTouchTarget()
+                        .accessibilityLabel(item.reconciliationStatus == "added_to_pantry" ? "Added to pantry" : "Excluded from pantry")
+                    } else {
+                        Button {
+                            HapticFeedback.light()
+                            Task { await viewModel.toggleItem(item) }
+                        } label: {
+                            ZStack {
+                                Circle()
+                                    .stroke(item.is_bought ? ProvisionTheme.provisionGreen : ProvisionTheme.border, lineWidth: 2)
+                                    .frame(width: 24, height: 24)
+                                if item.is_bought {
+                                    Circle().fill(ProvisionTheme.provisionGreen).frame(width: 16, height: 16)
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(ProvisionTheme.onAccent)
+                                }
+                            }
+                            .accessibleTouchTarget()
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(item.is_bought ? "Mark \(item.name) as needed" : "Mark \(item.name) as purchased")
+                        .accessibilityValue(item.is_bought ? "Purchased" : "To buy")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(item.is_bought ? "Mark \(item.name) as needed" : "Mark \(item.name) as purchased")
-                    .accessibilityValue(item.is_bought ? "Purchased" : "To buy")
                     
                     VStack(alignment: .leading, spacing: 2) {
                         Text(item.name)
@@ -214,6 +324,13 @@ public struct ShoppingListView: View {
                                 .font(.system(size: 12))
                                 .foregroundStyle(ProvisionTheme.textSecondary)
                         }
+                        if item.is_bought {
+                            Text(purchaseStatus(for: item))
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(item.reconciliationStatus == "pending"
+                                    ? ProvisionTheme.amberWarning : ProvisionTheme.textSecondary)
+                                .accessibilityIdentifier("shopping-purchase-status-\(item.id)")
+                        }
                     }
                     
                     Spacer()
@@ -225,12 +342,14 @@ public struct ShoppingListView: View {
                 .padding(.vertical, 6)
                 .listRowBackground(ProvisionTheme.surface)
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                    Button(role: .destructive) {
-                        itemToDelete = item
-                    } label: {
-                        Label("Delete", systemImage: "trash")
+                    if !(item.is_bought && item.reconciliationStatus == "pending") {
+                        Button(role: .destructive) {
+                            itemToDelete = item
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                        .tint(ProvisionTheme.redAlert)
                     }
-                    .tint(ProvisionTheme.redAlert)
                 }
             }
         }
@@ -292,7 +411,15 @@ public struct ShoppingListView: View {
         case .pending:
             return "You're all caught up! Everything on your list has been purchased."
         case .completed:
-            return "Items you check off as bought will appear here until cleared."
+            return "Purchased items stay here until they are added to the pantry, excluded, or cleared after review."
+        }
+    }
+
+    private func purchaseStatus(for item: ShoppingItem) -> String {
+        switch item.reconciliationStatus {
+        case "added_to_pantry": return "Added to pantry"
+        case "excluded": return "Excluded from pantry"
+        default: return "Needs pantry review"
         }
     }
 
@@ -315,4 +442,327 @@ public struct ShoppingListView: View {
 
 #Preview("Shopping List - Philippine Household") {
     ShoppingListView(viewModel: PreviewData.makeShoppingViewModel())
+}
+
+private struct PurchasedGroceriesReviewSheet: View {
+    @ObservedObject var viewModel: ShoppingViewModel
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var focusedQuantityItemID: Int?
+    @State private var isSubmitting = false
+
+    private var pendingItems: [ShoppingItem] {
+        Array(viewModel.purchasedItemsNeedingReview.prefix(50))
+    }
+
+    private var unreviewedCount: Int {
+        max(0, viewModel.purchasedItemsNeedingReview.count - pendingItems.count)
+    }
+
+    private var canConfirm: Bool {
+        !pendingItems.isEmpty
+            && pendingItems.allSatisfy(isValidResolution)
+            && viewModel.pendingPurchasedGroceriesState == .missing
+            && !viewModel.isPreparingPurchasedReview
+            && !viewModel.isReconcilingPurchasedGroceries
+            && !isSubmitting
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("Add only the amount you actually brought home. Planned shopping quantities are not copied into your pantry.")
+                        .font(.subheadline)
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                        .accessibilityIdentifier("shopping-reconciliation-guidance")
+                }
+
+                if unreviewedCount > 0 {
+                    Section {
+                        Text("Review these first. \(unreviewedCount) more purchased items will remain for the next review.")
+                            .font(.caption)
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                            .accessibilityIdentifier("shopping-reconciliation-batch-limit")
+                    }
+                }
+
+                if viewModel.isPreparingPurchasedReview {
+                    Section { ProgressView("Refreshing purchased items…") }
+                } else if pendingItems.isEmpty {
+                    Section {
+                        ContentUnavailableView("Nothing to review", systemImage: "checkmark.circle",
+                                               description: Text("Purchased groceries will appear here after you mark them as bought."))
+                    }
+                } else {
+                    ForEach(pendingItems) { item in
+                        resolutionSection(for: item)
+                    }
+                }
+
+                if viewModel.pendingPurchasedGroceriesState == .corrupt
+                    || viewModel.pendingPurchasedGroceriesState == .unavailable {
+                    Section {
+                        Label("A saved pantry update could not be read securely. Resolve that saved update before starting another one.",
+                              systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(ProvisionTheme.amberWarning)
+                            .accessibilityIdentifier("shopping-reconciliation-recovery-warning")
+                    }
+                }
+
+                if let message = viewModel.errorMessage {
+                    Section {
+                        Text(message)
+                            .foregroundStyle(ProvisionTheme.redAlert)
+                            .accessibilityIdentifier("shopping-reconciliation-error")
+                    }
+                }
+
+                Section {
+                    Text("No unit conversions are applied. Pick the product’s exact unit and enter the measured quantity. Excluded items are not added to inventory.")
+                        .font(.caption)
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                }
+            }
+            .accessibilityIdentifier("shopping-purchased-review-form")
+            .scrollDismissesKeyboard(.interactively)
+            .navigationTitle("Review purchases")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .disabled(isSubmitting || viewModel.isReconcilingPurchasedGroceries)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        Task { await confirmReview() }
+                    } label: {
+                        if isSubmitting || viewModel.isReconcilingPurchasedGroceries {
+                            ProgressView()
+                        } else {
+                            Text("Confirm pantry update")
+                        }
+                    }
+                    .disabled(!canConfirm)
+                    .accessibilityIdentifier("shopping-confirm-purchased-review")
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { focusedQuantityItemID = nil }
+                        .accessibilityIdentifier("shopping-reconciliation-keyboard-done")
+                }
+            }
+            .task { await viewModel.preparePurchasedReview() }
+            .interactiveDismissDisabled(isSubmitting || viewModel.isReconcilingPurchasedGroceries)
+            .presentationDetents([.large])
+        }
+    }
+
+    @ViewBuilder
+    private func resolutionSection(for item: ShoppingItem) -> some View {
+        let draft = viewModel.purchasedGroceriesDrafts[item.id] ?? PurchasedGroceriesDraft(item: item, products: viewModel.products)
+        Section {
+            Text("Shopping list: \(item.displayQuantity) \(item.unit ?? "unit")")
+                .font(.caption)
+                .foregroundStyle(ProvisionTheme.textSecondary)
+
+            HStack(spacing: 12) {
+                Button {
+                    updateDraft(item.id) { $0.choice = .addToPantry }
+                } label: {
+                    Label("Add to pantry", systemImage: draft.choice == .addToPantry ? "checkmark.circle.fill" : "plus.circle")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(ProvisionTheme.provisionGreen)
+                .accessibilityIdentifier("shopping-reconcile-add-\(item.id)")
+
+                Button {
+                    updateDraft(item.id) { $0.choice = .exclude }
+                } label: {
+                    Label("Exclude", systemImage: draft.choice == .exclude ? "checkmark.circle.fill" : "minus.circle")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("shopping-reconcile-exclude-\(item.id)")
+            }
+
+            if draft.choice == .addToPantry {
+                Picker("Product", selection: stringBinding(item.id, keyPath: \.productSelection)) {
+                    Text("Create new product").tag("")
+                    ForEach(viewModel.products) { product in
+                        Text(product.name).tag(String(product.id))
+                    }
+                }
+                .pickerStyle(.menu)
+                .accessibilityIdentifier("shopping-reconcile-product-\(item.id)")
+
+                if let product = selectedProduct(for: draft) {
+                    LabeledContent("Inventory unit", value: product.unit ?? "Unit missing")
+                } else {
+                    TextField("New product name", text: stringBinding(item.id, keyPath: \.newProductName))
+                        .textInputAutocapitalization(.words)
+                        .accessibilityIdentifier("shopping-reconcile-new-product-name-\(item.id)")
+
+                    Picker("Product unit", selection: stringBinding(item.id, keyPath: \.newProductUnit)) {
+                        Text("Choose exact unit").tag("")
+                        ForEach(ProductUnits.allUnits, id: \.self) { unit in
+                            Text(unit).tag(unit)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .accessibilityIdentifier("shopping-reconcile-new-product-unit-\(item.id)")
+                }
+
+                let unit = selectedProduct(for: draft)?.unit ?? draft.newProductUnit
+                TextField(unit.isEmpty ? "Actual amount" : "Actual amount in \(unit)",
+                          text: stringBinding(item.id, keyPath: \.quantity))
+                    .keyboardType(.decimalPad)
+                    .focused($focusedQuantityItemID, equals: item.id)
+                    .accessibilityIdentifier("shopping-reconcile-actual-quantity-\(item.id)")
+
+                Picker("Storage location", selection: optionalIntBinding(item.id, keyPath: \.storageLocationID)) {
+                    Text("Choose later").tag(nil as Int?)
+                    ForEach(viewModel.locations) { location in
+                        Text(location.name).tag(Optional(location.id))
+                    }
+                }
+                .pickerStyle(.menu)
+                .accessibilityIdentifier("shopping-reconcile-location-\(item.id)")
+
+                Toggle("Set expiration date", isOn: boolBinding(item.id, keyPath: \.hasExpirationDate))
+                    .accessibilityIdentifier("shopping-reconcile-expiration-toggle-\(item.id)")
+                if draft.hasExpirationDate {
+                    DatePicker("Expiration date", selection: dateBinding(item.id, keyPath: \.expirationDate),
+                               in: Date()..., displayedComponents: .date)
+                        .accessibilityIdentifier("shopping-reconcile-expiration-date-\(item.id)")
+                }
+            }
+        } header: {
+            Text(item.name)
+                .accessibilityIdentifier("shopping-reconcile-item-\(item.id)")
+        } footer: {
+            if item.updated_at == nil {
+                Text("This purchase is missing its revision timestamp. Refresh the list before reviewing it.")
+                    .foregroundStyle(ProvisionTheme.redAlert)
+            }
+        }
+    }
+
+    private func selectedProduct(for draft: PurchasedGroceriesDraft) -> Product? {
+        guard let id = Int(draft.productSelection) else { return nil }
+        return viewModel.products.first(where: { $0.id == id })
+    }
+
+    private func isValidResolution(_ item: ShoppingItem) -> Bool {
+        guard let draft = viewModel.purchasedGroceriesDrafts[item.id], item.updated_at != nil else { return false }
+        switch draft.choice {
+        case .unresolved:
+            return false
+        case .exclude:
+            return true
+        case .addToPantry:
+            guard parsedQuantity(draft.quantity) != nil else { return false }
+            if let product = selectedProduct(for: draft) {
+                return ProductUnits.isValid(product.unit)
+            }
+            return !draft.newProductName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && ProductUnits.isValid(draft.newProductUnit)
+        }
+    }
+
+    private func parsedQuantity(_ input: String) -> ExactQuantity? {
+        let value = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard value.range(of: "^[0-9]{1,8}(\\.[0-9]{1,2})?$", options: .regularExpression) != nil,
+              let decimal = Decimal(string: value, locale: Locale(identifier: "en_US_POSIX")), decimal > 0 else {
+            return nil
+        }
+        return ExactQuantity(decimal)
+    }
+
+    private func request() -> ReconcilePurchasedItemsRequest? {
+        var resolutions: [PurchasedItemResolutionRequest] = []
+        for item in pendingItems {
+            guard let draft = viewModel.purchasedGroceriesDrafts[item.id], let updatedAt = item.updated_at else { return nil }
+            if draft.choice == .exclude {
+                resolutions.append(PurchasedItemResolutionRequest(
+                    shoppingItemID: item.id, expectedUpdatedAt: updatedAt, action: "exclude"
+                ))
+                continue
+            }
+            guard draft.choice == .addToPantry, let quantity = parsedQuantity(draft.quantity) else { return nil }
+            let product = selectedProduct(for: draft)
+            let newProduct: ProductCreate? = product == nil
+                ? ProductCreate(name: draft.newProductName.trimmingCharacters(in: .whitespacesAndNewlines),
+                                unit: draft.newProductUnit)
+                : nil
+            guard let unit = product?.unit ?? newProduct?.unit else { return nil }
+            resolutions.append(PurchasedItemResolutionRequest(
+                shoppingItemID: item.id,
+                expectedUpdatedAt: updatedAt,
+                action: "add",
+                productID: product?.id,
+                newProduct: newProduct,
+                quantity: quantity,
+                inventoryUnit: unit,
+                storageLocationID: draft.storageLocationID,
+                expirationDate: draft.hasExpirationDate ? expirationDateString(draft.expirationDate) : nil
+            ))
+        }
+        guard !resolutions.isEmpty else { return nil }
+        return ReconcilePurchasedItemsRequest(items: resolutions)
+    }
+
+    private func expirationDateString(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
+    }
+
+    private func updateDraft(_ itemID: Int, update: (inout PurchasedGroceriesDraft) -> Void) {
+        guard let item = pendingItems.first(where: { $0.id == itemID }) else { return }
+        var draft = viewModel.purchasedGroceriesDrafts[itemID]
+            ?? PurchasedGroceriesDraft(item: item, products: viewModel.products)
+        update(&draft)
+        viewModel.purchasedGroceriesDrafts[itemID] = draft
+    }
+
+    private func stringBinding(_ itemID: Int, keyPath: WritableKeyPath<PurchasedGroceriesDraft, String>) -> Binding<String> {
+        Binding(
+            get: { viewModel.purchasedGroceriesDrafts[itemID]?[keyPath: keyPath] ?? "" },
+            set: { value in updateDraft(itemID) { $0[keyPath: keyPath] = value } }
+        )
+    }
+
+    private func boolBinding(_ itemID: Int, keyPath: WritableKeyPath<PurchasedGroceriesDraft, Bool>) -> Binding<Bool> {
+        Binding(
+            get: { viewModel.purchasedGroceriesDrafts[itemID]?[keyPath: keyPath] ?? false },
+            set: { value in updateDraft(itemID) { $0[keyPath: keyPath] = value } }
+        )
+    }
+
+    private func dateBinding(_ itemID: Int, keyPath: WritableKeyPath<PurchasedGroceriesDraft, Date>) -> Binding<Date> {
+        Binding(
+            get: { viewModel.purchasedGroceriesDrafts[itemID]?[keyPath: keyPath] ?? Date() },
+            set: { value in updateDraft(itemID) { $0[keyPath: keyPath] = value } }
+        )
+    }
+
+    private func optionalIntBinding(_ itemID: Int, keyPath: WritableKeyPath<PurchasedGroceriesDraft, Int?>) -> Binding<Int?> {
+        Binding(
+            get: { viewModel.purchasedGroceriesDrafts[itemID]?[keyPath: keyPath] ?? nil },
+            set: { value in updateDraft(itemID) { $0[keyPath: keyPath] = value } }
+        )
+    }
+
+    private func confirmReview() async {
+        guard canConfirm, let payload = request() else { return }
+        isSubmitting = true
+        await viewModel.submitPurchasedGroceries(payload)
+        isSubmitting = false
+        if viewModel.errorMessage == nil && viewModel.pendingPurchasedGroceriesRecord == nil {
+            dismiss()
+        }
+    }
 }

@@ -5,6 +5,7 @@ public struct HomeView: View {
     @ObservedObject var authVM: AuthViewModel
     var onNavigateToInventory: (InventoryQuickFilter?) -> Void
     var onNavigateToShopping: () -> Void
+    var onQuickAddGroceries: () -> Void
     var onShoppingConfirmed: () async -> Void
 
     @State private var showingProfileSheet: Bool = false
@@ -12,6 +13,8 @@ public struct HomeView: View {
     @State private var devBackendHost: String = APIEnvironment.localDeviceHost
     @State private var hostUpdateMessage: String? = nil
     @State private var itemToConsume: ExpiringSoonItem? = nil
+    @State private var consumeAmountText: String = "1"
+    @State private var isConsumingFromHome = false
     private let cookWithPipScope: HouseholdScope?
     private let cookWithPipService: any CookWithPipService
     private let cookWithPipChatService: any PipChatService
@@ -23,6 +26,7 @@ public struct HomeView: View {
         authVM: AuthViewModel,
         onNavigateToInventory: @escaping (InventoryQuickFilter?) -> Void = { _ in },
         onNavigateToShopping: @escaping () -> Void = {},
+        onQuickAddGroceries: @escaping () -> Void = {},
         onShoppingConfirmed: @escaping () async -> Void = {},
         cookWithPipScope: HouseholdScope? = nil,
         cookWithPipService: any CookWithPipService = APIClient.shared,
@@ -34,6 +38,7 @@ public struct HomeView: View {
         self.authVM = authVM
         self.onNavigateToInventory = onNavigateToInventory
         self.onNavigateToShopping = onNavigateToShopping
+        self.onQuickAddGroceries = onQuickAddGroceries
         self.onShoppingConfirmed = onShoppingConfirmed
         self.cookWithPipScope = cookWithPipScope
         self.cookWithPipService = cookWithPipService
@@ -47,6 +52,7 @@ public struct HomeView: View {
         authVM: AuthViewModel,
         onNavigateToInventory: @escaping () -> Void,
         onNavigateToShopping: @escaping () -> Void = {},
+        onQuickAddGroceries: @escaping () -> Void = {},
         onShoppingConfirmed: @escaping () async -> Void = {},
         cookWithPipScope: HouseholdScope? = nil,
         cookWithPipService: any CookWithPipService = APIClient.shared,
@@ -59,6 +65,7 @@ public struct HomeView: View {
             authVM: authVM,
             onNavigateToInventory: { _ in onNavigateToInventory() },
             onNavigateToShopping: onNavigateToShopping,
+            onQuickAddGroceries: onQuickAddGroceries,
             onShoppingConfirmed: onShoppingConfirmed,
             cookWithPipScope: cookWithPipScope,
             cookWithPipService: cookWithPipService,
@@ -74,6 +81,13 @@ public struct HomeView: View {
                 VStack(spacing: 20) {
                     // Header Bar
                     headerBar
+                    if let pending = viewModel.pendingInventoryActionRecord {
+                        pendingInventoryActionBanner(pending)
+                    } else if viewModel.pendingInventoryActionState == .corrupt
+                                || viewModel.pendingInventoryActionState == .unavailable {
+                        pendingInventoryActionUnavailableBanner
+                    }
+                    homeQuickActions
                     cookWithPipEntryCard
                     if viewModel.isLoading && !viewModel.hasLoadedOnce {
                         VStack(spacing: 12) {
@@ -108,15 +122,18 @@ public struct HomeView: View {
                         .frame(maxWidth: .infinity)
                         .provisionCard()
                     } else {
+                        // New households need an immediate, practical next step before analytics.
+                        if viewModel.isPantryEmpty {
+                            emptyPantryActionCard
+                        }
+
                         // Pantry Health Hero Card
                         pantryHealthCard
 
                         // Pip Contextual Card
                         pipContextualCard
 
-                        if viewModel.isPantryEmpty {
-                            emptyPantryActionCard
-                        } else {
+                        if !viewModel.isPantryEmpty {
                             // Chef Pip Kitchen Corner ("Use It First")
                             if viewModel.chefPipDateSafetyNotice != nil || !viewModel.approachingExpirationItems.isEmpty {
                                 chefPipKitchenCorner
@@ -142,6 +159,7 @@ public struct HomeView: View {
                 await viewModel.loadDashboard()
             }
             .task {
+                viewModel.loadPendingInventoryAction()
                 await viewModel.loadDashboard()
                 if NotificationService.shared.isAlertsEnabled {
                     await NotificationService.shared.syncExpirationAlerts(expiringSoon: viewModel.expiringSoonItems)
@@ -157,32 +175,134 @@ public struct HomeView: View {
             .sheet(isPresented: $showingProfileSheet) {
                 profileSheet
             }
-            .alert("Log Consumption", isPresented: Binding(
+            .sheet(isPresented: Binding(
                 get: { itemToConsume != nil },
                 set: { if !$0 { itemToConsume = nil } }
             )) {
-                if let item = itemToConsume {
-                    Button("Consume 1 \(item.unit ?? "unit")") {
-                        let target = item
-                        itemToConsume = nil
-                        Task {
-                            await viewModel.quickConsumeExpiringItem(target)
-                            HapticFeedback.success()
-                        }
-                    }
-                    Button("Cancel", role: .cancel) {
-                        itemToConsume = nil
-                    }
-                }
-            } message: {
-                if let item = itemToConsume {
-                    Text("Are you sure you want to log 1 \(item.unit ?? "unit") of \(item.product_name) as consumed?")
-                }
+                homeConsumeSheet
             }
         }
     }
 
     // MARK: - Subviews
+
+    private var homeQuickActions: some View {
+        HStack(spacing: 10) {
+            homeQuickAction(title: "Add groceries", symbol: "plus.circle.fill",
+                            identifier: "home-quick-add-groceries", action: onQuickAddGroceries)
+            homeQuickAction(title: "Shopping", symbol: "cart.fill",
+                            identifier: "home-quick-shopping", action: onNavigateToShopping)
+        }
+    }
+
+    private func homeQuickAction(title: String, symbol: String, identifier: String,
+                                 action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(ProvisionTheme.provisionGreen)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .padding(.horizontal, 8)
+                .background(ProvisionTheme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(ProvisionTheme.border, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibleTouchTarget()
+        .accessibilityIdentifier(identifier)
+    }
+
+    private func pendingInventoryActionBanner(_ record: PendingInventoryActionRecord) -> some View {
+        let title: String
+        switch record.action {
+        case .consume: title = "consumption"
+        case .discard: title = "discarded stock"
+        case .adjust: title = "stock adjustment"
+        }
+        return Button {
+            Task { await viewModel.retryPendingInventoryAction() }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.clockwise.circle.fill")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Confirm saved \(title)").font(.subheadline.weight(.semibold))
+                    Text("Retry the exact inventory action safely").font(.caption)
+                }
+                Spacer()
+                if viewModel.isRecoveringPendingInventoryAction { ProgressView() }
+            }
+            .foregroundStyle(ProvisionTheme.textPrimary)
+            .padding(12)
+            .background(ProvisionTheme.amberLight)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(viewModel.isRecoveringPendingInventoryAction)
+        .accessibilityIdentifier("home-pending-stock-action-recovery")
+    }
+
+    private var pendingInventoryActionUnavailableBanner: some View {
+        Label("A saved stock action needs recovery before another change.", systemImage: "exclamationmark.triangle.fill")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(ProvisionTheme.amberWarning)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("home-pending-stock-action-unavailable")
+    }
+
+    private var homeConsumeSheet: some View {
+        NavigationStack {
+            Form {
+                if let item = itemToConsume {
+                    Section("Selected item") {
+                        LabeledContent("Available", value: item.displayQuantity)
+                        LabeledContent("Expiration", value: item.urgencyBadgeText)
+                    }
+                    Section("Quantity consumed") {
+                        TextField("Actual quantity", text: $consumeAmountText)
+                            .keyboardType(ProductUnits.isMeasured(item.unit ?? "") ? .decimalPad : .numberPad)
+                            .accessibilityIdentifier("home-consume-quantity-field")
+                    }
+                }
+            }
+            .navigationTitle("Log consumption")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { itemToConsume = nil }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Confirm") {
+                        guard let item = itemToConsume,
+                              let quantity = Double(consumeAmountText.replacingOccurrences(of: ",", with: ".")),
+                              quantity.isFinite, quantity > 0, quantity <= item.remaining_quantity else {
+                            viewModel.errorMessage = "Enter an actual quantity no greater than the amount shown."
+                            return
+                        }
+                        if ProductUnits.isCount(item.unit ?? "") && floor(quantity) != quantity {
+                            viewModel.errorMessage = "Enter a whole number for this unit."
+                            return
+                        }
+                        guard !isConsumingFromHome else { return }
+                        isConsumingFromHome = true
+                        Task {
+                            let succeeded = await viewModel.quickConsumeExpiringItem(item, quantity: quantity)
+                            isConsumingFromHome = false
+                            if succeeded {
+                                itemToConsume = nil
+                                HapticFeedback.success()
+                            }
+                        }
+                    }
+                    .disabled(isConsumingFromHome)
+                    .accessibilityIdentifier("home-consume-confirm-button")
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
 
     @ViewBuilder
     private var cookWithPipEntryCard: some View {
@@ -298,7 +418,7 @@ public struct HomeView: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("TOTAL VALUE")
+                Text("PRICED STOCK VALUE")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(ProvisionTheme.textSecondary)
                     .tracking(0.8)
@@ -306,6 +426,11 @@ public struct HomeView: View {
                 Text("₱\(formatCurrency(viewModel.valuation.total_value))")
                     .font(.system(size: 32, weight: .bold, design: .serif))
                     .foregroundStyle(ProvisionTheme.textPrimary)
+
+                Text(viewModel.valuation.valueDisclosure)
+                    .font(ProvisionTypography.caption)
+                    .foregroundStyle(ProvisionTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Divider()
@@ -618,6 +743,7 @@ public struct HomeView: View {
 
             Button {
                 itemToConsume = item
+                consumeAmountText = ProductUnits.formatAmount(min(1, item.remaining_quantity))
             } label: {
                 HStack {
                     Image(systemName: "checkmark")

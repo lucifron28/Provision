@@ -448,7 +448,8 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
             expires_at: expiration,
             recipe_id: request.recipe_id,
             recipe_revision: request.expected_recipe_revision, servings: request.servings,
-            include_optional: request.include_optional, shopping_revision: 3, inventory_revision: 7,
+            include_optional: request.include_optional, substitutions: request.substitutions,
+            shopping_revision: 3, inventory_revision: 7,
             included_requirement_indexes: request.include_optional ? [0, 1, 2] : [0, 1], safety: readySafety,
             lines: request.include_optional ? [firstLine, secondLine, optionalLine] : [firstLine, secondLine],
             unlinked_manual_items: [UnlinkedShoppingReview(item_id: 9920, name: "manual market note",
@@ -592,8 +593,9 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
 
     func sendPipChat(_ request: PipChatRequest,
                      scope: HouseholdScope) async throws -> PipChatResponse {
-        let actionKind = request.message.localizedCaseInsensitiveContains("buy")
-            ? "open_shopping_preview" : "open_recipe"
+        let opensShoppingPreview = request.message.localizedCaseInsensitiveContains("buy")
+            || request.message.localizedCaseInsensitiveContains("missing")
+        let actionKind = opensShoppingPreview ? "open_shopping_preview" : "open_recipe"
         return PipChatResponse(
             reply: "Sige, puwede tayong tumingin sa household recipes. Check the verified recipe details in Cook with Pip.",
             language: "taglish",
@@ -628,9 +630,11 @@ struct CookWithPipUITestHost: View {
     }
     @State private var service: CookWithPipUITestService
     @State private var showingShoppingList = false
+    @State private var showingQuickAddInventory = false
     @State private var loadingReleased = false
     @StateObject private var shoppingViewModel: ShoppingViewModel
     @StateObject private var productViewModel: InventoryViewModel
+    @StateObject private var quickAddInventoryViewModel: InventoryViewModel
     @State private var pendingShoppingStore: any PendingRecipeShoppingStore
 
     init() {
@@ -638,11 +642,35 @@ struct CookWithPipUITestHost: View {
         let fixtureID = Int(Self.launchArgument("-pip-ui-fixture-id") ?? "0") ?? 0
         let scope = HouseholdScope(userID: 9901 + fixtureID, householdID: 9902 + fixtureID,
                                    serverID: "ui-test-fixtures")
-        _shoppingViewModel = StateObject(wrappedValue: ShoppingViewModel(isPreview: true, scope: scope))
+        let shoppingViewModel = ShoppingViewModel(
+            isPreview: true,
+            scope: scope,
+            purchasedGroceriesStore: CookWithPipUITestPendingPurchasedStore()
+        )
+        if Self.launchArgument("-pip-ui-scenario") == "shopping-reconciliation" {
+            shoppingViewModel.filter = .completed
+            shoppingViewModel.items = [
+                ShoppingItem(id: 9981, name: "Synthetic rice", quantity: 5, unit: "kg",
+                             is_bought: true, updated_at: "2026-11-18T10:00:00Z"),
+                ShoppingItem(id: 9982, name: "Synthetic mangga", quantity: 3, unit: "pcs",
+                             is_bought: true, updated_at: "2026-11-18T10:01:00Z")
+            ]
+            shoppingViewModel.products = [Product(
+                id: 9903, name: "Test Product: Gata", brand: "Synthetic fixture",
+                category: "Canned goods", package_size: 400, unit: "mL",
+                updated_at: "2026-11-09T00:00:00Z"
+            )]
+            shoppingViewModel.locations = [StorageLocation(id: 9904, name: "Pantry", location_type: "pantry")]
+        }
+        _shoppingViewModel = StateObject(wrappedValue: shoppingViewModel)
         let productViewModel = InventoryViewModel(isPreview: true, scope: scope)
         productViewModel.selectedProduct = PreviewData.centuryTuna
         productViewModel.productBatches = PreviewData.centuryTunaBatches
         _productViewModel = StateObject(wrappedValue: productViewModel)
+        let quickAddViewModel = InventoryViewModel(isPreview: true, scope: scope)
+        quickAddViewModel.products = PreviewData.products
+        quickAddViewModel.locations = PreviewData.locations
+        _quickAddInventoryViewModel = StateObject(wrappedValue: quickAddViewModel)
         let pendingStore: any PendingRecipeShoppingStore = Self.launchArgument("-pip-ui-use-keychain") == "1"
             ? KeychainStore.shared
             : CookWithPipUITestPendingShoppingStore()
@@ -668,11 +696,15 @@ struct CookWithPipUITestHost: View {
                 }
                 .accessibilityIdentifier("ui-test-fixture-banner")
 
-            if showingShoppingList {
+            if showingShoppingList || Self.launchArgument("-pip-ui-scenario") == "shopping-reconciliation" {
                 NavigationStack {
                     ShoppingListView(viewModel: shoppingViewModel)
                 }
-            } else if Self.launchArgument("-pip-ui-screen") == "product-chat-context" {
+            } else if Self.launchArgument("-pip-ui-screen") == "inventory-quick-add" {
+                CookWithPipInventoryUITestTabs(inventoryViewModel: quickAddInventoryViewModel, scope: scope)
+            } else if ["product-chat-context", "inventory-stock-actions"].contains(
+                Self.launchArgument("-pip-ui-screen") ?? ""
+            ) {
                 NavigationStack {
                     ProductDetailView(
                         viewModel: productViewModel,
@@ -685,6 +717,7 @@ struct CookWithPipUITestHost: View {
                     viewModel: HomeViewModel(isPreview: true),
                     authVM: PreviewData.makeAuthViewModel(),
                     onNavigateToShopping: { showingShoppingList = true },
+                    onQuickAddGroceries: { showingQuickAddInventory = true },
                     onShoppingConfirmed: {
                         shoppingViewModel.items = (try? await service.fetchShoppingListFromServer(scope: scope)) ?? []
                     },
@@ -695,6 +728,9 @@ struct CookWithPipUITestHost: View {
                     cookWithPipPendingStore: pendingShoppingStore
                 )
             }
+        }
+        .sheet(isPresented: $showingQuickAddInventory) {
+            AddInventoryView(viewModel: quickAddInventoryViewModel)
         }
         .overlay(alignment: .topTrailing) {
             if Self.launchArgument("-pip-ui-scenario") == "recipes-loading" {
@@ -714,6 +750,31 @@ struct CookWithPipUITestHost: View {
         .preferredColorScheme(Self.launchArgument("-pip-ui-appearance") == "dark" ? .dark : nil)
         .environment(\.dynamicTypeSize,
                      Self.launchArgument("-pip-ui-type") == "accessibility" ? .accessibility3 : .large)
+    }
+}
+
+@MainActor
+private struct CookWithPipInventoryUITestTabs: View {
+    @ObservedObject var inventoryViewModel: InventoryViewModel
+    @StateObject private var scanViewModel: ScanViewModel
+    @State private var selectedTab = 0
+
+    init(inventoryViewModel: InventoryViewModel, scope: HouseholdScope) {
+        self.inventoryViewModel = inventoryViewModel
+        _scanViewModel = StateObject(wrappedValue: ScanViewModel(isPreview: true, scope: scope))
+    }
+
+    var body: some View {
+        TabView(selection: $selectedTab) {
+            Tab("Inventory", systemImage: "shippingbox.fill", value: 0) {
+                InventoryView(viewModel: inventoryViewModel, onNavigateToScan: { selectedTab = 1 })
+            }
+
+            Tab("Scan", systemImage: "barcode.viewfinder", value: 1) {
+                ScanView(viewModel: scanViewModel)
+            }
+        }
+        .tint(ProvisionTheme.provisionGreen)
     }
 }
 
@@ -870,5 +931,20 @@ private final class CookWithPipUITestPendingShoppingStore: PendingRecipeShopping
         defer { lock.unlock() }
         return records.removeValue(forKey: scope.storageKey) != nil
     }
+}
+
+private struct CookWithPipUITestPendingPurchasedStore: PendingPurchasedGroceriesStore {
+    func readPendingPurchasedGroceries(scope: HouseholdScope) -> PendingPurchasedGroceriesReadResult {
+        .missing
+    }
+
+    func savePendingPurchasedGroceries(
+        _ record: PendingPurchasedGroceriesRecord,
+        scope: HouseholdScope
+    ) -> Bool {
+        record.scopeStorageKey == scope.storageKey
+    }
+
+    func deletePendingPurchasedGroceries(scope: HouseholdScope) -> Bool { true }
 }
 #endif

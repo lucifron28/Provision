@@ -61,6 +61,8 @@ public struct RecipeDetailView: View {
                         scope: scope,
                         evaluation: evaluation,
                         appliedSubstitutions: viewModel.appliedSubstitutions,
+                        appliedServings: viewModel.appliedServings,
+                        appliedIncludeOptional: viewModel.appliedIncludeOptional,
                         sourceReference: viewModel.sourceReference,
                         sourceReferenceErrorMessage: viewModel.sourceReferenceErrorMessage,
                         isSourceOffline: viewModel.isSourceOffline,
@@ -94,8 +96,9 @@ public struct RecipeDetailView: View {
         }
         .sheet(isPresented: $showingSubstitutionEditor) {
             if let recipe = viewModel.recipe {
-                RecipeSubstitutionEditorView(recipe: recipe, scope: scope, service: service) { evaluation, substitutions in
-                    viewModel.applyEvaluation(evaluation, substitutions: substitutions)
+                RecipeSubstitutionEditorView(recipe: recipe, scope: scope, service: service) { evaluation, substitutions, servings, includeOptional in
+                    viewModel.applyEvaluation(evaluation, substitutions: substitutions,
+                                              servings: servings, includeOptional: includeOptional)
                     showingSubstitutionEditor = false
                 }
             }
@@ -111,6 +114,8 @@ private struct RecipeDetailContents: View {
     let scope: HouseholdScope
     let evaluation: RecipeEvaluation
     let appliedSubstitutions: [Int: IngredientRequirement]
+    let appliedServings: ExactQuantity?
+    let appliedIncludeOptional: Bool
     let sourceReference: RecipeSourceReference?
     let sourceReferenceErrorMessage: String?
     let isSourceOffline: Bool
@@ -226,9 +231,11 @@ private struct RecipeDetailContents: View {
             NavigationLink {
                 RecipeShoppingReviewView(recipe: recipe, scope: scope, service: workflowService,
                                          pendingStore: pendingStore,
+                                         substitutions: appliedSubstitutionSelections,
+                                         initialServings: appliedServings,
+                                         includeOptional: appliedIncludeOptional,
                                          onShoppingConfirmed: onShoppingConfirmed,
-                                         onNavigateToShopping: onNavigateToShopping,
-                                         hasAppliedSubstitutions: !appliedSubstitutions.isEmpty)
+                                         onNavigateToShopping: onNavigateToShopping)
             } label: {
                 Label("Preview shopping list changes", systemImage: "cart.badge.plus")
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -457,6 +464,13 @@ private struct RecipeDetailContents: View {
                     safety: safetyByRecipeIndex[index]
                 )
             }
+        }
+    }
+
+    private var appliedSubstitutionSelections: [RecipeSubstitution] {
+        appliedSubstitutions.keys.sorted().compactMap { index in
+            guard let replacement = appliedSubstitutions[index] else { return nil }
+            return RecipeSubstitution(requirementIndex: index, replacement: replacement)
         }
     }
 

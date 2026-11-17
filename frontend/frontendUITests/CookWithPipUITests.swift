@@ -13,6 +13,8 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(element("pip-chat-empty-state", in: app).waitForExistence(timeout: 10))
         XCTAssertTrue(element("pip-chat-consent-chat", in: app).exists)
         XCTAssertTrue(element("pip-chat-consent-allergies", in: app).exists)
+        XCTAssertTrue(element("pip-chat-suggested-prompt-cook-tonight", in: app).isHittable)
+        XCTAssertTrue(element("pip-chat-suggested-prompt-expiring-food", in: app).isHittable)
         capturePipChat("Pip_Chat_Empty", app: app)
 
         let input = element("pip-chat-input", in: app)
@@ -45,8 +47,11 @@ final class CookWithPipUITests: XCTestCase {
 
         let input = element("pip-chat-input", in: app)
         XCTAssertTrue(input.waitForExistence(timeout: 10))
-        input.tap()
-        input.typeText("What should I buy?")
+        let prompt = element("pip-chat-suggested-prompt-missing-ingredients", in: app)
+        scrollTargetIntoView(prompt, inside: app.scrollViews["pip-chat-scroll"], in: app)
+        XCTAssertTrue(prompt.isHittable)
+        prompt.tap()
+        XCTAssertEqual(input.value as? String, "What ingredients am I missing?")
         app.buttons["pip-chat-send"].tap()
 
         let previewAction = element("pip-chat-open-shopping-preview-301", in: app)
@@ -136,6 +141,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(contextTitle.waitForExistence(timeout: 5))
         XCTAssertTrue(element("pip-chat-empty-state", in: app).waitForExistence(timeout: 10))
         XCTAssertEqual(contextTitle.label, "Test Recipe: Sinigang na Baboy")
+        XCTAssertTrue(element("pip-chat-suggested-prompt-substitute", in: app).exists)
         assertReachable(contextCard, in: app)
         capturePipChat("Pip_Chat_Recipe_Context", app: app)
     }
@@ -153,6 +159,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(contextTitle.waitForExistence(timeout: 5))
         XCTAssertTrue(element("pip-chat-empty-state", in: app).waitForExistence(timeout: 10))
         XCTAssertEqual(contextTitle.label, "Century Tuna Flakes in Oil")
+        XCTAssertTrue(element("pip-chat-suggested-prompt-use-product", in: app).exists)
         assertReachable(contextCard, in: app)
         capturePipChat("Pip_Chat_Product_Context", app: app)
     }
@@ -161,6 +168,19 @@ final class CookWithPipUITests: XCTestCase {
         let app = launch()
         let homeEntry = element("cook-with-pip-entry", in: app)
         XCTAssertTrue(homeEntry.waitForExistence(timeout: 10))
+        let quickAdd = element("home-quick-add-groceries", in: app)
+        let shoppingShortcut = element("home-quick-shopping", in: app)
+        XCTAssertTrue(quickAdd.waitForExistence(timeout: 5))
+        XCTAssertTrue(quickAdd.isHittable)
+        XCTAssertTrue(shoppingShortcut.isHittable)
+        quickAdd.tap()
+        XCTAssertTrue(element("inventory-add-mode-picker", in: app).waitForExistence(timeout: 10),
+                      "The Home Add Groceries shortcut opens the existing inventory intake form")
+        XCTAssertTrue(element("inventory-add-submit", in: app).exists)
+        let cancelQuickAdd = app.navigationBars.buttons["Cancel"]
+        XCTAssertTrue(cancelQuickAdd.waitForExistence(timeout: 5))
+        cancelQuickAdd.tap()
+        XCTAssertTrue(homeEntry.waitForExistence(timeout: 5))
         XCTAssertTrue(element("ui-test-fixture-banner", in: app).exists)
         let emptyPantryTitle = element("home-empty-pantry-title", in: app)
         let emptyPantryGuidance = element("home-empty-pantry-guidance", in: app)
@@ -365,6 +385,22 @@ final class CookWithPipUITests: XCTestCase {
         let cuisines = element("pip-preferred-cuisines", in: app)
         XCTAssertTrue(cuisines.isHittable, "The identified cuisine field is visible at the top of preferences")
         XCTAssertTrue(cuisines.isEnabled, "The identified cuisine field remains editable")
+        let filipinoCuisine = element("pip-cuisine-filipino", in: app)
+        XCTAssertTrue(filipinoCuisine.isHittable, "Common cuisine choices are visible as selectable controls")
+        XCTAssertEqual(filipinoCuisine.value as? String, "Selected")
+        filipinoCuisine.tap()
+        XCTAssertEqual(filipinoCuisine.value as? String, "Not selected")
+        filipinoCuisine.tap()
+        XCTAssertEqual(filipinoCuisine.value as? String, "Selected")
+        cuisines.tap()
+        cuisines.typeText("Peruvian")
+        let addCuisine = element("pip-cuisine-add-custom", in: app)
+        XCTAssertTrue(addCuisine.isHittable, "Custom cuisine entry can be added beside the text field")
+        addCuisine.tap()
+        let peruvianCuisine = element("pip-cuisine-peruvian", in: app)
+        XCTAssertTrue(peruvianCuisine.waitForExistence(timeout: 5))
+        XCTAssertEqual(peruvianCuisine.value as? String, "Selected")
+        element("pip-preferences-keyboard-done", in: app).tap()
         let milkAllergen = app.switches["pip-allergen-milk"]
         let milkSeverity = element("pip-allergen-severity-milk", in: app)
         let milkCrossContact = app.switches["pip-allergen-cross-contact-milk"]
@@ -707,6 +743,150 @@ final class CookWithPipUITests: XCTestCase {
         let ingredientName = element("recipe-ingredient-name-1", in: app)
         XCTAssertTrue(ingredientName.label.contains("calamansi"))
         capture("Recipe_Detail_Substitution_Applied", app: app)
+
+        let shoppingPreview = element("recipe-shopping-preview-link", in: app)
+        scrollTargetIntoView(shoppingPreview, inside: app.scrollViews["recipe-detail-scroll"], in: app)
+        XCTAssertTrue(shoppingPreview.isHittable)
+        shoppingPreview.tap()
+        let appliedShoppingSubstitution = element("recipe-shopping-applied-substitution-0", in: app)
+        XCTAssertTrue(appliedShoppingSubstitution.waitForExistence(timeout: 10))
+        XCTAssertTrue(appliedShoppingSubstitution.label.contains("calamansi"))
+        XCTAssertTrue(appliedShoppingSubstitution.label.contains("sampalok"))
+        capture("Shopping_Preview_Applied_Substitution", app: app)
+    }
+
+    func testInventoryQuickAddOffersScannerAndMinimalManualEntry() {
+        let app = launch(screen: "inventory-quick-add")
+        let inventoryTab = app.tabBars.buttons["Inventory"]
+        XCTAssertTrue(inventoryTab.waitForExistence(timeout: 10))
+        inventoryTab.tap()
+
+        let addMenu = app.buttons["inventory-add-menu"]
+        XCTAssertTrue(addMenu.waitForExistence(timeout: 10))
+        addMenu.tap()
+        let scanOption = app.buttons["inventory-add-scan-option"]
+        XCTAssertTrue(scanOption.waitForExistence(timeout: 5))
+        scanOption.tap()
+
+        let receiptMode = app.buttons["Receipt Intake"]
+        XCTAssertTrue(receiptMode.waitForExistence(timeout: 10))
+        receiptMode.tap()
+        let receiptHeading = app.staticTexts["Supermarket Receipt Scanner"]
+        XCTAssertTrue(receiptHeading.waitForExistence(timeout: 5))
+        capture("Inventory_Receipt_Intake_Entry", app: app)
+
+        inventoryTab.tap()
+        addMenu.tap()
+        let manualOption = app.buttons["inventory-add-new-option"]
+        XCTAssertTrue(manualOption.waitForExistence(timeout: 5))
+        manualOption.tap()
+
+        let productName = element("inventory-add-product-name", in: app)
+        XCTAssertTrue(
+            productName.waitForExistence(timeout: 10),
+            "Choosing Add a new product must show the product-name field"
+        )
+        let submit = element("inventory-add-submit", in: app)
+        XCTAssertFalse(submit.isEnabled, "A new product still needs an identity and a known unit")
+        productName.tap()
+        productName.typeText("Synthetic Quick Add")
+        XCTAssertFalse(submit.isEnabled, "The app must not assume an unknown product's unit")
+        let unitPicker = element("inventory-add-unit-picker", in: app)
+        XCTAssertTrue(unitPicker.waitForExistence(timeout: 5))
+        unitPicker.tap()
+        let pieces = app.buttons["pcs"]
+        XCTAssertTrue(pieces.waitForExistence(timeout: 5))
+        pieces.tap()
+        XCTAssertTrue(submit.isEnabled, "Product identity, unit, and quantity are enough for Quick Add")
+        let optionalDetails = element("inventory-add-optional-details", in: app)
+        XCTAssertTrue(optionalDetails.exists)
+        capture("Inventory_Quick_Add_Minimal", app: app)
+    }
+
+    func testPartialInventoryDiscardUsesActualCountAndUpdatesStock() {
+        let app = launch(screen: "inventory-stock-actions")
+        let discard = element("inventory-discard-action", in: app)
+        XCTAssertTrue(discard.waitForExistence(timeout: 10))
+        XCTAssertTrue(discard.isHittable)
+        discard.tap()
+
+        let firstBatch = element("inventory-discard-select-batch-3", in: app)
+        XCTAssertTrue(firstBatch.waitForExistence(timeout: 5))
+        firstBatch.tap()
+
+        let quantity = element("discard-quantity-field", in: app)
+        XCTAssertTrue(quantity.waitForExistence(timeout: 5))
+        XCTAssertEqual(quantity.value as? String, "4")
+        let decrease = element("discard-quantity-decrement", in: app)
+        XCTAssertTrue(decrease.isHittable)
+        decrease.tap()
+        XCTAssertEqual(quantity.value as? String, "3", "The user can record a partial count of discarded stock")
+
+        let reason = element("discard-reason-field", in: app)
+        XCTAssertTrue(reason.waitForExistence(timeout: 5))
+        XCTAssertEqual(reason.value as? String, "Spoiled / Expired")
+        let confirm = element("discard-confirm-button", in: app)
+        XCTAssertTrue(confirm.isHittable)
+        confirm.tap()
+
+        let remaining = element("inventory-batch-quantity-3", in: app)
+        let updatedQuantity = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label == %@", "3 cans"), object: remaining
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [updatedQuantity], timeout: 10), .completed,
+                       "The remaining batch quantity reflects the partial disposal")
+        capture("Inventory_Partial_Discard_Recorded", app: app)
+    }
+
+    func testPurchasedGroceriesReviewRequiresExplicitDecisions() {
+        let app = launch(scenario: "shopping-reconciliation")
+        let reviewButton = element("shopping-review-purchased", in: app)
+        XCTAssertTrue(reviewButton.waitForExistence(timeout: 10))
+        reviewButton.tap()
+
+        let reviewForm = element("shopping-purchased-review-form", in: app)
+        XCTAssertTrue(reviewForm.waitForExistence(timeout: 10))
+        // Query the actual navigation-bar button, not its accessibility wrapper, so
+        // XCTest observes the disabled state of the confirmation control itself.
+        let confirm = app.navigationBars.buttons["shopping-confirm-purchased-review"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        XCTAssertFalse(confirm.isEnabled, "Every purchased item needs an explicit review decision")
+
+        let addRice = element("shopping-reconcile-add-9981", in: app)
+        XCTAssertTrue(addRice.waitForExistence(timeout: 5))
+        addRice.tap()
+
+        let unitPicker = element("shopping-reconcile-new-product-unit-9981", in: app)
+        XCTAssertTrue(unitPicker.waitForExistence(timeout: 5))
+        unitPicker.tap()
+        let kilograms = app.buttons["kg"]
+        XCTAssertTrue(kilograms.waitForExistence(timeout: 5))
+        kilograms.tap()
+
+        let actualQuantity = element("shopping-reconcile-actual-quantity-9981", in: app)
+        XCTAssertTrue(actualQuantity.waitForExistence(timeout: 5))
+        XCTAssertFalse(confirm.isEnabled, "The actual pantry amount must be entered; planned amount is not reused")
+        actualQuantity.tap()
+        actualQuantity.typeText("2.5")
+        let keyboardDone = element("shopping-reconciliation-keyboard-done", in: app)
+        if keyboardDone.waitForExistence(timeout: 2) { keyboardDone.tap() }
+        XCTAssertFalse(confirm.isEnabled, "The second purchased item still needs a decision")
+
+        let excludeMango = element("shopping-reconcile-exclude-9982", in: app)
+        if !excludeMango.isHittable { app.swipeUp() }
+        XCTAssertTrue(excludeMango.waitForExistence(timeout: 5))
+        XCTAssertTrue(excludeMango.isHittable)
+        excludeMango.tap()
+        XCTAssertTrue(confirm.isEnabled, "The review can be confirmed once all rows have safe, explicit choices")
+        confirm.tap()
+
+        let riceStatus = element("shopping-purchase-status-9981", in: app)
+        let mangoStatus = element("shopping-purchase-status-9982", in: app)
+        XCTAssertTrue(riceStatus.waitForExistence(timeout: 10))
+        XCTAssertEqual(riceStatus.label, "Added to pantry")
+        XCTAssertTrue(mangoStatus.waitForExistence(timeout: 5))
+        XCTAssertEqual(mangoStatus.label, "Excluded from pantry")
+        capture("Shopping_Purchased_Pantry_Review", app: app)
     }
 
     func testShoppingPreviewEditsConsolidationAndExplicitConfirmation() {
@@ -716,7 +896,18 @@ final class CookWithPipUITests: XCTestCase {
         let safetyStatus = element("recipe-shopping-safety-status", in: app)
         XCTAssertEqual(safetyStatus.label, "Eligible")
         XCTAssertTrue(safetyStatus.isHittable)
+        let actionSummary = element("recipe-shopping-action-summary-901", in: app)
+        scrollTargetIntoView(actionSummary, inside: shoppingForm, progressAnchor: safetyStatus, in: app)
+        XCTAssertEqual(actionSummary.label, "Add 100 g kangkong to shopping list")
+        let quantityDetails = element("recipe-shopping-quantity-details-901", in: app)
+        XCTAssertEqual(quantityDetails.value as? String, "Collapsed")
         capture("Shopping_Preview_Ready", app: app)
+        quantityDetails.tap()
+        let requiredQuantity = element("recipe-shopping-quantity-required-901", in: app)
+        XCTAssertTrue(requiredQuantity.waitForExistence(timeout: 5))
+        XCTAssertTrue(requiredQuantity.label.contains("120 g"))
+        XCTAssertEqual(quantityDetails.value as? String, "Expanded")
+        quantityDetails.tap()
         let unlinked = element("recipe-shopping-unlinked-9920", in: app)
         scrollTargetIntoView(unlinked, inside: shoppingForm, progressAnchor: safetyStatus, in: app)
         XCTAssertTrue(unlinked.exists)
@@ -833,10 +1024,19 @@ final class CookWithPipUITests: XCTestCase {
     func testShoppingReviewRequiredAndBlockedStates() {
         let reviewApp = launch(scenario: "shopping-review-required")
         openShoppingPreview(reviewApp)
-        XCTAssertEqual(element("recipe-shopping-safety-status", in: reviewApp).label, "Review required")
+        let reviewSafetyStatus = element("recipe-shopping-safety-status", in: reviewApp)
+        XCTAssertEqual(reviewSafetyStatus.label, "Review required")
         let reviewConfirm = reviewApp.navigationBars.buttons["recipe-shopping-confirm"]
         XCTAssertFalse(reviewConfirm.isEnabled)
         capture("Shopping_Preview_Review_Required", app: reviewApp)
+        let reviewActionSummary = element("recipe-shopping-action-summary-901", in: reviewApp)
+        scrollTargetIntoView(reviewActionSummary,
+                             inside: scrollContainer("recipe-shopping-review-form", in: reviewApp),
+                             progressAnchor: reviewSafetyStatus,
+                             targetDescription: "review-required shopping action summary",
+                             in: reviewApp)
+        XCTAssertTrue(reviewActionSummary.label.contains("Review the food-safety status before adding"))
+        XCTAssertTrue(reviewActionSummary.isHittable)
         let acknowledgement = reviewApp.switches["recipe-shopping-safety-acknowledgement"]
         let reviewForm = scrollContainer("recipe-shopping-review-form", in: reviewApp)
         scrollTargetIntoView(acknowledgement, inside: reviewForm, in: reviewApp)
@@ -853,9 +1053,18 @@ final class CookWithPipUITests: XCTestCase {
         reviewApp.terminate()
         let blockedApp = launch(scenario: "shopping-blocked")
         openShoppingPreview(blockedApp)
-        XCTAssertEqual(element("recipe-shopping-safety-status", in: blockedApp).label, "Blocked")
+        let blockedSafetyStatus = element("recipe-shopping-safety-status", in: blockedApp)
+        XCTAssertEqual(blockedSafetyStatus.label, "Blocked")
         XCTAssertFalse(blockedApp.buttons["recipe-shopping-confirm"].isEnabled)
         capture("Shopping_Preview_Blocked", app: blockedApp)
+        let blockedActionSummary = element("recipe-shopping-action-summary-901", in: blockedApp)
+        scrollTargetIntoView(blockedActionSummary,
+                             inside: scrollContainer("recipe-shopping-review-form", in: blockedApp),
+                             progressAnchor: blockedSafetyStatus,
+                             targetDescription: "blocked shopping action summary",
+                             in: blockedApp)
+        XCTAssertTrue(blockedActionSummary.label.contains("Food-safety review blocks adding"))
+        XCTAssertTrue(blockedActionSummary.isHittable)
     }
 
     func testShoppingOfflineRetryAndStalePreviewRecovery() {

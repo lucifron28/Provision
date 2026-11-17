@@ -301,6 +301,7 @@ public struct ProductLabelReviewView: View {
                     )
                         .lineLimit(2...4)
                         .focused($focusedField, equals: .sourceReference)
+                        .simultaneousGesture(TapGesture().onEnded { focusedField = .sourceReference })
                         .accessibilityLabel("Source reference")
                         .accessibilityIdentifier("pip-label-source-reference")
                 }

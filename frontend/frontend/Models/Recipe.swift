@@ -1,6 +1,6 @@
 import Foundation
 
-nonisolated public struct IngredientRequirement: Codable, Sendable {
+nonisolated public struct IngredientRequirement: Codable, Equatable, Sendable {
     public let ingredient_id: Int?
     public let display_name: String?
     public let amount: ExactQuantity
@@ -50,7 +50,7 @@ nonisolated public struct HouseholdRecipe: Decodable, Identifiable, Sendable {
     public let ingredients: [RecipeIngredient]
 }
 
-nonisolated public struct RecipeSubstitution: Encodable, Sendable {
+nonisolated public struct RecipeSubstitution: Codable, Equatable, Sendable {
     public let requirement_index: Int
     public let replacement: IngredientRequirement
     public init(requirementIndex: Int, replacement: IngredientRequirement) {

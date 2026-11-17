@@ -10,7 +10,7 @@ on:
         type: boolean
         default: false
       suite:
-        description: Run a focused regression suite, or the complete 55-scenario gallery
+        description: Run a focused regression suite, or the complete 58-scenario gallery
         required: true
         type: choice
         options:
@@ -18,6 +18,7 @@ on:
           - gallery-regressions
           - toggle-regressions
           - shopping-recovery
+          - ux-workflow-regressions
         default: full-gallery
   schedule:
     - cron: '30 6 * * 1'
@@ -59,6 +60,7 @@ jobs:
                   "testAmbiguousShoppingConfirmationSurvivesAppRelaunch",
                   "testSafetyAndAvailabilityStatesWithLongFilipinoNames",
                   "testHomeNavigationAndCaptureRecipeScreens",
+                  "testPurchasedGroceriesReviewRequiresExplicitDecisions",
                 ],
               },
               {
@@ -88,6 +90,8 @@ jobs:
                 tests: [
                   "testFormsStayReadableInDarkModeAndLargeText",
                   "testProductLabelReviewScreens",
+                  "testInventoryQuickAddOffersScannerAndMinimalManualEntry",
+                  "testPartialInventoryDiscardUsesActualCountAndUpdatesStock",
                   "testStaleProductLabelReviewIsShownAsStale",
                   "testShoppingPreviewExpiredIsNotConfirmable",
                   "testPipChatConsentConversationAndValidatedRecipeAction",
@@ -118,6 +122,9 @@ jobs:
                 "testProductLabelReviewScreens",
                 "testDarkModeLargeTextAndSearchKeyboard",
                 "testHomeNavigationAndCaptureRecipeScreens",
+                "testInventoryQuickAddOffersScannerAndMinimalManualEntry",
+                "testPartialInventoryDiscardUsesActualCountAndUpdatesStock",
+                "testPurchasedGroceriesReviewRequiresExplicitDecisions",
               ])],
               "toggle-regressions": [focused("toggle-regressions", [
                 "testPipChatConsentControlsGallery",
@@ -125,6 +132,12 @@ jobs:
               ])],
               "shopping-recovery": [focused("shopping-recovery", [
                 "testShoppingOfflineRetryAndStalePreviewRecovery",
+              ])],
+              "ux-workflow-regressions": [focused("ux-workflow-regressions", [
+                "testHomeNavigationAndCaptureRecipeScreens",
+                "testInventoryQuickAddOffersScannerAndMinimalManualEntry",
+                "testPurchasedGroceriesReviewRequiresExplicitDecisions",
+                "testShoppingReviewRequiredAndBlockedStates",
               ])],
             };
             if (!matrices[suite]) throw new Error(`Unknown gallery suite: ${suite}`);
@@ -141,7 +154,7 @@ jobs:
                 per_page: 100,
               });
               const priorSuccess = data.workflow_runs.find(run => {
-                const focused = ["gallery-regressions", "toggle-regressions", "shopping-recovery"]
+              const focused = ["gallery-regressions", "toggle-regressions", "shopping-recovery", "ux-workflow-regressions"]
                   .some(name => run.display_title?.includes(`(${name})`) ?? false);
                 return run.id !== context.runId
                   && run.status === "completed"
@@ -156,6 +169,7 @@ jobs:
               "gallery-regressions": ".github/scripts/required_ios_gallery_regressions.json",
               "toggle-regressions": ".github/scripts/required_ios_toggle_regressions.json",
               "shopping-recovery": ".github/scripts/required_ios_shopping_recovery_regressions.json",
+              "ux-workflow-regressions": ".github/scripts/required_ios_ux_workflow_regressions.json",
             };
             core.setOutput("skip", String(skip));
             core.setOutput("suite", suite);
@@ -261,6 +275,7 @@ jobs:
           --input-log artifacts/xcodebuild.log
           --json-output "artifacts/test-durations-${{ matrix.shard }}.json"
           --summary "$GITHUB_STEP_SUMMARY"
+          --allow-empty
       - name: Export shard screenshots
         if: always()
         run: |

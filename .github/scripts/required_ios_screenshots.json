@@ -1,6 +1,8 @@
 {
   "requiredScreenshots": [
     "Home_Cook_with_Pip",
+    "Inventory_Quick_Add_Minimal",
+    "Inventory_Partial_Discard_Recorded",
     "Pip_Chat_Empty",
     "Pip_Chat_Conversation",
     "Pip_Chat_Shopping_Preview_Action",
@@ -40,6 +42,7 @@
     "Recipe_Substitution_Options",
     "Recipe_Detail_Substitution_Applied",
     "Shopping_Preview_Ready",
+    "Shopping_Purchased_Pantry_Review",
     "Shopping_Preview_Dark_Mode",
     "Shopping_Preview_Large_Text",
     "Shopping_Preview_Review_Required",
@@ -57,6 +60,7 @@
     "Source_Error_Retry"
   ],
   "supplementalScreenshots": [
+    "Inventory_Receipt_Intake_Entry",
     "My_Recipes_Search_Scrolled",
     "Recipe_Detail_Large_Text_Summary_Filipino",
     "Shopping_Preview_Revision_Details_Large_Text",
@@ -66,6 +70,10 @@
     "Staging_Relogin_Relaunch_Recovery"
   ],
   "scenarioDescriptions": {
+        "Inventory_Quick_Add_Minimal": "Minimal manual Quick Add with only a product identity, explicit unit, and quantity entered; advanced fields remain collapsed.",
+    "Inventory_Partial_Discard_Recorded": "An explicit partial disposal is recorded with a reason and the updated remaining batch quantity is visible.",
+    "Shopping_Purchased_Pantry_Review": "A purchased grocery is added using an explicit actual amount while another is excluded from pantry inventory.",
+    "Inventory_Receipt_Intake_Entry": "Inventory add menu navigates to the existing receipt intake scanner.",
     "Cook_with_Pip": "Cook with Pip household recipe search with the Bicol Express result visible.",
     "Cook_Now": "Cook Now mode is selected and its matching recipe is visible.",
     "Recipe_Detail_Instructions": "The selected recipe detail shows its first readable instruction step.",

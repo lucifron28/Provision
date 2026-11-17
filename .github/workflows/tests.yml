@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, feat/pip-chat-foundation]
 
 permissions:
   actions: read
@@ -68,6 +68,7 @@ jobs:
           --input-log artifacts/xcodebuild.log
           --json-output artifacts/test-durations-unit.json
           --summary "$GITHUB_STEP_SUMMARY"
+          --allow-empty
       - name: Upload unit test timing and log
         if: always()
         uses: actions/upload-artifact@v4
@@ -102,11 +103,13 @@ jobs:
               -only-testing:frontendUITests/CookWithPipUITests/testPipChatConsentConversationAndValidatedRecipeAction
               -only-testing:frontendUITests/CookWithPipUITests/testPipChatShoppingActionOpensTheExistingReviewScreen
               -only-testing:frontendUITests/CookWithPipUITests/testPipChatPrivacyControlsAtAccessibilitySizeInDarkMode
+              -only-testing:frontendUITests/CookWithPipUITests/testInventoryQuickAddOffersScannerAndMinimalManualEntry
           - shard: shopping-confirmation
             tests: >-
               -only-testing:frontendUITests/CookWithPipUITests/testShoppingReviewRequiredAndBlockedStates
               -only-testing:frontendUITests/CookWithPipUITests/testAmbiguousShoppingConfirmationSurvivesAppRelaunch
               -only-testing:frontendUITests/CookWithPipUITests/testShoppingOfflineRetryAndStalePreviewRecovery
+              -only-testing:frontendUITests/CookWithPipUITests/testPurchasedGroceriesReviewRequiresExplicitDecisions
     steps:
       - uses: actions/checkout@v4
       - name: Show Xcode and simulator runtimes
@@ -156,6 +159,7 @@ jobs:
           --input-log artifacts/xcodebuild.log
           --json-output artifacts/test-durations-${{ matrix.shard }}.json
           --summary "$GITHUB_STEP_SUMMARY"
+          --allow-empty
       - name: Export shard screenshots
         if: always()
         run: |
@@ -279,6 +283,7 @@ jobs:
           python .github/scripts/report_xcode_test_durations.py
           --aggregate-dir artifacts/test-durations
           --summary "$GITHUB_STEP_SUMMARY"
+          --allow-empty
       - name: Report phase timings and runner allocation
         if: always()
         env:

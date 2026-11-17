@@ -1,6 +1,11 @@
 import SwiftUI
 
 public struct PipChatView: View {
+    private struct SuggestedPrompt: Identifiable {
+        let id: String
+        let text: String
+    }
+
     private struct Destination: Hashable, Identifiable {
         let recipeID: Int
         let opensShoppingPreview: Bool
@@ -237,6 +242,7 @@ public struct PipChatView: View {
                     symbol: "bubble.left.and.bubble.right"
                 )
                 .accessibilityIdentifier("pip-chat-empty-state")
+                suggestedPromptsSection
             }
 
             ForEach(viewModel.messages) { message in
@@ -330,6 +336,64 @@ public struct PipChatView: View {
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(ProvisionTheme.border, lineWidth: 1))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(message.role == .assistant ? "pip-chat-message-assistant" : "pip-chat-message-user")
+    }
+
+    private var suggestedPrompts: [SuggestedPrompt] {
+        if context?.kind == .recipe {
+            return [
+                SuggestedPrompt(id: "cook-recipe", text: "Help me cook this recipe"),
+                SuggestedPrompt(id: "substitute", text: "Suggest a substitute"),
+                SuggestedPrompt(id: "missing-ingredients", text: "What ingredients am I missing?")
+            ]
+        }
+        if context?.kind == .product {
+            return [
+                SuggestedPrompt(id: "use-product", text: "How can I use this product?"),
+                SuggestedPrompt(id: "recipes-with-product", text: "What recipes use this product?")
+            ]
+        }
+        return [
+            SuggestedPrompt(id: "cook-tonight", text: "What can I cook tonight?"),
+            SuggestedPrompt(id: "expiring-food", text: "Use food expiring soon"),
+            SuggestedPrompt(id: "missing-ingredients", text: "What ingredients am I missing?"),
+            SuggestedPrompt(id: "budget-meal", text: "Suggest a budget-friendly meal")
+        ]
+    }
+
+    private var suggestedPromptsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Try asking")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(ProvisionTheme.textSecondary)
+                .accessibilityAddTraits(.isHeader)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)],
+                      alignment: .leading, spacing: 8) {
+                ForEach(suggestedPrompts) { prompt in
+                    Button {
+                        viewModel.draft = prompt.text
+                        composerFocused = true
+                    } label: {
+                        Text(prompt.text)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .padding(.horizontal, 12)
+                            .background(ProvisionTheme.provisionGreenLight,
+                                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Places this question in the chat input. Send it to ask Pip.")
+                    .accessibilityIdentifier("pip-chat-suggested-prompt-\(prompt.id)")
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .provisionCard(backgroundColor: ProvisionTheme.surface)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("pip-chat-suggested-prompts")
     }
 
     private func recipeDetail(for recipeID: Int) -> some View {

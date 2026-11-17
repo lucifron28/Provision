@@ -28,13 +28,16 @@ nonisolated public struct RecipeShoppingPreviewRequest: Encodable, Sendable {
     public let servings: ExactQuantity
     public let diner_user_ids: [Int]?
     public let include_optional: Bool
+    public let substitutions: [RecipeSubstitution]
 
-    public init(recipeID: Int, revision: Int, servings: ExactQuantity, dinerUserIDs: [Int]? = nil, includeOptional: Bool = false) {
+    public init(recipeID: Int, revision: Int, servings: ExactQuantity, dinerUserIDs: [Int]? = nil,
+                includeOptional: Bool = false, substitutions: [RecipeSubstitution] = []) {
         recipe_id = recipeID
         expected_recipe_revision = revision
         self.servings = servings
         diner_user_ids = dinerUserIDs
         include_optional = includeOptional
+        self.substitutions = substitutions
     }
 }
 
@@ -109,6 +112,7 @@ nonisolated public struct RecipeShoppingPreview: Decodable, Sendable {
     public let recipe_revision: Int
     public let servings: ExactQuantity
     public let include_optional: Bool
+    public let substitutions: [RecipeSubstitution]
     public let shopping_revision: Int
     public let inventory_revision: Int
     public let included_requirement_indexes: [Int]

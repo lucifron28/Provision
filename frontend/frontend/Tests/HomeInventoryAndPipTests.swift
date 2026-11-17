@@ -43,6 +43,7 @@ public struct HomeInventoryAndPipTests {
         try testReviewWorkspaceScannerSuspensionAndCommitRecovery()
         try testRestoredAllConfirmedPendingSubmissionPrecedence()
         try testReusableSearchableProductSelector()
+        try await testRecentProductSelectionsAreOrderedAndHouseholdScoped()
         try testProductSelectorSelectionAndSheetDismissal()
         print("=== ALL HOME, INVENTORY & PIP TESTS PASSED ===")
     }
@@ -474,6 +475,36 @@ public struct HomeInventoryAndPipTests {
         for p in cannedMatches {
             try assertEquals(p.category, "Canned Goods", "Category must match Canned Goods")
         }
+
+        let recentSelector = SearchableProductSelector(
+            products: prods,
+            selectedProductId: binding,
+            recentlyUsedProductIDs: [prods[1].id, prods[0].id, prods[1].id, 999_999]
+        )
+        try assertEquals(recentSelector.recentProducts.map(\.id), [prods[1].id, prods[0].id],
+                         "Recent products keep most-recent-first order, drop duplicates, and omit products outside the household catalog")
+        try assertEquals(Set(recentSelector.otherFilteredProducts.map(\.id)).intersection(Set(recentSelector.recentProducts.map(\.id))), [],
+                         "Recent products are not duplicated in the remaining catalog results")
+    }
+
+    public static func testRecentProductSelectionsAreOrderedAndHouseholdScoped() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("provision-recent-products-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = LocalCacheStore(rootDirectory: root)
+        let householdA = HouseholdScope(userID: 11, householdID: 101, serverID: "recent-products-test")
+        let householdB = HouseholdScope(userID: 12, householdID: 202, serverID: "recent-products-test")
+
+        await cache.recordRecentlyUsedProduct(1, scope: householdA)
+        await cache.recordRecentlyUsedProduct(2, scope: householdA)
+        await cache.recordRecentlyUsedProduct(1, scope: householdA)
+
+        try assertEquals(await cache.loadRecentlyUsedProductIDs(scope: householdA), [1, 2],
+                         "A successful repeat intake moves a product to the front without duplicating it")
+        try assertEquals(await cache.loadRecentlyUsedProductIDs(scope: householdB), [],
+                         "Recent products are isolated between household scopes")
+        try assertEquals(LocalCacheStore.normalizedRecentProductIDs([4, 0, -1, 4, 3], limit: 2), [4, 3],
+                         "Invalid IDs and excess entries are discarded")
     }
 
     // MARK: - Restored All-Confirmed Pending Submission Recovery Precedence Tests

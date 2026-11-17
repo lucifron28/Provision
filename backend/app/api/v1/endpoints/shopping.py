@@ -1,24 +1,45 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select, func, and_
 
 from app.core.database import get_db
 from app.api.v1.dependencies import get_current_household_id, get_current_household_id_for_write
+from app.api.v1.endpoints.auth import get_current_user
 from app.models.shopping import ShoppingListItem
 from app.models.product import Product
 from app.models.batch import InventoryBatch
 from app.models.ingredient import Ingredient
 from app.models.recipe import Recipe
+from app.models.user import User
 from app.services.household_writes import bump_shopping_revision
+from app.services.shopping_reconciliation import reconcile_purchased_items
 from app.schemas.shopping import (
     ShoppingListItemCreate,
     ShoppingListItemUpdate,
     ShoppingListItemRead,
     AutoGenerateShoppingRequest,
 )
+from app.schemas.shopping_reconciliation import (
+    ReconcilePurchasedItemsRead,
+    ReconcilePurchasedItemsRequest,
+)
 
 router = APIRouter()
+
+
+@router.post("/reconcile-purchased", response_model=ReconcilePurchasedItemsRead)
+def reconcile_purchased(
+    request: ReconcilePurchasedItemsRequest,
+    response: Response,
+    household_id: int = Depends(get_current_household_id_for_write),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    response.headers["Cache-Control"] = "no-store"
+    result = reconcile_purchased_items(db, household_id, user.id, request)
+    response.status_code = status.HTTP_200_OK if result.replayed else status.HTTP_201_CREATED
+    return result
 
 
 @router.get("/", response_model=List[ShoppingListItemRead])
@@ -176,6 +197,9 @@ def update_shopping_item(
             detail=f"Shopping list item with ID {item_id} not found",
         )
 
+    if item.reconciliation_status != "pending":
+        raise HTTPException(status_code=409, detail="SHOPPING_ITEM_ALREADY_RECONCILED")
+
     update_data = item_in.model_dump(exclude_unset=True)
     if "product_id" in update_data and update_data["product_id"] is not None:
         product = db.scalar(
@@ -250,6 +274,8 @@ def toggle_item_bought_status(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Shopping list item with ID {item_id} not found",
         )
+    if item.reconciliation_status != "pending":
+        raise HTTPException(status_code=409, detail="SHOPPING_ITEM_ALREADY_RECONCILED")
     item.is_bought = not item.is_bought
     bump_shopping_revision(db, household_id)
     db.commit()
@@ -348,15 +374,27 @@ def clear_completed_items(
         select(ShoppingListItem).where(
             ShoppingListItem.household_id == household_id,
             ShoppingListItem.is_bought.is_(True),
+            ShoppingListItem.reconciliation_status != "pending",
         ).execution_options(populate_existing=True)
     ).all()
     count = len(items)
+    pending_count = db.scalar(
+        select(func.count(ShoppingListItem.id)).where(
+            ShoppingListItem.household_id == household_id,
+            ShoppingListItem.is_bought.is_(True),
+            ShoppingListItem.reconciliation_status == "pending",
+        )
+    ) or 0
     for item in items:
         db.delete(item)
     if count:
         bump_shopping_revision(db, household_id)
     db.commit()
-    return {"message": f"Successfully removed {count} completed item(s)"}
+    return {
+        "message": f"Removed {count} reviewed item(s); {pending_count} purchased item(s) still need pantry review",
+        "removed_count": count,
+        "pending_review_count": pending_count,
+    }
 
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -376,6 +414,8 @@ def delete_shopping_item(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Shopping list item with ID {item_id} not found",
         )
+    if item.is_bought and item.reconciliation_status == "pending":
+        raise HTTPException(status_code=409, detail="PURCHASED_ITEM_REQUIRES_PANTRY_REVIEW")
     db.delete(item)
     bump_shopping_revision(db, household_id)
     db.commit()

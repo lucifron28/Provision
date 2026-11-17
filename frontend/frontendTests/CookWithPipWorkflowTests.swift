@@ -274,6 +274,146 @@ final class CookWithPipWorkflowTests: XCTestCase {
         ), .record(record))
     }
 
+    func testManualInventoryPendingKeychainSeparatesStorageFailuresAndScopeMismatch() throws {
+        let scope = HouseholdScope(userID: 418, householdID: 529, serverID: "manual-intake-keychain-test")
+        let request = ManualInventoryIntakeRequest(
+            idempotencyKey: "manual-intake-test-0001",
+            newProduct: ProductCreate(name: "Jasmine rice", unit: "kg"),
+            quantity: 2.5,
+            unitPrice: 42
+        )
+        let record = PendingManualInventoryIntakeRecord(scopeStorageKey: scope.storageKey, request: request)
+        let data = try JSONEncoder().encode(record)
+
+        XCTAssertEqual(KeychainStore.pendingManualInventoryReadResult(
+            status: errSecItemNotFound, data: nil, scope: scope
+        ), .missing)
+        XCTAssertEqual(KeychainStore.pendingManualInventoryReadResult(
+            status: errSecInteractionNotAllowed, data: nil, scope: scope
+        ), .unavailable)
+        XCTAssertEqual(KeychainStore.pendingManualInventoryReadResult(
+            status: errSecSuccess, data: Data([0xFF]), scope: scope
+        ), .corrupt)
+        XCTAssertEqual(KeychainStore.pendingManualInventoryReadResult(
+            status: errSecSuccess, data: data, scope: scope
+        ), .record(record))
+
+        let otherScope = HouseholdScope(userID: scope.userID, householdID: scope.householdID + 1,
+                                        serverID: scope.serverID)
+        XCTAssertEqual(KeychainStore.pendingManualInventoryReadResult(
+            status: errSecSuccess, data: data, scope: otherScope
+        ), .corrupt)
+    }
+
+    func testPurchasedGroceriesPendingKeychainSeparatesStorageFailuresAndHouseholdScope() throws {
+        let scope = HouseholdScope(userID: 614, householdID: 725, serverID: "purchased-review-keychain-test")
+        let record = PendingPurchasedGroceriesRecord(
+            scopeStorageKey: scope.storageKey,
+            request: ReconcilePurchasedItemsRequest(idempotencyKey: "purchased-review-0001", items: [
+                PurchasedItemResolutionRequest(
+                    shoppingItemID: 991,
+                    expectedUpdatedAt: "2026-11-18T10:00:00Z",
+                    action: "exclude"
+                )
+            ])
+        )
+        let data = try JSONEncoder().encode(record)
+
+        XCTAssertEqual(KeychainStore.pendingPurchasedGroceriesReadResult(
+            status: errSecItemNotFound, data: nil, scope: scope
+        ), .missing)
+        XCTAssertEqual(KeychainStore.pendingPurchasedGroceriesReadResult(
+            status: errSecInteractionNotAllowed, data: nil, scope: scope
+        ), .unavailable)
+        XCTAssertEqual(KeychainStore.pendingPurchasedGroceriesReadResult(
+            status: errSecSuccess, data: Data([0xFF]), scope: scope
+        ), .corrupt)
+        XCTAssertEqual(KeychainStore.pendingPurchasedGroceriesReadResult(
+            status: errSecSuccess, data: data, scope: scope
+        ), .record(record))
+
+        let otherScope = HouseholdScope(userID: scope.userID, householdID: scope.householdID + 1,
+                                        serverID: scope.serverID)
+        XCTAssertEqual(KeychainStore.pendingPurchasedGroceriesReadResult(
+            status: errSecSuccess, data: data, scope: otherScope
+        ), .corrupt)
+    }
+
+    func testPendingInventoryActionKeychainSeparatesFailuresAndRoundTripsExactRequest() throws {
+        let scope = HouseholdScope(userID: 814, householdID: 925, serverID: "stock-action-keychain-test")
+        let action = PendingInventoryAction.discard(
+            batchID: 991,
+            request: DiscardRequest(
+                reason: "Used part of a spoiled batch",
+                notes: "Measured at home",
+                quantity: 0.25,
+                expected_updated_at: "2026-11-18T10:00:00Z",
+                idempotency_key: "stock-action-test-0001"
+            )
+        )
+        let record = PendingInventoryActionRecord(scopeStorageKey: scope.storageKey, action: action)
+        let data = try JSONEncoder().encode(record)
+
+        XCTAssertEqual(KeychainStore.pendingInventoryActionReadResult(
+            status: errSecItemNotFound, data: nil, scope: scope
+        ), .missing)
+        XCTAssertEqual(KeychainStore.pendingInventoryActionReadResult(
+            status: errSecInteractionNotAllowed, data: nil, scope: scope
+        ), .unavailable)
+        XCTAssertEqual(KeychainStore.pendingInventoryActionReadResult(
+            status: errSecSuccess, data: Data([0xFF]), scope: scope
+        ), .corrupt)
+        XCTAssertEqual(KeychainStore.pendingInventoryActionReadResult(
+            status: errSecSuccess, data: data, scope: scope
+        ), .record(record))
+
+        let otherScope = HouseholdScope(userID: scope.userID, householdID: scope.householdID + 1,
+                                        serverID: scope.serverID)
+        XCTAssertEqual(KeychainStore.pendingInventoryActionReadResult(
+            status: errSecSuccess, data: data, scope: otherScope
+        ), .corrupt)
+    }
+
+    func testPendingInventoryActionKeychainRoundTripsInDeviceOnlyStorage() {
+        let scope = HouseholdScope(userID: Int.random(in: 1_000_000...2_000_000_000),
+                                   householdID: Int.random(in: 2_000_000_001...2_100_000_000),
+                                   serverID: UUID().uuidString)
+        let record = PendingInventoryActionRecord(
+            scopeStorageKey: scope.storageKey,
+            action: .consume(ConsumeRequest(product_id: 981, quantity: 0.75,
+                                            reason: "Home quick consume",
+                                            idempotency_key: UUID().uuidString))
+        )
+        defer { KeychainStore.shared.deletePendingInventoryAction(scope: scope) }
+
+        XCTAssertTrue(KeychainStore.shared.savePendingInventoryAction(record, scope: scope))
+        XCTAssertEqual(KeychainStore.shared.readPendingInventoryAction(scope: scope), .record(record))
+        XCTAssertEqual(KeychainStore.shared.readPendingInventoryAction(scope: HouseholdScope(
+            userID: scope.userID, householdID: scope.householdID + 1, serverID: scope.serverID
+        )), .missing)
+    }
+
+    func testManualInventoryPendingKeychainRoundTripsAndIsHouseholdScoped() {
+        let scope = HouseholdScope(userID: Int.random(in: 1_000_000...2_000_000_000),
+                                   householdID: Int.random(in: 2_000_000_001...2_100_000_000),
+                                   serverID: UUID().uuidString)
+        let record = PendingManualInventoryIntakeRecord(
+            scopeStorageKey: scope.storageKey,
+            request: ManualInventoryIntakeRequest(
+                idempotencyKey: UUID().uuidString,
+                newProduct: ProductCreate(name: "Oats", unit: "kg"),
+                quantity: 1.25
+            )
+        )
+        defer { KeychainStore.shared.deletePendingManualInventoryIntake(scope: scope) }
+
+        XCTAssertTrue(KeychainStore.shared.savePendingManualInventoryIntake(record, scope: scope))
+        XCTAssertEqual(KeychainStore.shared.readPendingManualInventoryIntake(scope: scope), .record(record))
+        XCTAssertEqual(KeychainStore.shared.readPendingManualInventoryIntake(scope: HouseholdScope(
+            userID: scope.userID, householdID: scope.householdID + 1, serverID: scope.serverID
+        )), .missing)
+    }
+
     func testPreferencesAndProductLabelReviewKeepServerRevisions() async throws {
         let service = CookWithPipUITestService()
         let preferences = CookWithPipPreferencesViewModel(scope: scope, service: service)

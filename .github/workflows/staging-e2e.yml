@@ -173,6 +173,7 @@ jobs:
           --input-log artifacts/xcodebuild.log
           --json-output artifacts/test-durations-staging.json
           --summary "$GITHUB_STEP_SUMMARY"
+          --allow-empty
 
       - name: Export staging simulator screenshots
         if: always()

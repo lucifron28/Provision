@@ -43,6 +43,7 @@ jobs:
           --input-log artifacts/xcodebuild.log
           --json-output artifacts/product-label-duration.json
           --summary "$GITHUB_STEP_SUMMARY"
+          --allow-empty
       - name: Upload product-label test evidence
         if: always()
         uses: actions/upload-artifact@v4

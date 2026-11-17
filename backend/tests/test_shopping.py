@@ -40,7 +40,9 @@ def test_shopping_list_crud_and_toggle(client):
     # 5. Clear completed
     clear_res = client.delete("/api/v1/shopping-list/completed/clear")
     assert clear_res.status_code == 200
-    assert "1 completed item" in clear_res.json()["message"]
+    assert clear_res.json()["removed_count"] == 0
+    assert clear_res.json()["pending_review_count"] == 1
+    assert client.get(f"/api/v1/shopping-list/{item1_id}").status_code == 200
 
 
 def test_generate_from_low_stock(client):

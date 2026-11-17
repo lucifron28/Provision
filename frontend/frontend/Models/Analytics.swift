@@ -7,6 +7,10 @@ nonisolated public struct InventoryValuation: Codable, Sendable {
     public var total_value: Double
     public var total_active_batches: Int
     public var total_active_products: Int
+
+    public var valueDisclosure: String {
+        "Sum of batches with saved purchase prices. Unpriced stock is excluded."
+    }
     
     enum CodingKeys: String, CodingKey {
         case total_value
@@ -65,6 +69,14 @@ nonisolated public struct WasteSummary: Codable, Sendable {
     public var total_waste_events: Int
     public var total_quantity_wasted: Double
     public var total_financial_loss: Double
+
+    public var costStatusLabel: String {
+        total_waste_events == 0 ? "No waste recorded" : "Cost estimate"
+    }
+
+    public var costDisclosure: String {
+        "Only waste events with saved purchase prices contribute; others are unpriced."
+    }
     
     enum CodingKeys: String, CodingKey {
         case total_waste_events

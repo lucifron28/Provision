@@ -14,7 +14,7 @@ def test_routine_visual_smoke_requires_12_scenarios_from_the_full_gallery():
     smoke = _read_manifest("required_ios_smoke_screenshots.json")
     full_gallery = _read_manifest("required_ios_screenshots.json")
 
-    assert len(full_gallery) == 55
+    assert len(full_gallery) == 58
     assert len(full_gallery) == len(set(full_gallery))
     assert len(smoke) == 12
     assert len(smoke) == len(set(smoke))
@@ -37,6 +37,7 @@ def test_pull_request_workflow_runs_four_ui_shards_and_preserves_safety_coverage
         "testShoppingReviewRequiredAndBlockedStates",
         "testAmbiguousShoppingConfirmationSurvivesAppRelaunch",
         "testShoppingOfflineRetryAndStalePreviewRecovery",
+        "testPurchasedGroceriesReviewRequiresExplicitDecisions",
     }
     assert "-only-testing:frontendTests" in workflow
     assert workflow.count("- shard: ") == 4
@@ -94,7 +95,7 @@ def test_gallery_covers_all_ui_methods_and_keeps_full_result_bundles():
     assert "- gallery-regressions" in workflow
     assert "- toggle-regressions" in workflow
     assert "- shopping-recovery" in workflow
-    assert len(methods) == 24
+    assert len(methods) == 27
     assert all(f'"{method}"' in workflow for method in methods)
     assert "build-for-testing" in workflow
     assert "test-without-building" in workflow

@@ -128,7 +128,7 @@ nonisolated public enum ProductUnits {
     }
 }
 
-nonisolated public struct ProductCreate: Codable, Sendable {
+nonisolated public struct ProductCreate: Codable, Equatable, Sendable {
     public var name: String
     public var brand: String?
     public var barcode: String?
