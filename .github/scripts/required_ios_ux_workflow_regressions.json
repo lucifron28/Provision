@@ -1,0 +1,18 @@
+{
+  "requiredScreenshots": [
+    "Home_Cook_with_Pip",
+    "Inventory_Receipt_Intake_Entry",
+    "Inventory_Quick_Add_Minimal",
+    "Shopping_Purchased_Pantry_Review",
+    "Shopping_Preview_Review_Required",
+    "Shopping_Preview_Blocked"
+  ],
+  "scenarioDescriptions": {
+    "Home_Cook_with_Pip": "A first-time household sees the pantry next step alongside the dashboard actions.",
+    "Inventory_Receipt_Intake_Entry": "Inventory navigation opens the existing receipt intake scanner.",
+    "Inventory_Quick_Add_Minimal": "Manual Quick Add accepts identity, an explicit unit, and quantity while leaving advanced fields available.",
+    "Shopping_Purchased_Pantry_Review": "Purchased groceries require explicit add or exclude decisions before pantry review is confirmed.",
+    "Shopping_Preview_Review_Required": "Uncertain food-safety information remains visible before shopping confirmation.",
+    "Shopping_Preview_Blocked": "A known food-safety conflict blocks shopping confirmation."
+  }
+}

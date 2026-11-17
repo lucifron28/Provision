@@ -122,15 +122,18 @@ public struct HomeView: View {
                         .frame(maxWidth: .infinity)
                         .provisionCard()
                     } else {
+                        // New households need an immediate, practical next step before analytics.
+                        if viewModel.isPantryEmpty {
+                            emptyPantryActionCard
+                        }
+
                         // Pantry Health Hero Card
                         pantryHealthCard
 
                         // Pip Contextual Card
                         pipContextualCard
 
-                        if viewModel.isPantryEmpty {
-                            emptyPantryActionCard
-                        } else {
+                        if !viewModel.isPantryEmpty {
                             // Chef Pip Kitchen Corner ("Use It First")
                             if viewModel.chefPipDateSafetyNotice != nil || !viewModel.approachingExpirationItems.isEmpty {
                                 chefPipKitchenCorner

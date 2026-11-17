@@ -18,6 +18,7 @@ on:
           - gallery-regressions
           - toggle-regressions
           - shopping-recovery
+          - ux-workflow-regressions
         default: full-gallery
   schedule:
     - cron: '30 6 * * 1'
@@ -132,6 +133,12 @@ jobs:
               "shopping-recovery": [focused("shopping-recovery", [
                 "testShoppingOfflineRetryAndStalePreviewRecovery",
               ])],
+              "ux-workflow-regressions": [focused("ux-workflow-regressions", [
+                "testHomeNavigationAndCaptureRecipeScreens",
+                "testInventoryQuickAddOffersScannerAndMinimalManualEntry",
+                "testPurchasedGroceriesReviewRequiresExplicitDecisions",
+                "testShoppingReviewRequiredAndBlockedStates",
+              ])],
             };
             if (!matrices[suite]) throw new Error(`Unknown gallery suite: ${suite}`);
 
@@ -147,7 +154,7 @@ jobs:
                 per_page: 100,
               });
               const priorSuccess = data.workflow_runs.find(run => {
-                const focused = ["gallery-regressions", "toggle-regressions", "shopping-recovery"]
+              const focused = ["gallery-regressions", "toggle-regressions", "shopping-recovery", "ux-workflow-regressions"]
                   .some(name => run.display_title?.includes(`(${name})`) ?? false);
                 return run.id !== context.runId
                   && run.status === "completed"
@@ -162,6 +169,7 @@ jobs:
               "gallery-regressions": ".github/scripts/required_ios_gallery_regressions.json",
               "toggle-regressions": ".github/scripts/required_ios_toggle_regressions.json",
               "shopping-recovery": ".github/scripts/required_ios_shopping_recovery_regressions.json",
+              "ux-workflow-regressions": ".github/scripts/required_ios_ux_workflow_regressions.json",
             };
             core.setOutput("skip", String(skip));
             core.setOutput("suite", suite);

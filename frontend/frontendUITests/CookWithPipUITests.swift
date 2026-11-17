@@ -756,8 +756,8 @@ final class CookWithPipUITests: XCTestCase {
     }
 
     func testInventoryQuickAddOffersScannerAndMinimalManualEntry() {
-        let app = launch()
-        let inventoryTab = app.buttons["Inventory"]
+        let app = launch(screen: "inventory-quick-add")
+        let inventoryTab = app.tabBars.buttons["Inventory"]
         XCTAssertTrue(inventoryTab.waitForExistence(timeout: 10))
         inventoryTab.tap()
 
@@ -843,7 +843,9 @@ final class CookWithPipUITests: XCTestCase {
 
         let reviewForm = element("shopping-purchased-review-form", in: app)
         XCTAssertTrue(reviewForm.waitForExistence(timeout: 10))
-        let confirm = element("shopping-confirm-purchased-review", in: app)
+        // Query the actual navigation-bar button, not its accessibility wrapper, so
+        // XCTest observes the disabled state of the confirmation control itself.
+        let confirm = app.navigationBars.buttons["shopping-confirm-purchased-review"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5))
         XCTAssertFalse(confirm.isEnabled, "Every purchased item needs an explicit review decision")
 
@@ -1019,12 +1021,19 @@ final class CookWithPipUITests: XCTestCase {
     func testShoppingReviewRequiredAndBlockedStates() {
         let reviewApp = launch(scenario: "shopping-review-required")
         openShoppingPreview(reviewApp)
-        XCTAssertEqual(element("recipe-shopping-safety-status", in: reviewApp).label, "Review required")
-        XCTAssertTrue(element("recipe-shopping-action-summary-901", in: reviewApp).label
-            .contains("Review the food-safety status before adding"))
+        let reviewSafetyStatus = element("recipe-shopping-safety-status", in: reviewApp)
+        XCTAssertEqual(reviewSafetyStatus.label, "Review required")
         let reviewConfirm = reviewApp.navigationBars.buttons["recipe-shopping-confirm"]
         XCTAssertFalse(reviewConfirm.isEnabled)
         capture("Shopping_Preview_Review_Required", app: reviewApp)
+        let reviewActionSummary = element("recipe-shopping-action-summary-901", in: reviewApp)
+        scrollTargetIntoView(reviewActionSummary,
+                             inside: scrollContainer("recipe-shopping-review-form", in: reviewApp),
+                             progressAnchor: reviewSafetyStatus,
+                             targetDescription: "review-required shopping action summary",
+                             in: reviewApp)
+        XCTAssertTrue(reviewActionSummary.label.contains("Review the food-safety status before adding"))
+        XCTAssertTrue(reviewActionSummary.isHittable)
         let acknowledgement = reviewApp.switches["recipe-shopping-safety-acknowledgement"]
         let reviewForm = scrollContainer("recipe-shopping-review-form", in: reviewApp)
         scrollTargetIntoView(acknowledgement, inside: reviewForm, in: reviewApp)
@@ -1041,11 +1050,18 @@ final class CookWithPipUITests: XCTestCase {
         reviewApp.terminate()
         let blockedApp = launch(scenario: "shopping-blocked")
         openShoppingPreview(blockedApp)
-        XCTAssertEqual(element("recipe-shopping-safety-status", in: blockedApp).label, "Blocked")
-        XCTAssertTrue(element("recipe-shopping-action-summary-901", in: blockedApp).label
-            .contains("Food-safety review blocks adding"))
+        let blockedSafetyStatus = element("recipe-shopping-safety-status", in: blockedApp)
+        XCTAssertEqual(blockedSafetyStatus.label, "Blocked")
         XCTAssertFalse(blockedApp.buttons["recipe-shopping-confirm"].isEnabled)
         capture("Shopping_Preview_Blocked", app: blockedApp)
+        let blockedActionSummary = element("recipe-shopping-action-summary-901", in: blockedApp)
+        scrollTargetIntoView(blockedActionSummary,
+                             inside: scrollContainer("recipe-shopping-review-form", in: blockedApp),
+                             progressAnchor: blockedSafetyStatus,
+                             targetDescription: "blocked shopping action summary",
+                             in: blockedApp)
+        XCTAssertTrue(blockedActionSummary.label.contains("Food-safety review blocks adding"))
+        XCTAssertTrue(blockedActionSummary.isHittable)
     }
 
     func testShoppingOfflineRetryAndStalePreviewRecovery() {

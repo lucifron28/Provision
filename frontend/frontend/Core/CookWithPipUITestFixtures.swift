@@ -700,6 +700,8 @@ struct CookWithPipUITestHost: View {
                 NavigationStack {
                     ShoppingListView(viewModel: shoppingViewModel)
                 }
+            } else if Self.launchArgument("-pip-ui-screen") == "inventory-quick-add" {
+                CookWithPipInventoryUITestTabs(inventoryViewModel: quickAddInventoryViewModel, scope: scope)
             } else if ["product-chat-context", "inventory-stock-actions"].contains(
                 Self.launchArgument("-pip-ui-screen") ?? ""
             ) {
@@ -748,6 +750,31 @@ struct CookWithPipUITestHost: View {
         .preferredColorScheme(Self.launchArgument("-pip-ui-appearance") == "dark" ? .dark : nil)
         .environment(\.dynamicTypeSize,
                      Self.launchArgument("-pip-ui-type") == "accessibility" ? .accessibility3 : .large)
+    }
+}
+
+@MainActor
+private struct CookWithPipInventoryUITestTabs: View {
+    @ObservedObject var inventoryViewModel: InventoryViewModel
+    @StateObject private var scanViewModel: ScanViewModel
+    @State private var selectedTab = 0
+
+    init(inventoryViewModel: InventoryViewModel, scope: HouseholdScope) {
+        self.inventoryViewModel = inventoryViewModel
+        _scanViewModel = StateObject(wrappedValue: ScanViewModel(isPreview: true, scope: scope))
+    }
+
+    var body: some View {
+        TabView(selection: $selectedTab) {
+            Tab("Inventory", systemImage: "shippingbox.fill", value: 0) {
+                InventoryView(viewModel: inventoryViewModel, onNavigateToScan: { selectedTab = 1 })
+            }
+
+            Tab("Scan", systemImage: "barcode.viewfinder", value: 1) {
+                ScanView(viewModel: scanViewModel)
+            }
+        }
+        .tint(ProvisionTheme.provisionGreen)
     }
 }
 

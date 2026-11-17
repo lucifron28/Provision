@@ -407,6 +407,7 @@ extension APIStatusTests {
         let json = #"""
         {"preview_id":"preview","expires_at":"2026-11-02T12:34:56.123456Z",
          "recipe_id":1,"recipe_revision":3,"servings":"2.0000","include_optional":false,
+         "substitutions":[],
          "shopping_revision":7,"inventory_revision":9,"included_requirement_indexes":[0],
          "safety":{"decision":"eligible","reasons":[],"ingredients":[],"notice":"Check labels",
                    "availability":{"recipe_servings":"4","servings":"2","overall_status":"partial","requirements":[]}},
