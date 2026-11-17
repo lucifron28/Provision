@@ -18,6 +18,9 @@ public struct CookWithPipPreferencesView: View {
     @State private var cookMinutesText = ""
     @State private var budgetText = ""
     @State private var customAllergyText = ""
+    @State private var cuisineDraft = ""
+    @State private var regionDraft = ""
+    @State private var equipmentDraft = ""
     @FocusState private var focusedField: InputField?
 
     public init(scope: HouseholdScope, service: any CookWithPipWorkflowService = APIClient.shared,
@@ -54,20 +57,26 @@ public struct CookWithPipPreferencesView: View {
             }
 
             Section("Cooking preferences") {
-                labeledField("Preferred cuisines") {
-                    TextField("Comma-separated", text: listBinding(\.preferred_cuisines),
-                              prompt: Text("Comma-separated").foregroundStyle(ProvisionTheme.textSecondary))
-                        .focused($focusedField, equals: .cuisines)
-                        .accessibilityLabel("Preferred cuisines")
-                        .accessibilityIdentifier("pip-preferred-cuisines")
-                }
-                labeledField("Filipino regions") {
-                    TextField("Comma-separated", text: listBinding(\.preferred_regions),
-                              prompt: Text("Comma-separated").foregroundStyle(ProvisionTheme.textSecondary))
-                        .focused($focusedField, equals: .regions)
-                        .accessibilityLabel("Filipino regions")
-                        .accessibilityIdentifier("pip-preferred-regions")
-                }
+                preferenceChoices(
+                    title: "Preferred cuisines",
+                    suggestions: cuisineSuggestions,
+                    keyPath: \.preferred_cuisines,
+                    identifierPrefix: "pip-cuisine",
+                    inputIdentifier: "pip-preferred-cuisines",
+                    inputLabel: "Add a cuisine",
+                    focus: .cuisines,
+                    draft: $cuisineDraft
+                )
+                preferenceChoices(
+                    title: "Filipino regions",
+                    suggestions: regionSuggestions,
+                    keyPath: \.preferred_regions,
+                    identifierPrefix: "pip-region",
+                    inputIdentifier: "pip-preferred-regions",
+                    inputLabel: "Add a region or style",
+                    focus: .regions,
+                    draft: $regionDraft
+                )
                 labeledField("Dislikes") {
                     TextField("Comma-separated", text: listBinding(\.dislikes),
                               prompt: Text("Comma-separated").foregroundStyle(ProvisionTheme.textSecondary))
@@ -75,13 +84,16 @@ public struct CookWithPipPreferencesView: View {
                         .accessibilityLabel("Dislikes")
                         .accessibilityIdentifier("pip-dislikes")
                 }
-                labeledField("Kitchen equipment") {
-                    TextField("Comma-separated", text: listBinding(\.equipment),
-                              prompt: Text("Comma-separated").foregroundStyle(ProvisionTheme.textSecondary))
-                        .focused($focusedField, equals: .equipment)
-                        .accessibilityLabel("Kitchen equipment")
-                        .accessibilityIdentifier("pip-equipment")
-                }
+                preferenceChoices(
+                    title: "Kitchen equipment",
+                    suggestions: equipmentSuggestions,
+                    keyPath: \.equipment,
+                    identifierPrefix: "pip-equipment",
+                    inputIdentifier: "pip-equipment",
+                    inputLabel: "Add equipment",
+                    focus: .equipment,
+                    draft: $equipmentDraft
+                )
                 ForEach(dietPatterns, id: \.value) { item in
                     Toggle(item.title, isOn: dietBinding(item.value))
                         .accessibilityIdentifier("pip-diet-\(item.value)")
@@ -240,6 +252,116 @@ public struct CookWithPipPreferencesView: View {
         [("vegetarian", "Vegetarian"), ("vegan", "Vegan"), ("pescatarian", "Pescatarian"),
          ("halal", "Halal"), ("no_pork", "No pork"), ("gluten_free", "Gluten-free"),
          ("dairy_free", "Dairy-free")]
+    }
+
+    private var cuisineSuggestions: [String] {
+        ["Filipino", "Ilocano", "Kapampangan", "Bicolano", "Visayan", "Japanese", "Korean",
+         "Chinese", "Thai", "Vietnamese", "Italian", "Mexican"]
+    }
+
+    private var regionSuggestions: [String] {
+        ["Ilocos", "Cordillera", "Central Luzon", "Bicol", "Visayas", "Mindanao", "Tagalog"]
+    }
+
+    private var equipmentSuggestions: [String] {
+        ["Stovetop", "Rice cooker", "Oven", "Microwave", "Air fryer", "Pressure cooker",
+         "Blender", "Grill"]
+    }
+
+    private func preferenceChoices(
+        title: String,
+        suggestions: [String],
+        keyPath: WritableKeyPath<FoodPreferences, [String]>,
+        identifierPrefix: String,
+        inputIdentifier: String,
+        inputLabel: String,
+        focus: InputField,
+        draft: Binding<String>
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(ProvisionTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 8)],
+                      alignment: .leading, spacing: 8) {
+                ForEach(choiceValues(suggestions, keyPath: keyPath), id: \.self) { value in
+                    let selected = viewModel.preferences[keyPath: keyPath].contains {
+                        $0.caseInsensitiveCompare(value) == .orderedSame
+                    }
+                    Button {
+                        toggleChoice(value, keyPath: keyPath)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                            Text(value)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(selected ? ProvisionTheme.provisionGreen : ProvisionTheme.textPrimary)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .padding(.horizontal, 10)
+                        .background(selected ? ProvisionTheme.provisionGreenLight : ProvisionTheme.surfaceSecondary)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(value)
+                    .accessibilityValue(selected ? "Selected" : "Not selected")
+                    .accessibilityIdentifier("\(identifierPrefix)-\(accessibilitySlug(value))")
+                }
+            }
+            HStack(spacing: 8) {
+                TextField(inputLabel, text: draft,
+                          prompt: Text(inputLabel).foregroundStyle(ProvisionTheme.textSecondary))
+                    .focused($focusedField, equals: focus)
+                    .accessibilityLabel(inputLabel)
+                    .accessibilityIdentifier(inputIdentifier)
+                    .onSubmit { addCustomChoice(draft, keyPath: keyPath) }
+                Button("Add") { addCustomChoice(draft, keyPath: keyPath) }
+                    .disabled(draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier("\(identifierPrefix)-add-custom")
+            }
+            .padding(.vertical, 4)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 4)
+    }
+
+    private func choiceValues(_ suggestions: [String], keyPath: WritableKeyPath<FoodPreferences, [String]>) -> [String] {
+        var values = suggestions
+        for custom in viewModel.preferences[keyPath: keyPath]
+        where !values.contains(where: { $0.caseInsensitiveCompare(custom) == .orderedSame }) {
+            values.append(custom)
+        }
+        return values
+    }
+
+    private func toggleChoice(_ value: String, keyPath: WritableKeyPath<FoodPreferences, [String]>) {
+        var preferences = viewModel.preferences
+        if let index = preferences[keyPath: keyPath].firstIndex(where: {
+            $0.caseInsensitiveCompare(value) == .orderedSame
+        }) {
+            preferences[keyPath: keyPath].remove(at: index)
+        } else {
+            preferences[keyPath: keyPath].append(value)
+        }
+        viewModel.preferences = preferences
+    }
+
+    private func addCustomChoice(_ draft: Binding<String>, keyPath: WritableKeyPath<FoodPreferences, [String]>) {
+        let value = draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return }
+        var preferences = viewModel.preferences
+        if !preferences[keyPath: keyPath].contains(where: { $0.caseInsensitiveCompare(value) == .orderedSame }) {
+            preferences[keyPath: keyPath].append(value)
+            viewModel.preferences = preferences
+        }
+        draft.wrappedValue = ""
+    }
+
+    private func accessibilitySlug(_ value: String) -> String {
+        value.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).joined(separator: "-")
     }
 
     private func listBinding(_ keyPath: WritableKeyPath<FoodPreferences, [String]>) -> Binding<String> {
