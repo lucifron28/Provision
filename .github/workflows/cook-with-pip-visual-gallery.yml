@@ -10,7 +10,7 @@ on:
         type: boolean
         default: false
       suite:
-        description: Run a focused regression suite, or the complete 55-scenario gallery
+        description: Run a focused regression suite, or the complete 56-scenario gallery
         required: true
         type: choice
         options:
@@ -88,6 +88,7 @@ jobs:
                 tests: [
                   "testFormsStayReadableInDarkModeAndLargeText",
                   "testProductLabelReviewScreens",
+                  "testInventoryQuickAddOffersScannerAndMinimalManualEntry",
                   "testStaleProductLabelReviewIsShownAsStale",
                   "testShoppingPreviewExpiredIsNotConfirmable",
                   "testPipChatConsentConversationAndValidatedRecipeAction",
@@ -118,6 +119,7 @@ jobs:
                 "testProductLabelReviewScreens",
                 "testDarkModeLargeTextAndSearchKeyboard",
                 "testHomeNavigationAndCaptureRecipeScreens",
+                "testInventoryQuickAddOffersScannerAndMinimalManualEntry",
               ])],
               "toggle-regressions": [focused("toggle-regressions", [
                 "testPipChatConsentControlsGallery",

@@ -1,6 +1,7 @@
 {
   "requiredScreenshots": [
     "Home_Cook_with_Pip",
+    "Inventory_Quick_Add_Minimal",
     "Pip_Chat_Empty",
     "Pip_Chat_Conversation",
     "Pip_Chat_Shopping_Preview_Action",
@@ -57,6 +58,7 @@
     "Source_Error_Retry"
   ],
   "supplementalScreenshots": [
+    "Inventory_Receipt_Intake_Entry",
     "My_Recipes_Search_Scrolled",
     "Recipe_Detail_Large_Text_Summary_Filipino",
     "Shopping_Preview_Revision_Details_Large_Text",
@@ -66,6 +68,8 @@
     "Staging_Relogin_Relaunch_Recovery"
   ],
   "scenarioDescriptions": {
+        "Inventory_Quick_Add_Minimal": "Minimal manual Quick Add with only a product identity, explicit unit, and quantity entered; advanced fields remain collapsed.",
+    "Inventory_Receipt_Intake_Entry": "Inventory add menu navigates to the existing receipt intake scanner.",
     "Cook_with_Pip": "Cook with Pip household recipe search with the Bicol Express result visible.",
     "Cook_Now": "Cook Now mode is selected and its matching recipe is visible.",
     "Recipe_Detail_Instructions": "The selected recipe detail shows its first readable instruction step.",

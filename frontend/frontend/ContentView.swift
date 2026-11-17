@@ -116,7 +116,7 @@ private struct HouseholdTabs: View {
             }
 
             Tab("Inventory", systemImage: "shippingbox.fill", value: 1) {
-                InventoryView(viewModel: inventoryVM)
+                InventoryView(viewModel: inventoryVM, onNavigateToScan: { selectedTab = 2 })
             }
 
             Tab("Scan", systemImage: "barcode.viewfinder", value: 2) {

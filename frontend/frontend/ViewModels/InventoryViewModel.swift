@@ -31,6 +31,15 @@ public enum InventorySortOption: String, CaseIterable, Identifiable, Sendable {
     public var id: String { rawValue }
 }
 
+public protocol PendingManualInventoryIntakeStore {
+    func readPendingManualInventoryIntake(scope: HouseholdScope) -> PendingManualInventoryIntakeReadResult
+    @discardableResult func savePendingManualInventoryIntake(_ record: PendingManualInventoryIntakeRecord,
+                                                              scope: HouseholdScope) -> Bool
+    @discardableResult func deletePendingManualInventoryIntake(scope: HouseholdScope) -> Bool
+}
+
+extension KeychainStore: PendingManualInventoryIntakeStore {}
+
 @MainActor
 public class InventoryViewModel: ObservableObject {
     @Published public var products: [Product] = []
@@ -51,14 +60,19 @@ public class InventoryViewModel: ObservableObject {
     @Published public var isOffline: Bool = false
     @Published public var errorMessage: String? = nil
     @Published public var toastMessage: String? = nil
+    @Published public private(set) var pendingManualIntakeRecord: PendingManualInventoryIntakeRecord?
+    @Published public private(set) var pendingManualIntakeState: PendingManualInventoryIntakeReadResult = .missing
     private let client: APIClient
+    private let pendingManualIntakeStore: any PendingManualInventoryIntakeStore
     public let scope: HouseholdScope?
     public var isPreview: Bool
     
-    public init(client: APIClient = .shared, isPreview: Bool = false, scope: HouseholdScope? = nil) {
+    public init(client: APIClient = .shared, isPreview: Bool = false, scope: HouseholdScope? = nil,
+                pendingManualIntakeStore: (any PendingManualInventoryIntakeStore)? = nil) {
         self.client = client
         self.scope = scope
         self.isPreview = isPreview
+        self.pendingManualIntakeStore = pendingManualIntakeStore ?? KeychainStore.shared
     }
     
     public var categories: [String] {
@@ -275,39 +289,112 @@ public class InventoryViewModel: ObservableObject {
             self.toastMessage = "Inventory added successfully"
             return true
         }
+        let request = ManualInventoryIntakeRequest(
+            productID: product == nil ? productId : nil,
+            newProduct: product,
+            storageLocationID: batch.storage_location_id,
+            purchasedAt: batch.purchased_at,
+            expirationDate: batch.expiration_date,
+            quantity: batch.original_quantity,
+            unitPrice: batch.unit_price
+        )
+        return await submitManualInventoryIntake(request)
+    }
+
+    public func loadPendingManualInventoryIntake() {
+        guard let scope else { return }
+        updatePendingManualInventoryIntakeState(pendingManualIntakeStore.readPendingManualInventoryIntake(scope: scope))
+    }
+
+    public func retryPendingManualInventoryIntake() async -> Bool {
+        guard let scope,
+              case .record(let record) = pendingManualIntakeStore.readPendingManualInventoryIntake(scope: scope),
+              record == pendingManualIntakeRecord,
+              record.scopeStorageKey == scope.storageKey else {
+            loadPendingManualInventoryIntake()
+            errorMessage = "The saved inventory request changed or could not be verified. No request was sent."
+            return false
+        }
+        return await sendManualInventoryIntake(record, scope: scope)
+    }
+
+    private func submitManualInventoryIntake(_ request: ManualInventoryIntakeRequest) async -> Bool {
+        guard let scope else {
+            errorMessage = "A verified household is required before adding inventory."
+            return false
+        }
+        switch pendingManualIntakeStore.readPendingManualInventoryIntake(scope: scope) {
+        case .missing:
+            break
+        case .record(let record):
+            updatePendingManualInventoryIntakeState(.record(record))
+            errorMessage = "A saved inventory request needs an exact retry before another item can be added."
+            return false
+        case .corrupt:
+            updatePendingManualInventoryIntakeState(.corrupt)
+            errorMessage = "A saved inventory request could not be read. No new request was sent."
+            return false
+        case .unavailable:
+            updatePendingManualInventoryIntakeState(.unavailable)
+            errorMessage = "Saved request storage is unavailable. No new request was sent."
+            return false
+        }
+        let record = PendingManualInventoryIntakeRecord(scopeStorageKey: scope.storageKey, request: request)
+        guard pendingManualIntakeStore.savePendingManualInventoryIntake(record, scope: scope) else {
+            loadPendingManualInventoryIntake()
+            errorMessage = "This device could not save a retry record, so inventory was not changed."
+            return false
+        }
+        updatePendingManualInventoryIntakeState(.record(record))
+        return await sendManualInventoryIntake(record, scope: scope)
+    }
+
+    private func sendManualInventoryIntake(_ record: PendingManualInventoryIntakeRecord,
+                                           scope: HouseholdScope) async -> Bool {
+        errorMessage = nil
         do {
-            var targetProductId = productId
-            
-            // 1. Create product if new
-            if let p = product {
-                let createdProduct = try await client.createProduct(p, expectedScope: scope)
-                targetProductId = createdProduct.id
+            let result = try await client.createManualInventoryIntake(record.request, expectedScope: scope)
+            let deleted = pendingManualIntakeStore.deletePendingManualInventoryIntake(scope: scope)
+            if deleted {
+                updatePendingManualInventoryIntakeState(.missing)
+                toastMessage = result.replayed
+                    ? "Inventory was already added. The exact retry was confirmed."
+                    : "Inventory added successfully"
+            } else {
+                updatePendingManualInventoryIntakeState(.record(record))
+                toastMessage = "Inventory added. Its saved retry is still available and safe to repeat."
             }
-            
-            guard let pid = targetProductId else {
-                self.errorMessage = "Product ID is missing."
-                return false
-            }
-            
-            // 2. Create batch
-            var finalBatch = batch
-            finalBatch.product_id = pid
-            
-            _ = try await client.createBatch(finalBatch, expectedScope: scope)
-            self.toastMessage = "Inventory added successfully"
-            
             await loadData()
-            
-            // If we are looking at this product, refresh it
-            if let sel = selectedProduct, sel.id == pid {
-                if let updated = products.first(where: { $0.id == pid }) {
-                    await selectProduct(updated)
-                }
+            if let selectedProduct, selectedProduct.id == result.product_id,
+               let updated = products.first(where: { $0.id == result.product_id }) {
+                await selectProduct(updated)
             }
             return true
         } catch {
-            self.errorMessage = error.localizedDescription
+            if Self.isDefinitiveNoWriteFailure(error),
+               pendingManualIntakeStore.deletePendingManualInventoryIntake(scope: scope) {
+                updatePendingManualInventoryIntakeState(.missing)
+                errorMessage = "The server rejected this request before adding inventory. Correct the details and try again. \(error.localizedDescription)"
+            } else {
+                updatePendingManualInventoryIntakeState(.record(record))
+                errorMessage = "We couldn't confirm the result. Retry this exact saved request before editing or adding another item."
+            }
             return false
+        }
+    }
+
+    private static func isDefinitiveNoWriteFailure(_ error: Error) -> Bool {
+        guard case APIError.http(let status, _, _) = error else { return false }
+        if status == 404 || status == 422 { return true }
+        return status == 409 && (error as? APIError)?.serverErrorCode == "PRODUCT_BARCODE_ALREADY_EXISTS"
+    }
+
+    private func updatePendingManualInventoryIntakeState(_ state: PendingManualInventoryIntakeReadResult) {
+        pendingManualIntakeState = state
+        if case .record(let record) = state {
+            pendingManualIntakeRecord = record
+        } else {
+            pendingManualIntakeRecord = nil
         }
     }
     

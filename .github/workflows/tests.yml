@@ -102,6 +102,7 @@ jobs:
               -only-testing:frontendUITests/CookWithPipUITests/testPipChatConsentConversationAndValidatedRecipeAction
               -only-testing:frontendUITests/CookWithPipUITests/testPipChatShoppingActionOpensTheExistingReviewScreen
               -only-testing:frontendUITests/CookWithPipUITests/testPipChatPrivacyControlsAtAccessibilitySizeInDarkMode
+              -only-testing:frontendUITests/CookWithPipUITests/testInventoryQuickAddOffersScannerAndMinimalManualEntry
           - shard: shopping-confirmation
             tests: >-
               -only-testing:frontendUITests/CookWithPipUITests/testShoppingReviewRequiredAndBlockedStates

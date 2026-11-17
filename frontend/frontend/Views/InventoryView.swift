@@ -2,13 +2,16 @@ import SwiftUI
 
 public struct InventoryView: View {
     @ObservedObject var viewModel: InventoryViewModel
+    private let onNavigateToScan: () -> Void
 
     @State private var showingFilterSheet: Bool = false
     @State private var showingAddSheet: Bool = false
+    @State private var startWithNewProduct = false
     
     
-    public init(viewModel: InventoryViewModel) {
+    public init(viewModel: InventoryViewModel, onNavigateToScan: @escaping () -> Void = {}) {
         self.viewModel = viewModel
+        self.onNavigateToScan = onNavigateToScan
     }
     
     public var body: some View {
@@ -16,6 +19,13 @@ public struct InventoryView: View {
             VStack(spacing: 0) {
                 if viewModel.isOffline {
                     offlineBanner
+                }
+
+                if let pending = viewModel.pendingManualIntakeRecord {
+                    pendingInventoryIntakeBanner(pending)
+                } else if viewModel.pendingManualIntakeState == .corrupt
+                            || viewModel.pendingManualIntakeState == .unavailable {
+                    pendingInventoryIntakeUnavailableBanner
                 }
 
                 // Search Bar
@@ -50,15 +60,32 @@ public struct InventoryView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 16) {
-                        Button {
-                            showingAddSheet = true
+                        Menu {
+                            Button {
+                                onNavigateToScan()
+                            } label: {
+                                Label("Scan barcode or receipt", systemImage: "barcode.viewfinder")
+                            }
+                            Button {
+                                startWithNewProduct = false
+                                showingAddSheet = true
+                            } label: {
+                                Label("Search existing products", systemImage: "magnifyingglass")
+                            }
+                            Button {
+                                startWithNewProduct = true
+                                showingAddSheet = true
+                            } label: {
+                                Label("Add a new product", systemImage: "square.and.pencil")
+                            }
                         } label: {
                             Image(systemName: "plus")
                                 .font(.system(size: 17, weight: .semibold))
                                 .foregroundStyle(ProvisionTheme.provisionGreen)
                                 .accessibleTouchTarget()
                         }
-                        .accessibilityLabel("Add Product to Inventory")
+                        .accessibilityLabel("Add groceries to inventory")
+                        .accessibilityIdentifier("inventory-add-menu")
                         
                         Button {
                             Task { await viewModel.loadData() }
@@ -73,12 +100,13 @@ public struct InventoryView: View {
                 }
             }
             .task {
+                viewModel.loadPendingManualInventoryIntake()
                 if viewModel.products.isEmpty {
                     await viewModel.loadData()
                 }
             }
-            .sheet(isPresented: $showingAddSheet) {
-                AddInventoryView(viewModel: viewModel)
+            .sheet(isPresented: $showingAddSheet, onDismiss: { startWithNewProduct = false }) {
+                AddInventoryView(viewModel: viewModel, startWithNewProduct: startWithNewProduct)
             }
         }
     }
@@ -103,6 +131,48 @@ public struct InventoryView: View {
         )
         .padding(.top, 4)
         .padding(.bottom, 4)
+    }
+
+    private func pendingInventoryIntakeBanner(_ record: PendingManualInventoryIntakeRecord) -> some View {
+        let productName = record.request.new_product?.name
+            ?? viewModel.products.first(where: { $0.id == record.request.product_id })?.name
+            ?? "Saved grocery"
+        return Button {
+            startWithNewProduct = false
+            showingAddSheet = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.clockwise.circle.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Confirm saved inventory request")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("Retry \(productName) without changing it")
+                        .font(.system(size: 12))
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(ProvisionTheme.textPrimary)
+            .padding(12)
+            .background(ProvisionTheme.amberLight)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("inventory-pending-intake-recovery")
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+    }
+
+    private var pendingInventoryIntakeUnavailableBanner: some View {
+        Label("A saved inventory request needs recovery before another manual add.", systemImage: "exclamationmark.triangle.fill")
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(ProvisionTheme.amberWarning)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .accessibilityIdentifier("inventory-pending-intake-unavailable")
     }
     
     private var searchBar: some View {

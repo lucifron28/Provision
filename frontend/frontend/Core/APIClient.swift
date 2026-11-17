@@ -766,6 +766,16 @@ public actor APIClient {
         request.httpBody = try encoder.encode(batch)
         return try await execute(request, expectedScope: expectedScope)
     }
+
+    public func createManualInventoryIntake(_ intake: ManualInventoryIntakeRequest,
+                                            expectedScope: HouseholdScope) async throws -> ManualInventoryIntakeResponse {
+        let url = baseURL.appendingPathComponent("inventory/manual-intake")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(intake)
+        return try await execute(request, expectedScope: expectedScope)
+    }
     
     public func updateBatchMetadata(batchId: Int, updates: [String: Any], expectedScope: HouseholdScope? = nil) async throws -> InventoryBatch {
         let url = baseURL.appendingPathComponent("batches/\(batchId)")

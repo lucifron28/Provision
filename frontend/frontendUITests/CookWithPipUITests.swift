@@ -719,6 +719,51 @@ final class CookWithPipUITests: XCTestCase {
         capture("Shopping_Preview_Applied_Substitution", app: app)
     }
 
+    func testInventoryQuickAddOffersScannerAndMinimalManualEntry() {
+        let app = launch()
+        let inventoryTab = app.buttons["Inventory"]
+        XCTAssertTrue(inventoryTab.waitForExistence(timeout: 10))
+        inventoryTab.tap()
+
+        let addMenu = element("inventory-add-menu", in: app)
+        XCTAssertTrue(addMenu.waitForExistence(timeout: 10))
+        addMenu.tap()
+        let scanOption = app.buttons["Scan barcode or receipt"]
+        XCTAssertTrue(scanOption.waitForExistence(timeout: 5))
+        scanOption.tap()
+
+        let receiptMode = app.buttons["Receipt Intake"]
+        XCTAssertTrue(receiptMode.waitForExistence(timeout: 10))
+        receiptMode.tap()
+        let receiptHeading = app.staticTexts["Supermarket Receipt Scanner"]
+        XCTAssertTrue(receiptHeading.waitForExistence(timeout: 5))
+        capture("Inventory_Receipt_Intake_Entry", app: app)
+
+        inventoryTab.tap()
+        addMenu.tap()
+        let manualOption = app.buttons["Add a new product"]
+        XCTAssertTrue(manualOption.waitForExistence(timeout: 5))
+        manualOption.tap()
+
+        let productName = element("inventory-add-product-name", in: app)
+        XCTAssertTrue(productName.waitForExistence(timeout: 10))
+        let submit = element("inventory-add-submit", in: app)
+        XCTAssertFalse(submit.isEnabled, "A new product still needs an identity and a known unit")
+        productName.tap()
+        productName.typeText("Synthetic Quick Add")
+        XCTAssertFalse(submit.isEnabled, "The app must not assume an unknown product's unit")
+        let unitPicker = element("inventory-add-unit-picker", in: app)
+        XCTAssertTrue(unitPicker.waitForExistence(timeout: 5))
+        unitPicker.tap()
+        let pieces = app.buttons["pcs"]
+        XCTAssertTrue(pieces.waitForExistence(timeout: 5))
+        pieces.tap()
+        XCTAssertTrue(submit.isEnabled, "Product identity, unit, and quantity are enough for Quick Add")
+        let optionalDetails = element("inventory-add-optional-details", in: app)
+        XCTAssertTrue(optionalDetails.exists)
+        capture("Inventory_Quick_Add_Minimal", app: app)
+    }
+
     func testShoppingPreviewEditsConsolidationAndExplicitConfirmation() {
         let app = launch()
         openShoppingPreview(app)

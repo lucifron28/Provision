@@ -12,10 +12,12 @@ public struct AddInventoryView: View {
     
     // Product Selection (Existing)
     @State private var selectedProductId: Int?
+    @State private var showingProductDetails = false
+    @State private var showingOptionalDetails = false
     
     // Product Details (New)
     @State private var newProductName: String = ""
-    @State private var newProductUnit: String = "pcs"
+    @State private var newProductUnit: String = ""
     @State private var newProductBrand: String = ""
     @State private var newProductCategory: String = ""
     @State private var newProductBarcode: String = ""
@@ -33,12 +35,15 @@ public struct AddInventoryView: View {
     @State private var isSubmitting: Bool = false
     @State private var errorMessage: String?
     
-    public init(viewModel: InventoryViewModel, initialProductId: Int? = nil) {
+    public init(viewModel: InventoryViewModel, initialProductId: Int? = nil,
+                startWithNewProduct: Bool = false) {
         self.viewModel = viewModel
         self.isRestockMode = initialProductId != nil
         if let id = initialProductId {
             _mode = State(initialValue: .existing)
             _selectedProductId = State(initialValue: id)
+        } else if startWithNewProduct {
+            _mode = State(initialValue: .new)
         }
     }
     
@@ -49,7 +54,7 @@ public struct AddInventoryView: View {
             }
             return "pcs"
         } else {
-            return newProductUnit
+            return newProductUnit.isEmpty ? "unit" : newProductUnit
         }
     }
     
@@ -61,7 +66,19 @@ public struct AddInventoryView: View {
                         Text(err).foregroundColor(ProvisionTheme.redAlert)
                     }
                 }
-                
+                if let pending = viewModel.pendingManualIntakeRecord {
+                    pendingRecoverySection(pending)
+                } else if viewModel.pendingManualIntakeState == .corrupt {
+                    Section("Saved inventory request") {
+                        Text("A saved request could not be read. No new inventory request can be sent from this device until it is recovered.")
+                            .foregroundStyle(ProvisionTheme.amberWarning)
+                    }
+                } else if viewModel.pendingManualIntakeState == .unavailable {
+                    Section("Saved inventory request") {
+                        Text("This device could not check its saved request. No new inventory request was sent.")
+                            .foregroundStyle(ProvisionTheme.amberWarning)
+                    }
+                } else {
                 if isRestockMode {
                     Section("Product") {
                         if let prod = viewModel.products.first(where: { $0.id == selectedProductId }) {
@@ -96,6 +113,7 @@ public struct AddInventoryView: View {
                         }
                         .pickerStyle(.segmented)
                         .padding(.vertical, 4)
+                        .accessibilityIdentifier("inventory-add-mode-picker")
                         
                         if mode == .existing {
                             if viewModel.products.isEmpty {
@@ -143,53 +161,60 @@ public struct AddInventoryView: View {
                                 TextField("e.g. Jasmine Rice", text: $newProductName)
                                     .foregroundStyle(ProvisionTheme.textPrimary)
                                     .tint(ProvisionTheme.provisionGreen)
+                                    .accessibilityIdentifier("inventory-add-product-name")
                             }
                             .padding(.vertical, 2)
                             
                             Picker("Unit", selection: $newProductUnit) {
+                                Text("Choose unit").tag("")
                                 ForEach(ProductUnits.allUnits, id: \.self) { u in
                                     Text(u).tag(u)
                                 }
                             }
+                            .pickerStyle(.menu)
                             .tint(ProvisionTheme.provisionGreen)
+                            .accessibilityIdentifier("inventory-add-unit-picker")
                             
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Brand (Optional)")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundStyle(ProvisionTheme.textSecondary)
-                                TextField("e.g. Royal Umbrella", text: $newProductBrand)
-                                    .foregroundStyle(ProvisionTheme.textPrimary)
-                                    .tint(ProvisionTheme.provisionGreen)
+                            DisclosureGroup("Product details (optional)", isExpanded: $showingProductDetails) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Brand")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundStyle(ProvisionTheme.textSecondary)
+                                    TextField("e.g. Royal Umbrella", text: $newProductBrand)
+                                        .foregroundStyle(ProvisionTheme.textPrimary)
+                                        .tint(ProvisionTheme.provisionGreen)
+                                }
+                                .padding(.vertical, 2)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Category")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundStyle(ProvisionTheme.textSecondary)
+                                    TextField("e.g. Grains & Rice", text: $newProductCategory)
+                                        .foregroundStyle(ProvisionTheme.textPrimary)
+                                        .tint(ProvisionTheme.provisionGreen)
+                                }
+                                .padding(.vertical, 2)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Barcode")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundStyle(ProvisionTheme.textSecondary)
+                                    TextField("Enter barcode", text: $newProductBarcode)
+                                        .keyboardType(.numberPad)
+                                        .foregroundStyle(ProvisionTheme.textPrimary)
+                                        .tint(ProvisionTheme.provisionGreen)
+                                }
+                                .padding(.vertical, 2)
                             }
-                            .padding(.vertical, 2)
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Category (Optional)")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundStyle(ProvisionTheme.textSecondary)
-                                TextField("e.g. Grains & Rice", text: $newProductCategory)
-                                    .foregroundStyle(ProvisionTheme.textPrimary)
-                                    .tint(ProvisionTheme.provisionGreen)
-                            }
-                            .padding(.vertical, 2)
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Barcode (Optional)")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundStyle(ProvisionTheme.textSecondary)
-                                TextField("e.g. 4800016644814", text: $newProductBarcode)
-                                    .keyboardType(.numberPad)
-                                    .foregroundStyle(ProvisionTheme.textPrimary)
-                                    .tint(ProvisionTheme.provisionGreen)
-                            }
-                            .padding(.vertical, 2)
+                            .accessibilityIdentifier("inventory-add-product-details")
                         }
                     } header: {
                         Text(mode == .existing ? "Catalog Selection" : "New Product Specification")
                     }
                 }
                 
-                Section("Stock Information") {
+                Section("Quantity") {
                     HStack {
                         Text("Amount")
                             .foregroundStyle(ProvisionTheme.textPrimary)
@@ -199,10 +224,14 @@ public struct AddInventoryView: View {
                             .multilineTextAlignment(.trailing)
                             .foregroundStyle(ProvisionTheme.textPrimary)
                             .tint(ProvisionTheme.provisionGreen)
+                            .accessibilityIdentifier("inventory-add-quantity")
                         Text(currentUnit)
                             .foregroundStyle(ProvisionTheme.textSecondary)
                     }
-                    
+                }
+
+                Section {
+                    DisclosureGroup("Optional details", isExpanded: $showingOptionalDetails) {
                     Toggle("Track Expiration", isOn: $trackExpiration)
                         .tint(ProvisionTheme.provisionGreen)
                     
@@ -235,12 +264,16 @@ public struct AddInventoryView: View {
                         ProgressView("Loading locations...")
                     } else if !locations.isEmpty {
                         Picker("Storage Location", selection: $selectedLocationId) {
-                            Text("Select Location...").tag(Int?.none)
+                            Text("No location").tag(Int?.none)
                             ForEach(locations) { loc in
                                 Text(loc.name).tag(Int?.some(loc.id))
                             }
                         }
                         .tint(ProvisionTheme.provisionGreen)
+                    } else {
+                        Text("Storage location is optional. You can add one later.")
+                            .font(.footnote)
+                            .foregroundStyle(ProvisionTheme.textSecondary)
                     }
                     
                     HStack {
@@ -256,6 +289,8 @@ public struct AddInventoryView: View {
                     
                     DatePicker("Purchase Date", selection: $purchaseDate, displayedComponents: .date)
                         .tint(ProvisionTheme.provisionGreen)
+                    }
+                    .accessibilityIdentifier("inventory-add-optional-details")
                 }
                 
                 Section {
@@ -275,6 +310,8 @@ public struct AddInventoryView: View {
                     }
                     .listRowBackground(isFormValid && !isSubmitting ? ProvisionTheme.provisionGreen : ProvisionTheme.provisionGreen.opacity(0.4))
                     .disabled(isSubmitting || !isFormValid)
+                    .accessibilityIdentifier("inventory-add-submit")
+                }
                 }
             }
             .scrollContentBackground(.hidden)
@@ -288,6 +325,7 @@ public struct AddInventoryView: View {
                 }
             }
             .task {
+                viewModel.loadPendingManualInventoryIntake()
                 await fetchLocations()
             }
             .sheet(isPresented: $showingExpirationOCRSheet) {
@@ -305,16 +343,49 @@ public struct AddInventoryView: View {
             }
         }
     }
+
+    @ViewBuilder
+    private func pendingRecoverySection(_ record: PendingManualInventoryIntakeRecord) -> some View {
+        Section("Saved inventory request") {
+            let product = viewModel.products.first(where: { $0.id == record.request.product_id })
+            let name = record.request.new_product?.name ?? product?.name ?? "Existing product"
+            let unit = record.request.new_product?.unit ?? product?.displayUnit ?? "units"
+            Text("\(name) · \(ProductUnits.formatAmount(record.request.quantity)) \(unit)")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(ProvisionTheme.textPrimary)
+            Text("The server may already have added this item. Retry the saved request unchanged to confirm the result safely.")
+                .font(.footnote)
+                .foregroundStyle(ProvisionTheme.textSecondary)
+            Button {
+                Task {
+                    isSubmitting = true
+                    let succeeded = await viewModel.retryPendingManualInventoryIntake()
+                    errorMessage = viewModel.errorMessage
+                    isSubmitting = false
+                    if succeeded { dismiss() }
+                }
+            } label: {
+                Text("Retry saved request")
+                    .font(.system(size: 16, weight: .bold))
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .foregroundStyle(ProvisionTheme.onAccent)
+            }
+            .listRowBackground(ProvisionTheme.provisionGreen)
+            .disabled(isSubmitting)
+            .accessibilityIdentifier("inventory-retry-saved-intake")
+        }
+    }
     
     private var isFormValid: Bool {
         let parsedQty = Double(amountText.replacingOccurrences(of: ",", with: "."))
-        guard let qty = parsedQty, qty > 0 else { return false }
-        guard selectedLocationId != nil else { return false }
+        guard let qty = parsedQty, qty > 0, qty <= 99_999_999.99,
+              decimalPlaces(amountText) <= 2 else { return false }
         
         if isRestockMode || mode == .existing {
             return selectedProductId != nil
         } else {
-            return !newProductName.trimmingCharacters(in: .whitespaces).isEmpty && !newProductUnit.trimmingCharacters(in: .whitespaces).isEmpty
+            return !newProductName.trimmingCharacters(in: .whitespaces).isEmpty
+                && !newProductUnit.trimmingCharacters(in: .whitespaces).isEmpty
         }
     }
     
@@ -332,15 +403,19 @@ public struct AddInventoryView: View {
         }
         isLoadingLocations = false
     }
+
+    private func decimalPlaces(_ value: String) -> Int {
+        let normalized = value.replacingOccurrences(of: ",", with: ".")
+        guard let separator = normalized.firstIndex(of: ".") else { return 0 }
+        return normalized[normalized.index(after: separator)...].count
+    }
+
     private func submit() {
         guard !isSubmitting else { return }
         errorMessage = nil
-        guard selectedLocationId != nil else {
-            errorMessage = "Please select a storage location for this batch."
-            return
-        }
         let parsedQty = Double(amountText.replacingOccurrences(of: ",", with: "."))
-        guard let qty = parsedQty, qty > 0 else {
+        guard let qty = parsedQty, qty > 0, qty <= 99_999_999.99,
+              decimalPlaces(amountText) <= 2 else {
             errorMessage = "Please enter a valid amount greater than zero."
             return
         }
@@ -353,7 +428,8 @@ public struct AddInventoryView: View {
         let trimmedPrice = unitPriceStr.trimmingCharacters(in: .whitespaces)
         var price: Double? = nil
         if !trimmedPrice.isEmpty {
-            guard let p = Double(trimmedPrice.replacingOccurrences(of: ",", with: ".")), p >= 0 else {
+            guard let p = Double(trimmedPrice.replacingOccurrences(of: ",", with: ".")),
+                  p >= 0, p <= 99_999_999.99, decimalPlaces(trimmedPrice) <= 2 else {
                 errorMessage = "Enter a valid price."
                 return
             }
