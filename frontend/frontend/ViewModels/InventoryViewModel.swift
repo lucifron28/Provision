@@ -345,7 +345,7 @@ public class InventoryViewModel: ObservableObject {
             isRecoveringPendingInventoryAction = false
             return true
         } catch {
-            if Self.isDefinitiveNoWriteFailure(error),
+            if Self.isDefinitiveNoWriteInventoryActionFailure(error),
                pendingInventoryActionStore.deletePendingInventoryAction(scope: scope) {
                 updatePendingInventoryActionState(.missing)
                 errorMessage = "The server rejected this request before changing stock. Refresh the batch and try again. \(error.localizedDescription)"
@@ -374,7 +374,7 @@ public class InventoryViewModel: ObservableObject {
         }
     }
 
-    private static func isDefinitiveNoWriteFailure(_ error: Error) -> Bool {
+    private static func isDefinitiveNoWriteInventoryActionFailure(_ error: Error) -> Bool {
         guard case APIError.http(let status, _, _) = error else { return false }
         return [400, 404, 409, 422].contains(status)
     }
@@ -498,7 +498,7 @@ public class InventoryViewModel: ObservableObject {
             }
             return true
         } catch {
-            if Self.isDefinitiveNoWriteFailure(error),
+            if Self.isDefinitiveNoWriteManualIntakeFailure(error),
                pendingManualIntakeStore.deletePendingManualInventoryIntake(scope: scope) {
                 updatePendingManualInventoryIntakeState(.missing)
                 errorMessage = "The server rejected this request before adding inventory. Correct the details and try again. \(error.localizedDescription)"
@@ -510,7 +510,7 @@ public class InventoryViewModel: ObservableObject {
         }
     }
 
-    private static func isDefinitiveNoWriteFailure(_ error: Error) -> Bool {
+    private static func isDefinitiveNoWriteManualIntakeFailure(_ error: Error) -> Bool {
         guard case APIError.http(let status, _, _) = error else { return false }
         if status == 404 || status == 422 { return true }
         return status == 409 && (error as? APIError)?.serverErrorCode == "PRODUCT_BARCODE_ALREADY_EXISTS"
