@@ -593,8 +593,9 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
 
     func sendPipChat(_ request: PipChatRequest,
                      scope: HouseholdScope) async throws -> PipChatResponse {
-        let actionKind = request.message.localizedCaseInsensitiveContains("buy")
-            ? "open_shopping_preview" : "open_recipe"
+        let opensShoppingPreview = request.message.localizedCaseInsensitiveContains("buy")
+            || request.message.localizedCaseInsensitiveContains("missing")
+        let actionKind = opensShoppingPreview ? "open_shopping_preview" : "open_recipe"
         return PipChatResponse(
             reply: "Sige, puwede tayong tumingin sa household recipes. Check the verified recipe details in Cook with Pip.",
             language: "taglish",

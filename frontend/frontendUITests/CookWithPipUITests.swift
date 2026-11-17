@@ -13,6 +13,8 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(element("pip-chat-empty-state", in: app).waitForExistence(timeout: 10))
         XCTAssertTrue(element("pip-chat-consent-chat", in: app).exists)
         XCTAssertTrue(element("pip-chat-consent-allergies", in: app).exists)
+        XCTAssertTrue(element("pip-chat-suggested-prompt-cook-tonight", in: app).isHittable)
+        XCTAssertTrue(element("pip-chat-suggested-prompt-expiring-food", in: app).isHittable)
         capturePipChat("Pip_Chat_Empty", app: app)
 
         let input = element("pip-chat-input", in: app)
@@ -45,8 +47,11 @@ final class CookWithPipUITests: XCTestCase {
 
         let input = element("pip-chat-input", in: app)
         XCTAssertTrue(input.waitForExistence(timeout: 10))
-        input.tap()
-        input.typeText("What should I buy?")
+        let prompt = element("pip-chat-suggested-prompt-missing-ingredients", in: app)
+        scrollTargetIntoView(prompt, inside: app.scrollViews["pip-chat-scroll"], in: app)
+        XCTAssertTrue(prompt.isHittable)
+        prompt.tap()
+        XCTAssertEqual(input.value as? String, "What ingredients am I missing?")
         app.buttons["pip-chat-send"].tap()
 
         let previewAction = element("pip-chat-open-shopping-preview-301", in: app)
@@ -136,6 +141,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(contextTitle.waitForExistence(timeout: 5))
         XCTAssertTrue(element("pip-chat-empty-state", in: app).waitForExistence(timeout: 10))
         XCTAssertEqual(contextTitle.label, "Test Recipe: Sinigang na Baboy")
+        XCTAssertTrue(element("pip-chat-suggested-prompt-substitute", in: app).exists)
         assertReachable(contextCard, in: app)
         capturePipChat("Pip_Chat_Recipe_Context", app: app)
     }
@@ -153,6 +159,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(contextTitle.waitForExistence(timeout: 5))
         XCTAssertTrue(element("pip-chat-empty-state", in: app).waitForExistence(timeout: 10))
         XCTAssertEqual(contextTitle.label, "Century Tuna Flakes in Oil")
+        XCTAssertTrue(element("pip-chat-suggested-prompt-use-product", in: app).exists)
         assertReachable(contextCard, in: app)
         capturePipChat("Pip_Chat_Product_Context", app: app)
     }
