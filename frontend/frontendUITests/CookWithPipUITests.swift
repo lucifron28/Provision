@@ -761,10 +761,10 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(inventoryTab.waitForExistence(timeout: 10))
         inventoryTab.tap()
 
-        let addMenu = element("inventory-add-menu", in: app)
+        let addMenu = app.buttons["inventory-add-menu"]
         XCTAssertTrue(addMenu.waitForExistence(timeout: 10))
         addMenu.tap()
-        let scanOption = app.buttons["Scan barcode or receipt"]
+        let scanOption = app.buttons["inventory-add-scan-option"]
         XCTAssertTrue(scanOption.waitForExistence(timeout: 5))
         scanOption.tap()
 
@@ -777,7 +777,7 @@ final class CookWithPipUITests: XCTestCase {
 
         inventoryTab.tap()
         addMenu.tap()
-        let manualOption = app.buttons["Add a new product"]
+        let manualOption = app.buttons["inventory-add-new-option"]
         XCTAssertTrue(manualOption.waitForExistence(timeout: 5))
         manualOption.tap()
 

@@ -73,18 +73,21 @@ public struct InventoryView: View {
                             } label: {
                                 Label("Scan barcode or receipt", systemImage: "barcode.viewfinder")
                             }
+                            .accessibilityIdentifier("inventory-add-scan-option")
                             Button {
                                 startWithNewProduct = false
                                 showingAddSheet = true
                             } label: {
                                 Label("Search existing products", systemImage: "magnifyingglass")
                             }
+                            .accessibilityIdentifier("inventory-add-existing-option")
                             Button {
                                 startWithNewProduct = true
                                 showingAddSheet = true
                             } label: {
                                 Label("Add a new product", systemImage: "square.and.pencil")
                             }
+                            .accessibilityIdentifier("inventory-add-new-option")
                         } label: {
                             Image(systemName: "plus")
                                 .font(.system(size: 17, weight: .semibold))
