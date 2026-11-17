@@ -871,7 +871,18 @@ final class CookWithPipUITests: XCTestCase {
         let safetyStatus = element("recipe-shopping-safety-status", in: app)
         XCTAssertEqual(safetyStatus.label, "Eligible")
         XCTAssertTrue(safetyStatus.isHittable)
+        let actionSummary = element("recipe-shopping-action-summary-901", in: app)
+        scrollTargetIntoView(actionSummary, inside: shoppingForm, progressAnchor: safetyStatus, in: app)
+        XCTAssertEqual(actionSummary.label, "Add 100 g kangkong to shopping list")
+        let quantityDetails = element("recipe-shopping-quantity-details-901", in: app)
+        XCTAssertEqual(quantityDetails.value as? String, "Collapsed")
         capture("Shopping_Preview_Ready", app: app)
+        quantityDetails.tap()
+        let requiredQuantity = element("recipe-shopping-quantity-required-901", in: app)
+        XCTAssertTrue(requiredQuantity.waitForExistence(timeout: 5))
+        XCTAssertTrue(requiredQuantity.label.contains("120 g"))
+        XCTAssertEqual(quantityDetails.value as? String, "Expanded")
+        quantityDetails.tap()
         let unlinked = element("recipe-shopping-unlinked-9920", in: app)
         scrollTargetIntoView(unlinked, inside: shoppingForm, progressAnchor: safetyStatus, in: app)
         XCTAssertTrue(unlinked.exists)
@@ -989,6 +1000,8 @@ final class CookWithPipUITests: XCTestCase {
         let reviewApp = launch(scenario: "shopping-review-required")
         openShoppingPreview(reviewApp)
         XCTAssertEqual(element("recipe-shopping-safety-status", in: reviewApp).label, "Review required")
+        XCTAssertTrue(element("recipe-shopping-action-summary-901", in: reviewApp).label
+            .contains("Review the food-safety status before adding"))
         let reviewConfirm = reviewApp.navigationBars.buttons["recipe-shopping-confirm"]
         XCTAssertFalse(reviewConfirm.isEnabled)
         capture("Shopping_Preview_Review_Required", app: reviewApp)
@@ -1009,6 +1022,8 @@ final class CookWithPipUITests: XCTestCase {
         let blockedApp = launch(scenario: "shopping-blocked")
         openShoppingPreview(blockedApp)
         XCTAssertEqual(element("recipe-shopping-safety-status", in: blockedApp).label, "Blocked")
+        XCTAssertTrue(element("recipe-shopping-action-summary-901", in: blockedApp).label
+            .contains("Food-safety review blocks adding"))
         XCTAssertFalse(blockedApp.buttons["recipe-shopping-confirm"].isEnabled)
         capture("Shopping_Preview_Blocked", app: blockedApp)
     }

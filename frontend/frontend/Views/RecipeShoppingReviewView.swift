@@ -283,7 +283,7 @@ public struct RecipeShoppingReviewView: View {
                           systemImage: isCovered ? "checkmark.circle" : (line.status == "ready" ? "plus.circle" : "exclamationmark.triangle"))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(isCovered || line.status == "ready" ? ProvisionTheme.provisionGreen : ProvisionTheme.amberWarning)
-                    quantitySummary(line)
+                    quantitySummary(line, safetyDecision: preview.safety.decision)
                     if let id = line.ingredient_id,
                        viewModel.selectedIngredientIDs.contains(id), line.target_quantity != nil {
                         VStack(alignment: .leading, spacing: 6) {
@@ -323,53 +323,8 @@ public struct RecipeShoppingReviewView: View {
     }
 
     @ViewBuilder
-    private func quantitySummary(_ line: RecipeShoppingLine) -> some View {
-        let unit = line.unit ?? "unit not specified"
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Quantity breakdown")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(ProvisionTheme.textPrimary)
-            quantityLine("Required", line.required_quantity, unit)
-            quantityLine("Counted on hand", line.pantry_quantity, unit)
-            quantityLine("Short", line.shortage, unit)
-            quantityLine("Already on shopping list", line.pending_quantity, unit)
-            quantityLine("Additional needed", line.additional_quantity, unit)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(ProvisionTheme.surfaceSecondary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    @ViewBuilder
-    private func quantityLine(_ label: String, _ quantity: ExactQuantity?, _ unit: String) -> some View {
-        if let quantity {
-            let value = "\(NSDecimalNumber(decimal: quantity.value).stringValue) \(unit)"
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(label)
-                        .foregroundStyle(ProvisionTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 8)
-                    Text(value)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(ProvisionTheme.textPrimary)
-                        .multilineTextAlignment(.trailing)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(label)
-                        .font(.subheadline)
-                        .foregroundStyle(ProvisionTheme.textSecondary)
-                    Text(value)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(ProvisionTheme.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .font(.subheadline)
-            .padding(.vertical, 3)
-            .accessibilityElement(children: .combine)
-        }
+    private func quantitySummary(_ line: RecipeShoppingLine, safetyDecision: String) -> some View {
+        RecipeShoppingQuantitySummary(line: line, safetyDecision: safetyDecision)
     }
 
     private func unlinkedItems(_ preview: RecipeShoppingPreview) -> some View {
@@ -475,5 +430,95 @@ public struct RecipeShoppingReviewView: View {
     private func retryPendingConfirmation() async {
         await viewModel.retryPendingConfirmation()
         if viewModel.confirmationResult != nil { await onShoppingConfirmed() }
+    }
+}
+
+private struct RecipeShoppingQuantitySummary: View {
+    let line: RecipeShoppingLine
+    let safetyDecision: String
+    @State private var showingDetails = false
+
+    private var identifierSuffix: String { String(line.ingredient_id ?? -1) }
+    private var unit: String { line.unit ?? "unit not specified" }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(actionSummary)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(safetyDecision == "eligible" && line.status == "ready"
+                    ? ProvisionTheme.textPrimary : ProvisionTheme.amberWarning)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("recipe-shopping-action-summary-\(identifierSuffix)")
+            DisclosureGroup(isExpanded: $showingDetails) {
+                VStack(alignment: .leading, spacing: 2) {
+                    quantityLine("Required", line.required_quantity, id: "required")
+                    quantityLine("Counted on hand", line.pantry_quantity, id: "pantry")
+                    quantityLine("Short", line.shortage, id: "shortage")
+                    quantityLine("Already on shopping list", line.pending_quantity, id: "pending")
+                    quantityLine("Additional needed", line.additional_quantity, id: "additional")
+                }
+            } label: {
+                Text("Quantity details")
+                    .font(.footnote.weight(.medium))
+            }
+            .accessibilityIdentifier("recipe-shopping-quantity-details-\(identifierSuffix)")
+            .accessibilityValue(showingDetails ? "Expanded" : "Collapsed")
+            .accessibilityHint(showingDetails ? "Hide quantity details" : "Show quantity details")
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(ProvisionTheme.surfaceSecondary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private var actionSummary: String {
+        if safetyDecision == "blocked" {
+            return "Food-safety review blocks adding \(line.display_name)."
+        }
+        if safetyDecision == "review_required" {
+            return "Review the food-safety status before adding \(line.display_name)."
+        }
+        guard line.status == "ready" else {
+            return "Review required before adding \(line.display_name)."
+        }
+        guard let amount = line.additional_quantity else {
+            return "The amount to add is unavailable. Review the quantity details."
+        }
+        if amount.value == 0 {
+            return "\(line.display_name) is already covered by pantry stock or the shopping list."
+        }
+        return "Add \(NSDecimalNumber(decimal: amount.value).stringValue) \(unit) \(line.display_name) to shopping list"
+    }
+
+    @ViewBuilder
+    private func quantityLine(_ title: String, _ quantity: ExactQuantity?, id: String) -> some View {
+        if let quantity {
+            let value = "\(NSDecimalNumber(decimal: quantity.value).stringValue) \(unit)"
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(title)
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Text(value)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(ProvisionTheme.textPrimary)
+                        .multilineTextAlignment(.trailing)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline)
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                    Text(value)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(ProvisionTheme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .font(.subheadline)
+            .padding(.vertical, 3)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("recipe-shopping-quantity-\(id)-\(identifierSuffix)")
+        }
     }
 }
