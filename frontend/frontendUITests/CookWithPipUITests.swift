@@ -707,6 +707,16 @@ final class CookWithPipUITests: XCTestCase {
         let ingredientName = element("recipe-ingredient-name-1", in: app)
         XCTAssertTrue(ingredientName.label.contains("calamansi"))
         capture("Recipe_Detail_Substitution_Applied", app: app)
+
+        let shoppingPreview = element("recipe-shopping-preview-link", in: app)
+        scrollTargetIntoView(shoppingPreview, inside: app.scrollViews["recipe-detail-scroll"], in: app)
+        XCTAssertTrue(shoppingPreview.isHittable)
+        shoppingPreview.tap()
+        let appliedShoppingSubstitution = element("recipe-shopping-applied-substitution-0", in: app)
+        XCTAssertTrue(appliedShoppingSubstitution.waitForExistence(timeout: 10))
+        XCTAssertTrue(appliedShoppingSubstitution.label.contains("calamansi"))
+        XCTAssertTrue(appliedShoppingSubstitution.label.contains("sampalok"))
+        capture("Shopping_Preview_Applied_Substitution", app: app)
     }
 
     func testShoppingPreviewEditsConsolidationAndExplicitConfirmation() {

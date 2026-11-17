@@ -9,7 +9,6 @@ public struct RecipeShoppingReviewView: View {
     @StateObject private var viewModel: RecipeShoppingReviewViewModel
     private let onShoppingConfirmed: () async -> Void
     private let onNavigateToShopping: () -> Void
-    private let hasAppliedSubstitutions: Bool
     @State private var showingConfirmation = false
     @State private var showingRevisionDetails = false
     @FocusState private var focusedField: QuantityField?
@@ -17,15 +16,18 @@ public struct RecipeShoppingReviewView: View {
     public init(recipe: HouseholdRecipe, scope: HouseholdScope,
                 service: any CookWithPipWorkflowService = APIClient.shared,
                 pendingStore: any PendingRecipeShoppingStore = KeychainStore.shared,
+                substitutions: [RecipeSubstitution] = [],
+                initialServings: ExactQuantity? = nil,
+                includeOptional: Bool = false,
                 onShoppingConfirmed: @escaping () async -> Void = {},
-                onNavigateToShopping: @escaping () -> Void = {},
-                hasAppliedSubstitutions: Bool = false) {
+                onNavigateToShopping: @escaping () -> Void = {}) {
         _viewModel = StateObject(wrappedValue: RecipeShoppingReviewViewModel(
-            recipe: recipe, scope: scope, service: service, pendingStore: pendingStore
+            recipe: recipe, scope: scope, service: service, pendingStore: pendingStore,
+            substitutions: substitutions, initialServings: initialServings,
+            includeOptional: includeOptional
         ))
         self.onShoppingConfirmed = onShoppingConfirmed
         self.onNavigateToShopping = onNavigateToShopping
-        self.hasAppliedSubstitutions = hasAppliedSubstitutions
     }
 
     public var body: some View {
@@ -58,6 +60,9 @@ public struct RecipeShoppingReviewView: View {
                 pendingStorageRecoverySection
             } else if let preview = viewModel.preview {
                 previewControls(preview)
+                if !preview.substitutions.isEmpty {
+                    appliedSubstitutionsSection(preview)
+                }
                 safetySection(preview)
                 ingredientLines(preview)
                 if !preview.unlinked_manual_items.isEmpty {
@@ -166,14 +171,6 @@ public struct RecipeShoppingReviewView: View {
                     .foregroundStyle(ProvisionTheme.amberWarning)
                     .accessibilityIdentifier("recipe-shopping-expired")
             }
-            if hasAppliedSubstitutions {
-                Label("This preview uses stored recipe ingredients. It does not include the substitutions evaluated on recipe detail.",
-                      systemImage: "info.circle")
-                    .font(.footnote)
-                    .foregroundStyle(ProvisionTheme.amberWarning)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("recipe-shopping-substitution-note")
-            }
             Button {
                 Task { await viewModel.refreshPreview() }
             } label: {
@@ -186,6 +183,23 @@ public struct RecipeShoppingReviewView: View {
             Text("Preview settings")
                 .accessibilityIdentifier("recipe-shopping-preview-settings-heading")
         }
+    }
+
+    private func appliedSubstitutionsSection(_ preview: RecipeShoppingPreview) -> some View {
+        Section("Applied substitutions") {
+            ForEach(Array(preview.substitutions.enumerated()), id: \.offset) { entry in
+                let substitution = entry.element
+                let original = recipe.ingredients.indices.contains(substitution.requirement_index)
+                    ? recipe.ingredients[substitution.requirement_index].display_name
+                    : "recipe ingredient"
+                let replacement = substitution.replacement.display_name
+                    ?? "ingredient \(substitution.replacement.ingredient_id ?? 0)"
+                Label("Use \(replacement) instead of \(original)", systemImage: "arrow.triangle.swap")
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("recipe-shopping-applied-substitution-\(entry.offset)")
+            }
+        }
+        .accessibilityIdentifier("recipe-shopping-applied-substitutions")
     }
 
     @ViewBuilder

@@ -6,6 +6,8 @@ public final class RecipeDetailViewModel: ObservableObject {
     @Published public private(set) var recipe: HouseholdRecipe?
     @Published public private(set) var evaluation: RecipeEvaluation?
     @Published public private(set) var appliedSubstitutions: [Int: IngredientRequirement] = [:]
+    @Published public private(set) var appliedServings: ExactQuantity?
+    @Published public private(set) var appliedIncludeOptional = false
     @Published public private(set) var sourceReference: RecipeSourceReference?
     @Published public private(set) var sourceReferenceErrorMessage: String?
     @Published public private(set) var isSourceOffline = false
@@ -34,6 +36,8 @@ public final class RecipeDetailViewModel: ObservableObject {
         isOffline = false
         sourceReference = nil
         appliedSubstitutions = [:]
+        appliedServings = nil
+        appliedIncludeOptional = false
         sourceReferenceErrorMessage = nil
         isSourceOffline = false
 
@@ -65,11 +69,14 @@ public final class RecipeDetailViewModel: ObservableObject {
         await loadSourceReference(requestID: activeRequestID)
     }
 
-    public func applyEvaluation(_ value: RecipeEvaluation, substitutions: [RecipeSubstitution]) {
+    public func applyEvaluation(_ value: RecipeEvaluation, substitutions: [RecipeSubstitution],
+                                servings: ExactQuantity, includeOptional: Bool) {
         guard value.recipe_id == recipeID, value.recipe_revision == recipe?.revision else { return }
         evaluation = value
         appliedSubstitutions = Dictionary(substitutions.map { ($0.requirement_index, $0.replacement) },
                                           uniquingKeysWith: { _, latest in latest })
+        appliedServings = servings
+        appliedIncludeOptional = includeOptional
     }
 
     private func loadSourceReference(requestID: UUID) async {
