@@ -41,6 +41,7 @@
     "Recipe_Substitution_Options",
     "Recipe_Detail_Substitution_Applied",
     "Shopping_Preview_Ready",
+    "Shopping_Purchased_Pantry_Review",
     "Shopping_Preview_Dark_Mode",
     "Shopping_Preview_Large_Text",
     "Shopping_Preview_Review_Required",
@@ -69,6 +70,7 @@
   ],
   "scenarioDescriptions": {
         "Inventory_Quick_Add_Minimal": "Minimal manual Quick Add with only a product identity, explicit unit, and quantity entered; advanced fields remain collapsed.",
+    "Shopping_Purchased_Pantry_Review": "A purchased grocery is added using an explicit actual amount while another is excluded from pantry inventory.",
     "Inventory_Receipt_Intake_Entry": "Inventory add menu navigates to the existing receipt intake scanner.",
     "Cook_with_Pip": "Cook with Pip household recipe search with the Bicol Express result visible.",
     "Cook_Now": "Cook Now mode is selected and its matching recipe is visible.",

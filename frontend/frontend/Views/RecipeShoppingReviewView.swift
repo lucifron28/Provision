@@ -7,6 +7,7 @@ public struct RecipeShoppingReviewView: View {
     }
 
     @StateObject private var viewModel: RecipeShoppingReviewViewModel
+    private let recipe: HouseholdRecipe
     private let onShoppingConfirmed: () async -> Void
     private let onNavigateToShopping: () -> Void
     @State private var showingConfirmation = false
@@ -26,6 +27,7 @@ public struct RecipeShoppingReviewView: View {
             substitutions: substitutions, initialServings: initialServings,
             includeOptional: includeOptional
         ))
+        self.recipe = recipe
         self.onShoppingConfirmed = onShoppingConfirmed
         self.onNavigateToShopping = onNavigateToShopping
     }

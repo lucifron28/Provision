@@ -899,6 +899,20 @@ public actor APIClient {
         request.httpMethod = "DELETE"
         try await executeVoid(request, expectedScope: expectedScope)
     }
+
+    public func reconcilePurchasedGroceries(
+        _ payload: ReconcilePurchasedItemsRequest,
+        scope: HouseholdScope
+    ) async throws -> ReconcilePurchasedItemsResponse {
+        guard scope == householdScope else { throw APIError.sessionChanged }
+        let url = baseURL.appendingPathComponent("shopping-list/reconcile-purchased")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
+        request.httpBody = try encoder.encode(payload)
+        return try await execute(request, expectedScope: scope)
+    }
     
     public func generateShoppingSuggestions(threshold: Double = 1.0, expectedScope: HouseholdScope? = nil) async throws -> [ShoppingItem] {
         let url = baseURL.appendingPathComponent("shopping-list/generate-from-low-stock")

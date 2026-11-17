@@ -108,6 +108,7 @@ jobs:
               -only-testing:frontendUITests/CookWithPipUITests/testShoppingReviewRequiredAndBlockedStates
               -only-testing:frontendUITests/CookWithPipUITests/testAmbiguousShoppingConfirmationSurvivesAppRelaunch
               -only-testing:frontendUITests/CookWithPipUITests/testShoppingOfflineRetryAndStalePreviewRecovery
+              -only-testing:frontendUITests/CookWithPipUITests/testPurchasedGroceriesReviewRequiresExplicitDecisions
     steps:
       - uses: actions/checkout@v4
       - name: Show Xcode and simulator runtimes

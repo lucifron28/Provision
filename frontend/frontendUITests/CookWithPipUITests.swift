@@ -764,6 +764,55 @@ final class CookWithPipUITests: XCTestCase {
         capture("Inventory_Quick_Add_Minimal", app: app)
     }
 
+    func testPurchasedGroceriesReviewRequiresExplicitDecisions() {
+        let app = launch(scenario: "shopping-reconciliation")
+        let reviewButton = element("shopping-review-purchased", in: app)
+        XCTAssertTrue(reviewButton.waitForExistence(timeout: 10))
+        reviewButton.tap()
+
+        let reviewForm = element("shopping-purchased-review-form", in: app)
+        XCTAssertTrue(reviewForm.waitForExistence(timeout: 10))
+        let confirm = element("shopping-confirm-purchased-review", in: app)
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        XCTAssertFalse(confirm.isEnabled, "Every purchased item needs an explicit review decision")
+
+        let addRice = element("shopping-reconcile-add-9981", in: app)
+        XCTAssertTrue(addRice.waitForExistence(timeout: 5))
+        addRice.tap()
+
+        let unitPicker = element("shopping-reconcile-new-product-unit-9981", in: app)
+        XCTAssertTrue(unitPicker.waitForExistence(timeout: 5))
+        unitPicker.tap()
+        let kilograms = app.buttons["kg"]
+        XCTAssertTrue(kilograms.waitForExistence(timeout: 5))
+        kilograms.tap()
+
+        let actualQuantity = element("shopping-reconcile-actual-quantity-9981", in: app)
+        XCTAssertTrue(actualQuantity.waitForExistence(timeout: 5))
+        XCTAssertFalse(confirm.isEnabled, "The actual pantry amount must be entered; planned amount is not reused")
+        actualQuantity.tap()
+        actualQuantity.typeText("2.5")
+        let keyboardDone = element("shopping-reconciliation-keyboard-done", in: app)
+        if keyboardDone.waitForExistence(timeout: 2) { keyboardDone.tap() }
+        XCTAssertFalse(confirm.isEnabled, "The second purchased item still needs a decision")
+
+        let excludeMango = element("shopping-reconcile-exclude-9982", in: app)
+        if !excludeMango.isHittable { app.swipeUp() }
+        XCTAssertTrue(excludeMango.waitForExistence(timeout: 5))
+        XCTAssertTrue(excludeMango.isHittable)
+        excludeMango.tap()
+        XCTAssertTrue(confirm.isEnabled, "The review can be confirmed once all rows have safe, explicit choices")
+        confirm.tap()
+
+        let riceStatus = element("shopping-purchase-status-9981", in: app)
+        let mangoStatus = element("shopping-purchase-status-9982", in: app)
+        XCTAssertTrue(riceStatus.waitForExistence(timeout: 10))
+        XCTAssertEqual(riceStatus.label, "Added to pantry")
+        XCTAssertTrue(mangoStatus.waitForExistence(timeout: 5))
+        XCTAssertEqual(mangoStatus.label, "Excluded from pantry")
+        capture("Shopping_Purchased_Pantry_Review", app: app)
+    }
+
     func testShoppingPreviewEditsConsolidationAndExplicitConfirmation() {
         let app = launch()
         openShoppingPreview(app)

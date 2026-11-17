@@ -639,7 +639,23 @@ struct CookWithPipUITestHost: View {
         let fixtureID = Int(Self.launchArgument("-pip-ui-fixture-id") ?? "0") ?? 0
         let scope = HouseholdScope(userID: 9901 + fixtureID, householdID: 9902 + fixtureID,
                                    serverID: "ui-test-fixtures")
-        _shoppingViewModel = StateObject(wrappedValue: ShoppingViewModel(isPreview: true, scope: scope))
+        let shoppingViewModel = ShoppingViewModel(
+            isPreview: true,
+            scope: scope,
+            purchasedGroceriesStore: CookWithPipUITestPendingPurchasedStore()
+        )
+        if Self.launchArgument("-pip-ui-scenario") == "shopping-reconciliation" {
+            shoppingViewModel.filter = .completed
+            shoppingViewModel.items = [
+                ShoppingItem(id: 9981, name: "Synthetic rice", quantity: 5, unit: "kg",
+                             is_bought: true, updated_at: "2026-11-18T10:00:00Z"),
+                ShoppingItem(id: 9982, name: "Synthetic mangga", quantity: 3, unit: "pcs",
+                             is_bought: true, updated_at: "2026-11-18T10:01:00Z")
+            ]
+            shoppingViewModel.products = [Self.product]
+            shoppingViewModel.locations = [StorageLocation(id: 9904, name: "Pantry", location_type: "pantry")]
+        }
+        _shoppingViewModel = StateObject(wrappedValue: shoppingViewModel)
         let productViewModel = InventoryViewModel(isPreview: true, scope: scope)
         productViewModel.selectedProduct = PreviewData.centuryTuna
         productViewModel.productBatches = PreviewData.centuryTunaBatches
@@ -669,7 +685,7 @@ struct CookWithPipUITestHost: View {
                 }
                 .accessibilityIdentifier("ui-test-fixture-banner")
 
-            if showingShoppingList {
+            if showingShoppingList || Self.launchArgument("-pip-ui-scenario") == "shopping-reconciliation" {
                 NavigationStack {
                     ShoppingListView(viewModel: shoppingViewModel)
                 }
@@ -871,5 +887,20 @@ private final class CookWithPipUITestPendingShoppingStore: PendingRecipeShopping
         defer { lock.unlock() }
         return records.removeValue(forKey: scope.storageKey) != nil
     }
+}
+
+private struct CookWithPipUITestPendingPurchasedStore: PendingPurchasedGroceriesStore {
+    func readPendingPurchasedGroceries(scope: HouseholdScope) -> PendingPurchasedGroceriesReadResult {
+        .missing
+    }
+
+    func savePendingPurchasedGroceries(
+        _ record: PendingPurchasedGroceriesRecord,
+        scope: HouseholdScope
+    ) -> Bool {
+        record.scopeStorageKey == scope.storageKey
+    }
+
+    func deletePendingPurchasedGroceries(scope: HouseholdScope) -> Bool { true }
 }
 #endif

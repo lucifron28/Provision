@@ -305,6 +305,40 @@ final class CookWithPipWorkflowTests: XCTestCase {
         ), .corrupt)
     }
 
+    func testPurchasedGroceriesPendingKeychainSeparatesStorageFailuresAndHouseholdScope() throws {
+        let scope = HouseholdScope(userID: 614, householdID: 725, serverID: "purchased-review-keychain-test")
+        let record = PendingPurchasedGroceriesRecord(
+            scopeStorageKey: scope.storageKey,
+            request: ReconcilePurchasedItemsRequest(idempotencyKey: "purchased-review-0001", items: [
+                PurchasedItemResolutionRequest(
+                    shoppingItemID: 991,
+                    expectedUpdatedAt: "2026-11-18T10:00:00Z",
+                    action: "exclude"
+                )
+            ])
+        )
+        let data = try JSONEncoder().encode(record)
+
+        XCTAssertEqual(KeychainStore.pendingPurchasedGroceriesReadResult(
+            status: errSecItemNotFound, data: nil, scope: scope
+        ), .missing)
+        XCTAssertEqual(KeychainStore.pendingPurchasedGroceriesReadResult(
+            status: errSecInteractionNotAllowed, data: nil, scope: scope
+        ), .unavailable)
+        XCTAssertEqual(KeychainStore.pendingPurchasedGroceriesReadResult(
+            status: errSecSuccess, data: Data([0xFF]), scope: scope
+        ), .corrupt)
+        XCTAssertEqual(KeychainStore.pendingPurchasedGroceriesReadResult(
+            status: errSecSuccess, data: data, scope: scope
+        ), .record(record))
+
+        let otherScope = HouseholdScope(userID: scope.userID, householdID: scope.householdID + 1,
+                                        serverID: scope.serverID)
+        XCTAssertEqual(KeychainStore.pendingPurchasedGroceriesReadResult(
+            status: errSecSuccess, data: data, scope: otherScope
+        ), .corrupt)
+    }
+
     func testManualInventoryPendingKeychainRoundTripsAndIsHouseholdScoped() {
         let scope = HouseholdScope(userID: Int.random(in: 1_000_000...2_000_000_000),
                                    householdID: Int.random(in: 2_000_000_001...2_100_000_000),
