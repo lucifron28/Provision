@@ -4,9 +4,15 @@ public struct InventoryView: View {
     @ObservedObject var viewModel: InventoryViewModel
     private let onNavigateToScan: () -> Void
 
+    private enum AddInventoryRoute: String, Identifiable {
+        case existingProduct
+        case newProduct
+
+        var id: String { rawValue }
+    }
+
     @State private var showingFilterSheet: Bool = false
-    @State private var showingAddSheet: Bool = false
-    @State private var startWithNewProduct = false
+    @State private var addInventoryRoute: AddInventoryRoute?
     
     
     public init(viewModel: InventoryViewModel, onNavigateToScan: @escaping () -> Void = {}) {
@@ -75,15 +81,13 @@ public struct InventoryView: View {
                             }
                             .accessibilityIdentifier("inventory-add-scan-option")
                             Button {
-                                startWithNewProduct = false
-                                showingAddSheet = true
+                                addInventoryRoute = .existingProduct
                             } label: {
                                 Label("Search existing products", systemImage: "magnifyingglass")
                             }
                             .accessibilityIdentifier("inventory-add-existing-option")
                             Button {
-                                startWithNewProduct = true
-                                showingAddSheet = true
+                                addInventoryRoute = .newProduct
                             } label: {
                                 Label("Add a new product", systemImage: "square.and.pencil")
                             }
@@ -116,8 +120,13 @@ public struct InventoryView: View {
                     await viewModel.loadData()
                 }
             }
-            .sheet(isPresented: $showingAddSheet, onDismiss: { startWithNewProduct = false }) {
-                AddInventoryView(viewModel: viewModel, startWithNewProduct: startWithNewProduct)
+            .sheet(item: $addInventoryRoute) { route in
+                switch route {
+                case .existingProduct:
+                    AddInventoryView(viewModel: viewModel)
+                case .newProduct:
+                    AddInventoryView(viewModel: viewModel, startWithNewProduct: true)
+                }
             }
         }
     }

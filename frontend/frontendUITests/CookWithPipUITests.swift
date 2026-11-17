@@ -781,6 +781,9 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(manualOption.waitForExistence(timeout: 5))
         manualOption.tap()
 
+        let newItemMode = app.segmentedControls["inventory-add-mode-picker"].buttons["New Item"]
+        XCTAssertTrue(newItemMode.waitForExistence(timeout: 5))
+        XCTAssertEqual(newItemMode.value as? String, "Selected", "Quick Add must open directly in new-product mode")
         let productName = element("inventory-add-product-name", in: app)
         XCTAssertTrue(productName.waitForExistence(timeout: 10))
         let submit = element("inventory-add-submit", in: app)
