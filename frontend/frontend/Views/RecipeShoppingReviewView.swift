@@ -198,6 +198,8 @@ public struct RecipeShoppingReviewView: View {
                     ?? "ingredient \(substitution.replacement.ingredient_id ?? 0)"
                 Label("Use \(replacement) instead of \(original)", systemImage: "arrow.triangle.swap")
                     .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Use \(replacement) instead of \(original)")
                     .accessibilityIdentifier("recipe-shopping-applied-substitution-\(entry.offset)")
             }
         } header: {
