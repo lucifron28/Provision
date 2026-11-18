@@ -1820,6 +1820,9 @@ extension CookWithPipUITests {
         scrollTargetIntoView(allergyConsent, inside: chatScroll, progressAnchor: chatConsent, in: app)
         XCTAssertEqual(chatConsent.value as? String, "1", "The synthetic chat consent was granted before this request")
         XCTAssertEqual(allergyConsent.value as? String, "0", "Allergy sharing remains separately disabled")
+        assertReachable(chatConsent, in: app)
+        assertReachable(allergyConsent, in: app)
+        capture("Pip_Chat_Consent_Enabled_Synthetic", app: app)
 
         let input = element("pip-chat-input", in: app)
         XCTAssertTrue(input.waitForExistence(timeout: 15))
@@ -1906,6 +1909,7 @@ extension CookWithPipUITests {
                       "Chat opens the existing review screen without confirming changes")
         XCTAssertFalse(app.alerts.firstMatch.exists,
                        "No confirmation dialog appears until the user starts the existing confirmation flow")
+        capture("Pip_Chat_Shopping_Preview_Staging_Synthetic", app: app)
 
         navigateBack(app, to: chatInput, screen: "Pip Chat")
         navigateBack(app, to: element("recipe-detail-title", in: app), screen: "Recipe Detail")

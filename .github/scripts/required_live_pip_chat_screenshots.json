@@ -1,9 +1,11 @@
 {
   "requiredScreenshots": [
+    "Pip_Chat_Consent_Enabled_Synthetic",
     "Pip_Chat_Staging_Live_Response_Synthetic"
   ],
   "supplementalScreenshots": [],
   "scenarioDescriptions": {
+    "Pip_Chat_Consent_Enabled_Synthetic": "An iPhone 17 Simulator shows the consent-enabled synthetic Pip Chat controls before a provider request; allergy sharing remains off.",
     "Pip_Chat_Staging_Live_Response_Synthetic": "An iPhone 17 Simulator displays a genuine DeepSeek Pip Chat response for a run-owned synthetic household; allergy sharing remains off."
   }
 }
