@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -99,9 +98,12 @@ def test_live_deepseek_smoke_allows_only_main_or_exact_open_pr_11_head():
     assert 'PROVISION_LIVE_DEEPSEEK_ENABLED" != "true"' in workflow
 
 
-def test_gallery_covers_all_ui_methods_and_keeps_full_result_bundles():
+def test_gallery_covers_gallery_methods_and_keeps_full_result_bundles():
     workflow = (
         REPOSITORY_ROOT / ".github" / "workflows" / "cook-with-pip-visual-gallery.yml"
+    ).read_text(encoding="utf-8")
+    live_workflow = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "live-pip-chat-smoke.yml"
     ).read_text(encoding="utf-8")
     source = (
         REPOSITORY_ROOT / "frontend" / "frontendUITests" / "CookWithPipUITests.swift"
@@ -111,6 +113,8 @@ def test_gallery_covers_all_ui_methods_and_keeps_full_result_bundles():
         for line in source.splitlines()
         if "func test" in line
     }
+    live_only_methods = {"testStagingLivePipChatResponseIsDisplayed"}
+    gallery_methods = methods - live_only_methods
 
     assert "workflow_dispatch:" in workflow
     assert "schedule:" in workflow
@@ -120,8 +124,11 @@ def test_gallery_covers_all_ui_methods_and_keeps_full_result_bundles():
     assert "- large-text-regressions" in workflow
     assert "- toggle-regressions" in workflow
     assert "- shopping-recovery" in workflow
-    assert len(methods) == 31
-    assert all(f'"{method}"' in workflow for method in methods)
+    assert len(gallery_methods) == 31
+    assert live_only_methods <= methods
+    assert all(f'"{method}"' in workflow for method in gallery_methods)
+    assert all(f'"{method}"' not in workflow for method in live_only_methods)
+    assert all(method in live_workflow for method in live_only_methods)
     assert "build-for-testing" in workflow
     assert "test-without-building" in workflow
     assert "max-parallel: 4" in workflow
