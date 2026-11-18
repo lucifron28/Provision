@@ -776,6 +776,16 @@ final class CookWithPipUITests: XCTestCase {
         receiptMode.tap()
         let receiptHeading = app.staticTexts["Supermarket Receipt Scanner"]
         XCTAssertTrue(receiptHeading.waitForExistence(timeout: 5))
+        let milkRowPredicate = NSPredicate(
+            format: "label CONTAINS %@ AND label CONTAINS %@",
+            "Organic Whole Milk",
+            "Pantry - Shelf A"
+        )
+        let milkRow = app.buttons.matching(milkRowPredicate).firstMatch
+        XCTAssertTrue(
+            milkRow.waitForExistence(timeout: 5),
+            "Preview receipt intake should show the sample item's resolved storage location"
+        )
         capture("Inventory_Receipt_Intake_Entry", app: app)
 
         inventoryTab.tap()

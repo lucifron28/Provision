@@ -45,6 +45,7 @@ public struct HomeInventoryAndPipTests {
         try testReusableSearchableProductSelector()
         try await testRecentProductSelectionsAreOrderedAndHouseholdScoped()
         try testProductSelectorSelectionAndSheetDismissal()
+        try await testPreviewScanLoadsFixtureLocations()
         print("=== ALL HOME, INVENTORY & PIP TESTS PASSED ===")
     }
 
@@ -357,6 +358,19 @@ public struct HomeInventoryAndPipTests {
     }
 
     // MARK: - Review All Workspace & Large List Tests
+
+    public static func testPreviewScanLoadsFixtureLocations() async throws {
+        let vm = ScanViewModel(isPreview: true)
+
+        await vm.loadLocations()
+
+        try assertEquals(
+            vm.availableLocations.map(\.id),
+            PreviewData.locations.map(\.id),
+            "Preview intake must use its fixture locations without a server request"
+        )
+        try assertTrue(vm.errorMessage == nil, "Preview intake must not show a location loading error")
+    }
 
     public static func testReviewAllWorkspaceFiltering() throws {
         let vm = ScanViewModel(isPreview: true)

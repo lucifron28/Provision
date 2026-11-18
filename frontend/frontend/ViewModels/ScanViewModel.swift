@@ -266,11 +266,15 @@ public class ScanViewModel: ObservableObject {
     }
 
     public func loadLocations() async {
-        do {
-            let locations = try await client.fetchLocations(expectedScope: scope)
-            self.availableLocations = locations
-        } catch {
-            self.errorMessage = "Failed to load locations: \(error.localizedDescription)"
+        if isPreview {
+            self.availableLocations = PreviewData.locations
+        } else {
+            do {
+                let locations = try await client.fetchLocations(expectedScope: scope)
+                self.availableLocations = locations
+            } catch {
+                self.errorMessage = "Failed to load locations: \(error.localizedDescription)"
+            }
         }
         await loadCatalog()
     }

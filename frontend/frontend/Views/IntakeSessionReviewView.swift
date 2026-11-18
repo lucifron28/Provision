@@ -253,6 +253,10 @@ public struct IntakeSessionReviewView: View {
     // MARK: - Item Row
 
     private func workspaceItemRow(for item: ScannedIntakeItem) -> some View {
+        let locationName = item.storageLocationId.flatMap { locationID in
+            viewModel.availableLocations.first(where: { $0.id == locationID })?.name
+        } ?? "No location selected"
+
         Button {
             reviewingItem = item
         } label: {
@@ -351,7 +355,7 @@ public struct IntakeSessionReviewView: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(item.name), \(formattedQuantity(item.quantity)) \(item.unit), \(item.storageLocationId != nil ? "location selected" : "no location selected"), status: \(viewModel.validationState(for: item).rawValue)")
+        .accessibilityLabel("\(item.name), \(formattedQuantity(item.quantity)) \(item.unit), location: \(locationName), status: \(viewModel.validationState(for: item).rawValue)")
         .accessibilityHint("Double tap to inspect and edit item details")
     }
 
