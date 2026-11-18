@@ -295,6 +295,7 @@ public struct CookWithPipView: View {
             Text(title)
                 .font(ProvisionTypography.sectionSerif)
                 .foregroundStyle(ProvisionTheme.textPrimary)
+                .accessibilityIdentifier(identifier)
             ForEach(candidates) { candidate in
                 Button {
                     selectedRecipeID = candidate.recipe_id
@@ -330,7 +331,6 @@ public struct CookWithPipView: View {
                 .accessibilityIdentifier("cook-with-pip-review-recipe-\(candidate.recipe_id)")
             }
         }
-        .accessibilityIdentifier(identifier)
     }
 
     private func excludedCandidateExplanation(_ candidate: ExcludedRecipeCandidate) -> String {
