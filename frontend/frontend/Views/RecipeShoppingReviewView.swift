@@ -449,7 +449,27 @@ private struct RecipeShoppingQuantitySummary: View {
                     ? ProvisionTheme.textPrimary : ProvisionTheme.amberWarning)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("recipe-shopping-action-summary-\(identifierSuffix)")
-            DisclosureGroup(isExpanded: $showingDetails) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showingDetails.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Text("Quantity details")
+                        .font(.footnote.weight(.medium))
+                    Spacer(minLength: 8)
+                    Image(systemName: showingDetails ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.semibold))
+                        .accessibilityHidden(true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("recipe-shopping-quantity-details-\(identifierSuffix)")
+            .accessibilityValue(showingDetails ? "Expanded" : "Collapsed")
+            .accessibilityHint(showingDetails ? "Hide quantity details" : "Show quantity details")
+            if showingDetails {
                 VStack(alignment: .leading, spacing: 2) {
                     quantityLine("Required", line.required_quantity, id: "required")
                     quantityLine("Counted on hand", line.pantry_quantity, id: "pantry")
@@ -457,13 +477,8 @@ private struct RecipeShoppingQuantitySummary: View {
                     quantityLine("Already on shopping list", line.pending_quantity, id: "pending")
                     quantityLine("Additional needed", line.additional_quantity, id: "additional")
                 }
-            } label: {
-                Text("Quantity details")
-                    .font(.footnote.weight(.medium))
+                .accessibilityElement(children: .contain)
             }
-            .accessibilityIdentifier("recipe-shopping-quantity-details-\(identifierSuffix)")
-            .accessibilityValue(showingDetails ? "Expanded" : "Collapsed")
-            .accessibilityHint(showingDetails ? "Hide quantity details" : "Show quantity details")
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
