@@ -438,7 +438,7 @@ public struct InventoryView: View {
             Spacer()
             
             VStack(alignment: .trailing, spacing: 4) {
-                Text("\(product.displayStock) \(product.displayUnit)")
+                Text("\(product.displayStock) \(product.displayUnit(for: product.total_remaining_quantity ?? 0))")
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(product.isOutOfStock ? ProvisionTheme.redAlert : ProvisionTheme.textPrimary)
                 

@@ -354,7 +354,10 @@ public struct AddInventoryView: View {
         Section("Saved inventory request") {
             let product = viewModel.products.first(where: { $0.id == record.request.product_id })
             let name = record.request.new_product?.name ?? product?.name ?? "Existing product"
-            let unit = record.request.new_product?.unit ?? product?.displayUnit ?? "units"
+            let unit = ProductUnits.displayUnit(
+                for: record.request.quantity,
+                unit: record.request.new_product?.unit ?? product?.unit
+            )
             Text("\(name) · \(ProductUnits.formatAmount(record.request.quantity)) \(unit)")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(ProvisionTheme.textPrimary)

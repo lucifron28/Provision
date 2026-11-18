@@ -112,7 +112,7 @@ public struct ProductDetailView: View {
         }
         .confirmationDialog("Select Batch to Discard", isPresented: $showingDiscardBatchSelection, titleVisibility: .visible) {
             ForEach(viewModel.productBatches) { batch in
-                Button("\(formatQuantity(batch.remaining_quantity)) \(currentProduct.displayUnit) • Exp: \(batch.displayExpiration)") {
+                Button("\(formatQuantity(batch.remaining_quantity)) \(currentProduct.displayUnit(for: batch.remaining_quantity)) • Exp: \(batch.displayExpiration)") {
                     prepareDiscard(batch)
                 }
                 .accessibilityIdentifier("inventory-discard-select-batch-\(batch.id)")
@@ -190,7 +190,7 @@ public struct ProductDetailView: View {
                         .foregroundStyle(ProvisionTheme.textTertiary)
                         .tracking(0.6)
                     
-                    Text("\(currentProduct.displayStock) \(currentProduct.displayUnit.uppercased())")
+                    Text("\(currentProduct.displayStock) \(currentProduct.displayUnit(for: currentProduct.total_remaining_quantity ?? 0).uppercased())")
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(currentProduct.isOutOfStock ? ProvisionTheme.redAlert : ProvisionTheme.provisionGreen)
                 }
@@ -405,7 +405,7 @@ public struct ProductDetailView: View {
                 
                 Spacer()
                 
-                Text("\(formatQuantity(batch.remaining_quantity)) \(currentProduct.displayUnit)")
+                Text("\(formatQuantity(batch.remaining_quantity)) \(currentProduct.displayUnit(for: batch.remaining_quantity))")
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(ProvisionTheme.textPrimary)
                     .accessibilityIdentifier("inventory-batch-quantity-\(batch.id)")
@@ -487,7 +487,7 @@ public struct ProductDetailView: View {
             
             Spacer()
             
-            Text("\(formatQuantity(batch.remaining_quantity)) \(currentProduct.displayUnit)")
+            Text("\(formatQuantity(batch.remaining_quantity)) \(currentProduct.displayUnit(for: batch.remaining_quantity))")
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(ProvisionTheme.textPrimary)
             
@@ -539,7 +539,7 @@ public struct ProductDetailView: View {
             Form {
                 if let batch = selectedBatchForDiscard {
                     Section("Selected batch") {
-                        LabeledContent("Available", value: "\(formatQuantity(batch.remaining_quantity)) \(currentProduct.displayUnit)")
+                        LabeledContent("Available", value: "\(formatQuantity(batch.remaining_quantity)) \(currentProduct.displayUnit(for: batch.remaining_quantity))")
                         LabeledContent("Expires", value: batch.displayExpiration)
                     }
                 }
@@ -724,7 +724,7 @@ public struct ProductDetailView: View {
                     }
                     let maxAvailable = currentProduct.total_remaining_quantity ?? 0
                     guard amount <= maxAvailable else {
-                        consumeErrorMessage = "Cannot consume more than available stock (\(formatQuantity(maxAvailable)) \(currentProduct.displayUnit))."
+                        consumeErrorMessage = "Cannot consume more than available stock (\(formatQuantity(maxAvailable)) \(currentProduct.displayUnit(for: maxAvailable)))."
                         return
                     }
                     if ProductUnits.isCount(currentProduct.unit) && floor(amount) != amount {
@@ -893,7 +893,7 @@ public struct ProductDetailView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Are you sure you want to adjust the batch quantity to \(adjustAmountText) \(currentProduct.displayUnit)?")
+                Text("Are you sure you want to adjust the batch quantity to \(adjustAmountText) \(currentProduct.displayUnit(for: Double(adjustAmountText) ?? 0))?")
             }
             .padding(20)
             .background(ProvisionTheme.background.ignoresSafeArea())

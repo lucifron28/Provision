@@ -831,10 +831,11 @@ final class CookWithPipUITests: XCTestCase {
 
         let remaining = element("inventory-batch-quantity-3", in: app)
         let updatedQuantity = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "label == %@", "3 cans"), object: remaining
+            predicate: NSPredicate(format: "label == %@", "1 can"), object: remaining
         )
         XCTAssertEqual(XCTWaiter.wait(for: [updatedQuantity], timeout: 10), .completed,
                        "The remaining batch quantity reflects the partial disposal")
+        XCTAssertEqual(remaining.label, "1 can", "Discarding three of four cans leaves one can")
         capture("Inventory_Partial_Discard_Recorded", app: app)
     }
 
