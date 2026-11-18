@@ -257,7 +257,7 @@ public struct IntakeSessionReviewView: View {
             viewModel.availableLocations.first(where: { $0.id == locationID })?.name
         } ?? "No location selected"
 
-        Button {
+        return Button {
             reviewingItem = item
         } label: {
             let state = viewModel.validationState(for: item)
