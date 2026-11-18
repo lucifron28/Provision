@@ -96,6 +96,10 @@ def test_live_deepseek_smoke_allows_only_main_or_exact_open_pr_11_head():
     assert '"$base_ref" == "main"' in workflow
     assert "RUN_ONE_SYNTHETIC_DEEPSEEK_REQUEST" in workflow
     assert 'PROVISION_LIVE_DEEPSEEK_ENABLED" != "true"' in workflow
+    assert "name: Synthetic Pip Chat response and iPhone screenshot" in workflow
+    assert "environment: staging" in workflow
+    assert "PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}" in workflow
+    assert "RUN_ONE_SYNTHETIC_PIP_CHAT_REQUEST" in workflow
 
 
 def test_gallery_covers_gallery_methods_and_keeps_full_result_bundles():
@@ -103,7 +107,7 @@ def test_gallery_covers_gallery_methods_and_keeps_full_result_bundles():
         REPOSITORY_ROOT / ".github" / "workflows" / "cook-with-pip-visual-gallery.yml"
     ).read_text(encoding="utf-8")
     live_workflow = (
-        REPOSITORY_ROOT / ".github" / "workflows" / "live-pip-chat-smoke.yml"
+        REPOSITORY_ROOT / ".github" / "workflows" / "live-deepseek-smoke.yml"
     ).read_text(encoding="utf-8")
     source = (
         REPOSITORY_ROOT / "frontend" / "frontendUITests" / "CookWithPipUITests.swift"
