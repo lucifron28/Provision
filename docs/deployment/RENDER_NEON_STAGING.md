@@ -125,4 +125,4 @@ If an auto-deploy fails, Render keeps the previous successful deploy running. In
 
 ## Current verification boundary
 
-The Docker build and local container HTTP/readiness smoke have passed. Focused deployment, migration-guard, health, and cleanup tests have passed. Neon migration and connection compatibility have been verified on the isolated Free project. The Render plan is ready but not applied, so deployed API checks, the manual staging workflow, and the live provider call have not run. The GitHub `staging` environment still needs the Render URL and fixture token after the Render service is approved and configured.
+On 2026-11-18, the public Render service returned `deployment=staging` and revision `9958b62622085db12fc1ef128d31ccf30d47c2b2` from `/health`; `/ready` returned `{"status":"ready"}`. This verifies unauthenticated HTTP and database readiness only, not authenticated iOS workflows or a new staging E2E run. No live DeepSeek request was made during this Mac preparation. Keep staging database credentials, fixture tokens, and provider credentials out of the shared Mac and Xcode schemes.
