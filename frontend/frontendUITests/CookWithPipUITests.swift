@@ -916,7 +916,8 @@ final class CookWithPipUITests: XCTestCase {
         quantityDetails.tap()
 
         let includeOptional = element("recipe-shopping-include-optional", in: app)
-        scrollTargetIntoView(includeOptional, inside: shoppingForm, progressAnchor: safetyStatus, in: app)
+        scrollTargetIntoView(includeOptional, inside: shoppingForm, progressAnchor: safetyStatus,
+                             in: app, initialDirection: .towardStart)
         assertReachable(includeOptional, in: app)
         guard setSwitch(includeOptional, to: "1") else { return }
         let stalePreview = element("recipe-shopping-stale-preview", in: app)
