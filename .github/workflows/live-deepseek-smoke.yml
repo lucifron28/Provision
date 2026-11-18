@@ -15,8 +15,16 @@ on:
           - main
           - pr-11
         default: main
+      smoke_target:
+        description: Select the live DeepSeek flow to verify
+        required: true
+        type: choice
+        options:
+          - ai-recipe
+          - pip-chat
+        default: ai-recipe
       live_confirmation:
-        description: Type RUN_ONE_SYNTHETIC_DEEPSEEK_REQUEST to authorize exactly one provider request
+        description: Type the exact confirmation for the selected one-request live smoke
         required: true
         type: string
 
@@ -29,8 +37,29 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate-live-request:
+    name: Validate live request scope
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the matching request and source confirmation
+        shell: bash
+        env:
+          DEPLOYMENT_SOURCE: ${{ inputs.deployment_source }}
+          SMOKE_TARGET: ${{ inputs.smoke_target }}
+          LIVE_CONFIRMATION: ${{ inputs.live_confirmation }}
+        run: |
+          case "$SMOKE_TARGET:$LIVE_CONFIRMATION:$DEPLOYMENT_SOURCE" in
+            ai-recipe:RUN_ONE_SYNTHETIC_DEEPSEEK_REQUEST:main|ai-recipe:RUN_ONE_SYNTHETIC_DEEPSEEK_REQUEST:pr-11|pip-chat:RUN_ONE_SYNTHETIC_PIP_CHAT_REQUEST:pr-11)
+              ;;
+            *)
+              echo "The selected live smoke requires its exact confirmation phrase and an allowed source." >&2
+              exit 1
+              ;;
+          esac
+
   live-smoke:
-    if: ${{ inputs.live_confirmation == 'RUN_ONE_SYNTHETIC_DEEPSEEK_REQUEST' }}
+    needs: validate-live-request
+    if: ${{ inputs.smoke_target == 'ai-recipe' }}
     name: One confirmed synthetic provider request
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -133,3 +162,11 @@ jobs:
         env:
           PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
         run: uv run --no-sync python -m scripts.staging_e2e_smoke cleanup
+
+  live-pip-chat:
+    needs: validate-live-request
+    if: ${{ inputs.smoke_target == 'pip-chat' }}
+    uses: ./.github/workflows/live-pip-chat-smoke.yml
+    with:
+      expected_render_commit: ${{ inputs.expected_render_commit }}
+      live_confirmation: ${{ inputs.live_confirmation }}

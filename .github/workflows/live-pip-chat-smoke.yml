@@ -1,0 +1,211 @@
+name: Provision staging live Pip Chat smoke
+
+on:
+  workflow_call:
+    inputs:
+      expected_render_commit:
+        required: true
+        type: string
+      live_confirmation:
+        required: true
+        type: string
+
+jobs:
+  live-pip-chat:
+    if: ${{ inputs.live_confirmation == 'RUN_ONE_SYNTHETIC_PIP_CHAT_REQUEST' }}
+    name: Synthetic Pip Chat response and iPhone screenshot
+    runs-on: macos-26
+    timeout-minutes: 35
+    environment: staging
+    env:
+      PROVISION_EXPECTED_RENDER_COMMIT: ${{ inputs.expected_render_commit }}
+      PROVISION_STAGING_API_BASE_URL: ${{ vars.PROVISION_STAGING_API_BASE_URL }}
+      PROVISION_LIVE_DEEPSEEK_ENABLED: ${{ vars.PROVISION_LIVE_DEEPSEEK_ENABLED }}
+      PROVISION_LIVE_DEEPSEEK_CONFIRMATION: ${{ inputs.live_confirmation }}
+      PROVISION_EXPECTED_COMMIT_SOURCE: pr-11
+    steps:
+      - name: Require the live smoke gate
+        shell: bash
+        run: |
+          if [[ "$PROVISION_LIVE_DEEPSEEK_ENABLED" != "true" ]]; then
+            echo "The staging live DeepSeek gate must be explicitly enabled." >&2
+            exit 1
+          fi
+
+      - name: Check out the exact deployed PR commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_render_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify the requested revision is the open PR #11 head
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$PROVISION_EXPECTED_RENDER_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]] || {
+            echo "Enter the full 40-character PR commit SHA." >&2
+            exit 1
+          }
+          actual="$(git rev-parse HEAD)"
+          expected="$(printf '%s' "$PROVISION_EXPECTED_RENDER_COMMIT" | tr '[:upper:]' '[:lower:]')"
+          [[ "$actual" == "$expected" ]] || {
+            echo "Checked out $actual, expected $expected." >&2
+            exit 1
+          }
+          metadata="$(gh api "repos/$GITHUB_REPOSITORY/pulls/11" --jq '[.state, .head.ref, .head.sha, .base.ref, .head.repo.full_name] | @tsv')"
+          IFS=$'\t' read -r state head_ref head_sha base_ref head_repo <<< "$metadata"
+          [[ "$state" == "open" && "$head_ref" == "feat/pip-chat-foundation" && \
+             "$base_ref" == "main" && "$head_repo" == "$GITHUB_REPOSITORY" && \
+             "$head_sha" == "$actual" ]] || {
+            echo "The requested SHA must be the exact open PR #11 head from this repository." >&2
+            exit 1
+          }
+
+      - name: Show Xcode and simulator runtimes
+        run: xcodebuild -version && xcrun simctl list devices available
+
+      - name: Prepare the exact iPhone 17 simulator
+        run: bash .github/scripts/prepare_ios_simulator.sh
+
+      - name: Set up Python and uv
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+          python-version: "3.13"
+
+      - name: Install locked backend runtime dependencies
+        working-directory: backend
+        run: uv sync --frozen --no-dev --no-install-project
+
+      - name: Verify the staging target
+        working-directory: backend
+        run: uv run --no-sync python -m scripts.staging_e2e_smoke preflight
+
+      - name: Create one synthetic household
+        id: staging-fixture
+        working-directory: backend
+        env:
+          PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
+        run: uv run --no-sync python -m scripts.staging_e2e_smoke prepare
+
+      - name: Build the focused live Pip Chat UI test
+        env:
+          PROVISION_SKIP_CHAT_SCREENSHOTS: "1"
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          xcodebuild build-for-testing \
+            -project frontend/frontend.xcodeproj \
+            -scheme frontend \
+            -destination "platform=iOS Simulator,id=${SIMULATOR_UDID}" \
+            -only-testing:frontendUITests/CookWithPipUITests/testStagingLivePipChatResponseIsDisplayed \
+            -derivedDataPath artifacts/DerivedData \
+            -parallel-testing-enabled NO \
+            -showBuildTimingSummary \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- 2>&1 | tee artifacts/xcodebuild-build.log
+
+      - name: Verify one live Pip Chat API response
+        working-directory: backend
+        env:
+          PROVISION_STAGING_TEST_EMAIL: ${{ env.PROVISION_STAGING_TEST_EMAIL }}
+          PROVISION_STAGING_TEST_PASSWORD: ${{ env.PROVISION_STAGING_TEST_PASSWORD }}
+          PROVISION_STAGING_TEST_HOUSEHOLD_ID: ${{ env.PROVISION_STAGING_TEST_HOUSEHOLD_ID }}
+        run: uv run --no-sync python -m scripts.staging_live_pip_chat_smoke
+
+      - name: Run one live Pip Chat iPhone response capture
+        id: live-ui-test
+        env:
+          TEST_RUNNER_PROVISION_API_BASE_URL: ${{ env.PROVISION_STAGING_API_BASE_URL }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_EMAIL: ${{ env.PROVISION_STAGING_TEST_EMAIL }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_PASSWORD: ${{ env.PROVISION_STAGING_TEST_PASSWORD }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_PRODUCT_ID: ${{ env.PROVISION_STAGING_TEST_PRODUCT_ID }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_PRODUCT_NAME: ${{ env.PROVISION_STAGING_TEST_PRODUCT_NAME }}
+          TEST_RUNNER_PROVISION_LIVE_PIP_CHAT_TEST: "true"
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -project frontend/frontend.xcodeproj \
+            -scheme frontend \
+            -destination "platform=iOS Simulator,id=${SIMULATOR_UDID}" \
+            -only-testing:frontendUITests/CookWithPipUITests/testStagingLivePipChatResponseIsDisplayed \
+            -derivedDataPath artifacts/DerivedData \
+            -resultBundlePath artifacts/live-pip-chat.xcresult \
+            -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- 2>&1 | tee artifacts/xcodebuild.log
+
+      - name: Report UI test duration
+        if: always()
+        run: >-
+          python .github/scripts/report_xcode_test_durations.py
+          --input-log artifacts/xcodebuild.log
+          --json-output artifacts/test-durations-live-pip-chat.json
+          --summary "$GITHUB_STEP_SUMMARY"
+          --allow-empty
+
+      - name: Export the live Pip Chat screenshot
+        if: always()
+        run: |
+          result_bundle="artifacts/live-pip-chat.xcresult"
+          if [[ -d "$result_bundle" ]]; then
+            xcrun xcresulttool export attachments \
+              --path "$result_bundle" \
+              --output-path artifacts/raw-live-pip-chat
+            outcome="${{ steps.live-ui-test.outcome }}"
+            if [[ "$outcome" != "success" ]]; then outcome="failure"; fi
+            python .github/scripts/organize_ios_screenshots.py \
+              --input artifacts/raw-live-pip-chat \
+              --output artifacts/live-pip-chat-screenshots \
+              --required .github/scripts/required_live_pip_chat_screenshots.json \
+              --only-required \
+              --commit-sha "$GITHUB_SHA" \
+              --test-outcome "$outcome"
+          else
+            echo "No XCUITest result bundle was produced." >&2
+            exit 1
+          fi
+
+      - name: Write live smoke summary
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          cat > artifacts/live-pip-chat-summary.txt <<EOF
+          Revision: $PROVISION_EXPECTED_RENDER_COMMIT
+          Provider: DeepSeek through the staging Pip Chat endpoint
+          Account: unique synthetic staging household
+          DeepSeek calls: two, one direct API validation and one iPhone UI capture
+          Other traffic: synthetic account setup, readiness, and read-only verification only
+          Personal household data: none
+          UI test outcome: ${{ steps.live-ui-test.outcome }}
+          Response text: withheld from workflow logs; visible only in the synthetic screenshot artifact
+          EOF
+
+      - name: Remove the run-owned synthetic household
+        if: always() && steps.staging-fixture.outcome != 'skipped'
+        working-directory: backend
+        env:
+          PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
+        run: uv run --no-sync python -m scripts.staging_e2e_smoke cleanup
+
+      - name: Upload live Pip Chat screenshot, manifest, and xcresult
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-pip-chat-synthetic-${{ github.sha }}
+          path: |
+            artifacts/live-pip-chat-screenshots
+            artifacts/live-pip-chat.xcresult
+            artifacts/live-pip-chat-summary.txt
+            artifacts/xcodebuild-build.log
+            artifacts/xcodebuild.log
+            artifacts/test-durations-live-pip-chat.json
+          if-no-files-found: warn
+          retention-days: 14

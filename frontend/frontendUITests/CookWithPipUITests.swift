@@ -1751,6 +1751,89 @@ final class CookWithPipUITests: XCTestCase {
     }
 }
 extension CookWithPipUITests {
+    func testStagingLivePipChatResponseIsDisplayed() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["PROVISION_LIVE_PIP_CHAT_TEST"] == "true",
+              let baseURL = environment["PROVISION_API_BASE_URL"],
+              let email = environment["PROVISION_STAGING_TEST_EMAIL"],
+              let password = environment["PROVISION_STAGING_TEST_PASSWORD"],
+              let productID = environment["PROVISION_STAGING_TEST_PRODUCT_ID"].flatMap(Int.init),
+              let productName = environment["PROVISION_STAGING_TEST_PRODUCT_NAME"] else {
+            throw XCTSkip("The live Pip Chat test runs only in its explicitly authorized staging workflow")
+        }
+
+        let app = XCUIApplication()
+        app.launchEnvironment["PROVISION_API_BASE_URL"] = baseURL
+        app.launchEnvironment["PROVISION_STAGING_TEST_EMAIL"] = email
+        app.launchEnvironment["PROVISION_STAGING_TEST_PASSWORD"] = password
+        app.launchArguments = ["--provision-reset-staging-session"]
+        app.launch()
+
+        let emailField = app.textFields["login-email"]
+        XCTAssertTrue(emailField.waitForExistence(timeout: 20))
+        emailField.tap()
+        emailField.typeText(email)
+        let passwordField = app.secureTextFields["login-password"]
+        passwordField.tap()
+        passwordField.typeText(password)
+        let signIn = app.buttons["login-submit"]
+        signIn.tap()
+
+        let homeTab = app.buttons["Home"]
+        guard finishStagingSignInIfNeeded(
+            app: app,
+            signIn: signIn,
+            signedInTab: homeTab,
+            signedInTabLabel: "Home",
+            failureMessage: "The synthetic staging account did not reach Home for Pip Chat verification"
+        ) else { return }
+        dismissSavePasswordPromptIfPresent(app: app, readyElement: homeTab)
+        assertStagingDashboardLoaded(app, phase: "The synthetic household dashboard loaded before Pip Chat")
+
+        let inventoryTab = app.buttons["Inventory"]
+        XCTAssertTrue(inventoryTab.waitForExistence(timeout: 15))
+        inventoryTab.tap()
+        let productRow = element("product-row-\(productID)", in: app)
+        XCTAssertTrue(productRow.waitForExistence(timeout: 20))
+        productRow.tap()
+        let askPip = app.buttons["product-ask-pip-link"]
+        XCTAssertTrue(askPip.waitForExistence(timeout: 15))
+        askPip.tap()
+
+        let contextTitle = app.staticTexts["pip-chat-context-title"]
+        XCTAssertTrue(contextTitle.waitForExistence(timeout: 15))
+        XCTAssertEqual(contextTitle.label, productName)
+
+        let chatConsent = app.switches["pip-chat-consent-chat"]
+        let allergyConsent = app.switches["pip-chat-consent-allergies"]
+        XCTAssertTrue(chatConsent.waitForExistence(timeout: 15))
+        let chatScroll = app.scrollViews["pip-chat-scroll"]
+        scrollTargetIntoView(chatConsent, inside: chatScroll, in: app)
+        scrollTargetIntoView(allergyConsent, inside: chatScroll, progressAnchor: chatConsent, in: app)
+        XCTAssertEqual(chatConsent.value as? String, "1", "The synthetic chat consent was granted before this request")
+        XCTAssertEqual(allergyConsent.value as? String, "0", "Allergy sharing remains separately disabled")
+
+        let input = element("pip-chat-input", in: app)
+        XCTAssertTrue(input.waitForExistence(timeout: 15))
+        scrollTargetIntoView(input, inside: chatScroll, in: app)
+        input.tap()
+        input.typeText("How much synthetic jasmine rice is in my pantry?")
+        let send = app.buttons["pip-chat-send"]
+        XCTAssertTrue(send.isEnabled)
+        send.tap()
+
+        let assistantReply = element("pip-chat-message-assistant", in: app)
+        XCTAssertTrue(assistantReply.waitForExistence(timeout: 75),
+                      "Pip Chat did not display a response from the staging provider")
+        XCTAssertTrue(element("pip-chat-fact-I1", in: app).waitForExistence(timeout: 10),
+                       "The response did not display the server-validated synthetic pantry fact")
+        XCTAssertFalse(element("pip-chat-error", in: app).exists,
+                         "Pip Chat displayed an error instead of a provider response")
+        scrollTargetIntoView(assistantReply, inside: chatScroll, in: app)
+        assertReachable(assistantReply, in: app)
+        capture("Pip_Chat_Staging_Live_Response_Synthetic", app: app)
+    }
+
     func testStagingPipChatContextAndShoppingPreviewRoutes() throws {
         let environment = ProcessInfo.processInfo.environment
         guard let baseURL = environment["PROVISION_API_BASE_URL"],
