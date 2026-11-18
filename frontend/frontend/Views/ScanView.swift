@@ -1,5 +1,7 @@
-import VisionKit
+import PhotosUI
 import SwiftUI
+import UIKit
+import VisionKit
 
 public struct ScanView: View {
     @ObservedObject var viewModel: ScanViewModel
@@ -21,6 +23,8 @@ public struct ScanView: View {
     @State private var selectedCatalogProductId: Int? = nil
     @State private var reviewingItem: ScannedIntakeItem? = nil
     @State private var showingReviewAllSheet: Bool = false
+    @State private var selectedReceiptPhoto: PhotosPickerItem?
+    @State private var isImportingReceipt = false
     public init(viewModel: ScanViewModel) {
         self.viewModel = viewModel
     }
@@ -78,6 +82,12 @@ public struct ScanView: View {
                     viewModel.suspendScanning(for: .receiptMode)
                 } else {
                     viewModel.resumeScanning(releasing: .receiptMode)
+                }
+            }
+            .onChange(of: selectedReceiptPhoto) { _, photo in
+                guard let photo else { return }
+                Task {
+                    await importReceiptPhoto(photo)
                 }
             }
             .onChange(of: scenePhase) { _, newPhase in
@@ -240,6 +250,27 @@ public struct ScanView: View {
                                 }
                             }
                             #endif
+                            PhotosPicker(selection: $selectedReceiptPhoto, matching: .images) {
+                                HStack(spacing: 5) {
+                                    if isImportingReceipt {
+                                        ProgressView()
+                                            .controlSize(.mini)
+                                    } else {
+                                        Image(systemName: "photo")
+                                    }
+                                    Text(isImportingReceipt ? "Reading…" : "Import Receipt")
+                                }
+                                .font(.system(size: 11, weight: .semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 7)
+                                .background(ProvisionTheme.provisionGreenLight)
+                                .foregroundStyle(ProvisionTheme.provisionGreen)
+                                .clipShape(Capsule())
+                            }
+                            .disabled(isImportingReceipt || viewModel.isProcessingReceipt || viewModel.isIntakeMutationLocked)
+                            .accessibilityIdentifier("receipt-import-photo-picker")
+                            .accessibilityHint("Choose a receipt photo to read its items for review.")
+                            .buttonStyle(.plain)
                             if !viewModel.lastCapturedReceiptLines.isEmpty {
                                 Button {
                                     Task {
@@ -328,6 +359,30 @@ public struct ScanView: View {
             }
         }
     }
+    private func importReceiptPhoto(_ item: PhotosPickerItem) async {
+        guard !isImportingReceipt, !viewModel.isProcessingReceipt, !viewModel.isIntakeMutationLocked else { return }
+        isImportingReceipt = true
+        viewModel.errorMessage = nil
+        defer {
+            isImportingReceipt = false
+            selectedReceiptPhoto = nil
+        }
+
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self) else {
+                viewModel.errorMessage = "Could not load the selected photo. Choose another receipt image."
+                return
+            }
+            guard let image = UIImage(data: data) else {
+                viewModel.errorMessage = "The selected file is not a readable image. Choose a receipt photo."
+                return
+            }
+            await viewModel.processScannedReceipt(images: [image])
+        } catch {
+            viewModel.errorMessage = "Could not import that photo. Choose another receipt image."
+        }
+    }
+
 
     private var simulationBarcodeButtons: some View {
         VStack(alignment: .leading, spacing: 8) {
