@@ -100,6 +100,9 @@ def test_live_deepseek_smoke_allows_only_main_or_exact_open_pr_11_head():
     assert "environment: staging" in workflow
     assert "PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}" in workflow
     assert "RUN_ONE_SYNTHETIC_PIP_CHAT_REQUEST" in workflow
+    assert "Install locked backend and screenshot dependencies" in workflow
+    assert "uv sync --frozen --group dev --no-install-project" in workflow
+    assert "uv run --project backend --no-sync python .github/scripts/organize_ios_screenshots.py" in workflow
 
 
 def test_gallery_covers_gallery_methods_and_keeps_full_result_bundles():

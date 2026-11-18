@@ -242,9 +242,9 @@ jobs:
           cache-dependency-glob: backend/uv.lock
           python-version: "3.13"
 
-      - name: Install locked backend runtime dependencies
+      - name: Install locked backend and screenshot dependencies
         working-directory: backend
-        run: uv sync --frozen --no-dev --no-install-project
+        run: uv sync --frozen --group dev --no-install-project
 
       - name: Verify the staging target
         working-directory: backend
@@ -323,7 +323,7 @@ jobs:
               --output-path artifacts/raw-live-pip-chat
             outcome="${{ steps.live-ui-test.outcome }}"
             if [[ "$outcome" != "success" ]]; then outcome="failure"; fi
-            python .github/scripts/organize_ios_screenshots.py \
+            uv run --project backend --no-sync python .github/scripts/organize_ios_screenshots.py \
               --input artifacts/raw-live-pip-chat \
               --output artifacts/live-pip-chat-screenshots \
               --required .github/scripts/required_live_pip_chat_screenshots.json \
