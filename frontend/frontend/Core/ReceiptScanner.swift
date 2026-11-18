@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 @preconcurrency import Vision
 @preconcurrency import VisionKit
+import ImageIO
 import UIKit
 import Combine
 
@@ -97,9 +98,20 @@ public final class ReceiptOCRService: Sendable {
             
             request.recognitionLevel = .accurate
             request.usesLanguageCorrection = true
-            request.recognitionLanguages = ["en-US", "fil"]
+            let preferredLanguages = ["en-US", "fil", "tl"]
+            let supportedLanguages = (try? request.supportedRecognitionLanguages()) ?? []
+            let selectedLanguages = preferredLanguages.filter(supportedLanguages.contains)
+            if !selectedLanguages.isEmpty {
+                request.recognitionLanguages = selectedLanguages
+            } else if let fallbackLanguage = supportedLanguages.first {
+                request.recognitionLanguages = [fallbackLanguage]
+            }
             
-            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+            let handler = VNImageRequestHandler(
+                cgImage: cgImage,
+                orientation: Self.cgImageOrientation(for: image.imageOrientation),
+                options: [:]
+            )
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
                     try handler.perform([request])
@@ -114,8 +126,37 @@ public final class ReceiptOCRService: Sendable {
     private static let headerFooterKeywords = [
         "TOTAL", "CASH", "CHANGE", "VAT", "SUBTOTAL", "RECEIPT",
         "THANK YOU", "INVOICE", "TIN#", "OR#", "POS#", "STORE",
-        "SUPERMARKET", "MERCHANDISE", "ITEMS SOLD", "CHANGE DUE"
+        "SUPERMARKET", "MERCHANDISE", "ITEMS SOLD", "CHANGE DUE", "PAYMENT",
+        "APPROVAL", "AUTHORIZATION", "TRACE NO", "REFERENCE NO", "TERMINAL",
+        "BALANCE DUE", "AMOUNT PAID", "CARD NO", "CASHIER", "CUSTOMER"
     ]
+
+    private static let dateLineRegex = try? NSRegularExpression(
+        pattern: #"^\s*(?:\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})(?:\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?)?\s*$"#,
+        options: .caseInsensitive
+    )
+    private static let paymentMetadataRegex = try? NSRegularExpression(
+        pattern: #"^\s*(?:DATE|TIME|TENDER|CARD|CREDIT|DEBIT|PAYMENT|APPROVAL|AUTH(?:ORIZATION)?|TRACE|REFERENCE|TERMINAL|ACCOUNT|CASHIER|CUSTOMER|BALANCE|AID|MID|TID|TRANS(?:ACTION)?(?:\s+NO\.?)?)\b"#,
+        options: .caseInsensitive
+    )
+    private static let standaloneAmountRegex = try? NSRegularExpression(
+        pattern: #"^\s*(?:[P₱]\s*)?\d{1,3}(?:,\d{3})*(?:\.\d{2})?\s*$"#,
+        options: .caseInsensitive
+    )
+
+    private static func cgImageOrientation(for orientation: UIImage.Orientation) -> CGImagePropertyOrientation {
+        switch orientation {
+        case .up: .up
+        case .down: .down
+        case .left: .left
+        case .right: .right
+        case .upMirrored: .upMirrored
+        case .downMirrored: .downMirrored
+        case .leftMirrored: .leftMirrored
+        case .rightMirrored: .rightMirrored
+        @unknown default: .up
+        }
+    }
 
     private static let multiplierRegex = try? NSRegularExpression(
         pattern: #"(?:^|\s+)(\d+(?:\.\d+)?)\s*(?:@|[xX]|\*|(?:PCS?|PC)\s*@)\s*[P₱\s]*(\d+\.\d{2})\s*(?:[VBTvbt])?\s*$"#,
@@ -136,12 +177,16 @@ public final class ReceiptOCRService: Sendable {
         if Self.headerFooterKeywords.contains(where: { upper.contains($0) }) {
             return nil
         }
+        let fullRange = NSRange(location: 0, length: trimmed.utf16.count)
+        if [Self.dateLineRegex, Self.paymentMetadataRegex, Self.standaloneAmountRegex]
+            .compactMap({ $0 })
+            .contains(where: { $0.firstMatch(in: trimmed, options: [], range: fullRange) != nil }) {
+            return nil
+        }
 
         var extractedQty: Double = 1.0
         var extractedPrice: Double? = nil
         var cleanedName = trimmed
-
-        let fullRange = NSRange(location: 0, length: trimmed.utf16.count)
 
         if let regex = Self.multiplierRegex,
            let match = regex.firstMatch(in: trimmed, options: [], range: fullRange),

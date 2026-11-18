@@ -893,17 +893,37 @@ final class CookWithPipUITests: XCTestCase {
 
         let receiptMode = app.buttons["Receipt Intake"]
         XCTAssertTrue(receiptMode.waitForExistence(timeout: 10))
+
+        let enterBarcode = element("scan-enter-barcode", in: app)
+        XCTAssertTrue(enterBarcode.waitForExistence(timeout: 5))
+        enterBarcode.tap()
+        let barcodeField = element("manual-intake-barcode", in: app)
+        XCTAssertTrue(barcodeField.waitForExistence(timeout: 5))
+        barcodeField.tap()
+        barcodeField.typeText("4800016644818")
+        let lookupBarcode = element("manual-intake-barcode-lookup", in: app)
+        XCTAssertTrue(lookupBarcode.isEnabled)
+        lookupBarcode.tap()
+        let lookedUpTuna = element("intake-preview-item-4800016644818", in: app)
+        XCTAssertTrue(lookedUpTuna.waitForExistence(timeout: 10))
+        let tunaQuantityUpdated = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label CONTAINS %@", "5 cans"),
+            object: lookedUpTuna
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [tunaQuantityUpdated], timeout: 10), .completed,
+                       "A known barcode should increment the existing household item from four to five cans")
+
         receiptMode.tap()
         let receiptHeading = app.staticTexts["Supermarket Receipt Scanner"]
         XCTAssertTrue(receiptHeading.waitForExistence(timeout: 5))
-        let milkRow = element("intake-preview-item-00123456", in: app)
+        let tunaRow = element("intake-preview-item-4800016644818", in: app)
         XCTAssertTrue(
-            milkRow.waitForExistence(timeout: 5),
+            tunaRow.waitForExistence(timeout: 5),
             "Preview receipt intake should show the sample item row"
         )
         XCTAssertTrue(
-            milkRow.label.contains("Pantry - Shelf A"),
-            "Preview receipt intake should announce the resolved location, got: \(milkRow.label)"
+            tunaRow.label.contains("Pantry - Shelf A"),
+            "Preview receipt intake should announce the resolved location, got: \(tunaRow.label)"
         )
         capture("Inventory_Receipt_Intake_Entry", app: app)
 
