@@ -1725,9 +1725,17 @@ extension CookWithPipUITests {
         let passwordField = app.secureTextFields["login-password"]
         passwordField.tap()
         passwordField.typeText(password)
-        app.buttons["login-submit"].tap()
-        XCTAssertTrue(app.buttons["Home"].waitForExistence(timeout: 40))
-        dismissSavePasswordPromptIfPresent(app: app, readyElement: app.buttons["Home"])
+        let signIn = app.buttons["login-submit"]
+        signIn.tap()
+        let homeTab = app.buttons["Home"]
+        guard finishStagingSignInIfNeeded(
+            app: app,
+            signIn: signIn,
+            signedInTab: homeTab,
+            signedInTabLabel: "Home",
+            failureMessage: "Staging login did not reach Home for Pip Chat verification"
+        ) else { return }
+        dismissSavePasswordPromptIfPresent(app: app, readyElement: homeTab)
 
         let homeEntry = element("cook-with-pip-entry", in: app)
         XCTAssertTrue(homeEntry.waitForExistence(timeout: 20))
@@ -1804,7 +1812,13 @@ extension CookWithPipUITests {
         signIn.tap()
 
         let inventoryTab = app.buttons["Inventory"]
-        XCTAssertTrue(inventoryTab.waitForExistence(timeout: 40), "Staging login did not establish an authorized household session")
+        guard finishStagingSignInIfNeeded(
+            app: app,
+            signIn: signIn,
+            signedInTab: inventoryTab,
+            signedInTabLabel: "Inventory",
+            failureMessage: "Staging login did not establish an authorized household session"
+        ) else { return }
         dismissSavePasswordPromptIfPresent(app: app, readyElement: inventoryTab)
         assertStagingDashboardLoaded(app, phase: "The authenticated dashboard finished loading")
         capture("Staging_Authenticated_Home", app: app)
@@ -1837,7 +1851,13 @@ extension CookWithPipUITests {
         passwordField.tap()
         passwordField.typeText(password)
         signIn.tap()
-        XCTAssertTrue(inventoryTab.waitForExistence(timeout: 40), "The synthetic staging account could not log in again")
+        guard finishStagingSignInIfNeeded(
+            app: app,
+            signIn: signIn,
+            signedInTab: inventoryTab,
+            signedInTabLabel: "Inventory",
+            failureMessage: "The synthetic staging account could not log in again"
+        ) else { return }
         dismissSavePasswordPromptIfPresent(app: app, readyElement: inventoryTab)
         app.terminate()
         app.launchArguments = []
@@ -1857,6 +1877,43 @@ extension CookWithPipUITests {
         let dashboardLoaded = app.staticTexts["home-dashboard-loaded"]
         XCTAssertTrue(dashboardLoaded.waitForExistence(timeout: 30), phase)
         XCTAssertTrue(dashboardLoaded.isHittable, "The loaded pantry dashboard marker is visible")
+    }
+
+    private func finishStagingSignInIfNeeded(
+        app: XCUIApplication,
+        signIn: XCUIElement,
+        signedInTab: XCUIElement,
+        signedInTabLabel: String,
+        failureMessage: String
+    ) -> Bool {
+        let networkError = element("login-error-message", in: app)
+        let signInOutcome = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier == %@ OR label == %@", "login-error-message", signedInTabLabel))
+            .firstMatch
+        guard signInOutcome.waitForExistence(timeout: 40) else {
+            XCTFail(failureMessage)
+            return false
+        }
+        if signedInTab.exists { return true }
+
+        guard networkError.exists,
+              networkError.label.localizedCaseInsensitiveContains("network connection failed") else {
+            XCTFail(failureMessage)
+            return false
+        }
+        guard signIn.isHittable else {
+            XCTFail("The user cannot retry staging login after a transient network timeout")
+            return false
+        }
+
+        XCTContext.runActivity(named: "Retry staging sign-in once after the network timeout") { _ in
+            signIn.tap()
+        }
+        guard signedInTab.waitForExistence(timeout: 40) else {
+            XCTFail("\(failureMessage) after the single network retry")
+            return false
+        }
+        return true
     }
 
     private func dismissSavePasswordPromptIfPresent(

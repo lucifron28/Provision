@@ -43,6 +43,9 @@ public struct LoginView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(ProvisionTheme.redLight)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(err)
+                        .accessibilityIdentifier("login-error-message")
                     }
                     
                     // Form Fields Card

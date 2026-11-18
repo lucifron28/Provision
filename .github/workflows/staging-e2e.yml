@@ -133,6 +133,9 @@ jobs:
             -showBuildTimingSummary \
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGN_IDENTITY=- 2>&1 | tee artifacts/xcodebuild-build.log
+      - name: Recheck Render and Neon readiness before simulator login
+        working-directory: backend
+        run: uv run --no-sync python -m scripts.staging_e2e_smoke preflight
       - name: Run staging login, offline recovery, and Keychain relaunch tests on iPhone 17
         id: ios-staging
         env:
