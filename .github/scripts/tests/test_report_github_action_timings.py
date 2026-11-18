@@ -62,7 +62,7 @@ class WorkflowTimingReportTests(unittest.TestCase):
                                 "conclusion": "success",
                                 "steps": [
                                     {
-                                        "name": "Organize and verify the 12 required screenshot scenarios",
+                                        "name": "Organize and verify required screenshot evidence",
                                         "started_at": "2026-11-16T07:11:00Z",
                                         "completed_at": "2026-11-16T07:11:20Z",
                                     }

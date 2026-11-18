@@ -119,8 +119,24 @@ public struct CookWithPipView: View {
                         modePicker
                     }
 
-                    if viewModel.hasExcludedCandidates && viewModel.mode != .myRecipes {
-                        excludedCandidatesNote
+                    if viewModel.mode != .myRecipes {
+                        if !viewModel.needsReviewCandidates.isEmpty {
+                            excludedCandidatesSection(
+                                title: "Needs Review",
+                                candidates: viewModel.needsReviewCandidates,
+                                identifier: "cook-with-pip-needs-review"
+                            )
+                        }
+                        if !viewModel.blockedCandidates.isEmpty {
+                            excludedCandidatesSection(
+                                title: "Blocked for Safety",
+                                candidates: viewModel.blockedCandidates,
+                                identifier: "cook-with-pip-blocked-recipes"
+                            )
+                        }
+                        if viewModel.hasExcludedCandidates && viewModel.excludedCandidates.isEmpty {
+                            excludedCandidatesNote
+                        }
                     }
 
                     if viewModel.isLoading && !viewModel.hasLoadedOnce {
@@ -129,11 +145,19 @@ public struct CookWithPipView: View {
                               viewModel.currentRecipes.isEmpty && viewModel.currentRecommendations.isEmpty {
                         errorState(error)
                     } else if viewModel.currentRecipes.isEmpty && viewModel.currentRecommendations.isEmpty {
-                        emptyState
+                        if !viewModel.hasExcludedCandidates {
+                            emptyState
+                        }
                         if viewModel.hasMore {
                             loadMoreControl
                         }
                     } else {
+                        if viewModel.mode != .myRecipes {
+                            Text(viewModel.mode == .almostThere ? "Missing Ingredients" : "Ready to Cook")
+                                .font(ProvisionTypography.sectionSerif)
+                                .foregroundStyle(ProvisionTheme.textPrimary)
+                                .accessibilityIdentifier("cook-with-pip-recommendation-heading")
+                        }
                         recipeList
                         if let error = viewModel.errorMessage {
                             inlineErrorState(error)
@@ -263,6 +287,82 @@ public struct CookWithPipView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .provisionCard(backgroundColor: ProvisionTheme.surfaceSecondary)
         .accessibilityIdentifier("cook-with-pip-excluded-candidates")
+    }
+
+    private func excludedCandidatesSection(title: String, candidates: [ExcludedRecipeCandidate],
+                                            identifier: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(ProvisionTypography.sectionSerif)
+                .foregroundStyle(ProvisionTheme.textPrimary)
+            ForEach(candidates) { candidate in
+                Button {
+                    selectedRecipeID = candidate.recipe_id
+                } label: {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .top, spacing: 8) {
+                            Text(candidate.title)
+                                .font(.headline)
+                                .foregroundStyle(ProvisionTheme.textPrimary)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 4)
+                            StatusPill(presentation: .excludedCandidate(candidate.status))
+                        }
+                        Text(excludedCandidateExplanation(candidate))
+                            .font(.subheadline)
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("cook-with-pip-review-explanation-\(candidate.recipe_id)")
+                        Label("Open recipe review", systemImage: "arrow.right.circle")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+                    .background(ProvisionTheme.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(ProvisionTheme.border, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("cook-with-pip-review-recipe-\(candidate.recipe_id)")
+            }
+        }
+        .accessibilityIdentifier(identifier)
+    }
+
+    private func excludedCandidateExplanation(_ candidate: ExcludedRecipeCandidate) -> String {
+        if candidate.status == "blocked" {
+            return "A household allergy or safety restriction conflicts with this recipe. Do not cook it unless the recorded information is corrected."
+        }
+        if candidate.status == "unknown_quantities" {
+            let ingredients = candidate.unknown_ingredients.joined(separator: ", ")
+            let subject = ingredients.isEmpty ? "One or more required ingredient quantities" : ingredients
+            return "The server could not compare the quantity for \(subject). Review the ingredient and unit in the recipe."
+        }
+        var actions: [String] = []
+        if candidate.reasons.contains("allergy_information_not_provided") {
+            actions.append("Add allergy information for every household diner in Preferences.")
+        }
+        if candidate.reasons.contains("product_allergen_label_not_reviewed") {
+            actions.append("Review the package label in Preferences and product labels.")
+        }
+        if candidate.reasons.contains("ingredient_unresolved_or_ambiguous") {
+            actions.append("Resolve the ingredient name or choose a catalog ingredient.")
+        }
+        if candidate.reasons.contains("recipe_content_permission_not_declared") ||
+            candidate.reasons.contains("recipe_source_unavailable") {
+            actions.append("Review the recipe's source and content permission.")
+        }
+        if !candidate.unknown_ingredients.isEmpty {
+            actions.append("Check quantities and units for \(candidate.unknown_ingredients.joined(separator: ", ")).")
+        }
+        if !actions.isEmpty {
+            return actions.joined(separator: " ") + " Recheck this recipe before cooking."
+        }
+        return "Open the recipe to see the server's safety details. It stays unavailable until the required checks pass."
     }
 
     private var excludedCandidateSummary: String {

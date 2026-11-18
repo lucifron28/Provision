@@ -319,6 +319,29 @@ final class CookWithPipUITests: XCTestCase {
         capture("Cook_with_Pip_Retry_Recovered", app: offlineApp)
     }
 
+    func testCookWithPipNeedsReviewCandidatesAreActionable() {
+        let app = launch(scenario: "recipes-needs-review")
+        openCookWithPip(app)
+
+        let reviewSection = element("cook-with-pip-needs-review", in: app)
+        XCTAssertTrue(reviewSection.waitForExistence(timeout: 10), "Review-required recipes stay discoverable")
+        let candidate = element("cook-with-pip-review-recipe-303", in: app)
+        XCTAssertTrue(candidate.waitForExistence(timeout: 10))
+        let explanation = element("cook-with-pip-review-explanation-303", in: app)
+        XCTAssertTrue(explanation.waitForExistence(timeout: 5))
+        XCTAssertTrue(explanation.label.contains("Review the package label"),
+                      "The review card gives a concrete package-label action")
+        scrollTargetIntoView(candidate, inside: app.scrollViews["cook-with-pip-recipe-list-scroll"], in: app)
+        XCTAssertTrue(candidate.isHittable, "The review card remains tappable after deterministic scrolling")
+        capture("Cook_with_Pip_Needs_Review", app: app)
+
+        candidate.tap()
+        XCTAssertTrue(element("recipe-detail-title", in: app).waitForExistence(timeout: 10))
+        XCTAssertEqual(element("recipe-safety-status", in: app).label, "Review required")
+        XCTAssertTrue(element("recipe-review-product-labels", in: app).exists,
+                       "The existing detail flow exposes package-label review")
+    }
+
     func testSafetyAndAvailabilityStatesWithLongFilipinoNames() {
         let app = launch()
         openCookWithPip(app)

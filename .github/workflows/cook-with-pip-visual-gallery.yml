@@ -104,6 +104,7 @@ jobs:
                   "testPipChatProductContextGallery",
                   "testStagingPipChatContextAndShoppingPreviewRoutes",
                   "testStagingLoginAndRelaunch",
+                  "testCookWithPipNeedsReviewCandidatesAreActionable",
                 ],
               },
             ].map(shard => ({

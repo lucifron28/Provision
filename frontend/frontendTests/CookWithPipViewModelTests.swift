@@ -12,15 +12,16 @@ nonisolated private enum CookServiceBehavior: Sendable, Equatable {
 }
 
 private actor CookWithPipServiceSpy: CookWithPipService {
-    private let fixture = CookWithPipUITestService()
+    private let fixture: CookWithPipUITestService
     private let behavior: CookServiceBehavior
     private var recommendationRequests: [(RecipeRecommendationRequest, HouseholdScope)] = []
     private var recipePageRequests: [(String?, Int, Int, HouseholdScope)] = []
     private var evaluationRequests: [(Int, RecipeEvaluationRequest, HouseholdScope)] = []
     private var sourceReferenceRequests = 0
 
-    init(behavior: CookServiceBehavior = .fixture) {
+    init(behavior: CookServiceBehavior = .fixture, fixtureScenario: String = "default") {
         self.behavior = behavior
+        fixture = CookWithPipUITestService(scenario: fixtureScenario)
     }
 
     func fetchRecipePage(query: String?, limit: Int, offset: Int,
@@ -116,6 +117,17 @@ final class CookWithPipViewModelTests: XCTestCase {
         XCTAssertEqual(requests.map { $0.0.mode }, ["cook_now", "almost_there"])
         XCTAssertTrue(requests.allSatisfy { $0.1 == scope })
         XCTAssertTrue(requests.allSatisfy { $0.0.candidate_limit == 100 })
+    }
+
+    func testReviewCandidatesRemainVisibleAlongsideEmptyCookNowResults() async throws {
+        let service = CookWithPipServiceSpy(fixtureScenario: "recipes-needs-review")
+        let viewModel = CookWithPipViewModel(scope: scope, service: service)
+
+        await viewModel.load(reset: true)
+
+        XCTAssertTrue(viewModel.recommendations.isEmpty)
+        XCTAssertEqual(viewModel.needsReviewCandidates.map(\.title), ["Test Recipe: Bicol Express"])
+        XCTAssertTrue(viewModel.hasExcludedCandidates)
     }
 
     func testMyRecipesSearchAndPagination() async throws {

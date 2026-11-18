@@ -30,7 +30,7 @@ PHASES = {
         "Export simulator screenshot attachments",
     ),
     "Screenshot organization": (
-        "Organize and verify the 12 required screenshot scenarios",
+        "Organize and verify required screenshot evidence",
         "Organize and verify all 55 required screenshots",
         "Organize and verify gallery screenshots",
         "Organize and verify the selected regression screenshots",

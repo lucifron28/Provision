@@ -34,6 +34,7 @@ def test_pull_request_workflow_runs_four_ui_shards_and_preserves_safety_coverage
         "testPipChatConsentConversationAndValidatedRecipeAction",
         "testPipChatShoppingActionOpensTheExistingReviewScreen",
         "testPipChatPrivacyControlsAtAccessibilitySizeInDarkMode",
+        "testCookWithPipNeedsReviewCandidatesAreActionable",
         "testShoppingReviewRequiredAndBlockedStates",
         "testAmbiguousShoppingConfirmationSurvivesAppRelaunch",
         "testShoppingOfflineRetryAndStalePreviewRecovery",
@@ -74,6 +75,28 @@ def test_required_smoke_screenshots_are_captured_by_the_pr_ui_tests():
         f'capture("{scenario}"' in source
         for scenario in _read_manifest("required_ios_smoke_screenshots.json")
     )
+    smoke_manifest = json.loads(
+        (REPOSITORY_ROOT / ".github" / "scripts" / "required_ios_smoke_screenshots.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert all(f'capture("{scenario}"' in source for scenario in smoke_manifest["supplementalScreenshots"])
+
+
+def test_live_deepseek_smoke_allows_only_main_or_exact_open_pr_11_head():
+    workflow = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "live-deepseek-smoke.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "deployment_source:" in workflow
+    assert "options:\n          - main\n          - pr-11" in workflow
+    assert "git merge-base --is-ancestor \"$actual\" refs/remotes/origin/main" in workflow
+    assert "pulls/11" in workflow
+    assert '"$head_sha" == "$actual"' in workflow
+    assert '"$head_ref" == "feat/pip-chat-foundation"' in workflow
+    assert '"$base_ref" == "main"' in workflow
+    assert "RUN_ONE_SYNTHETIC_DEEPSEEK_REQUEST" in workflow
+    assert 'PROVISION_LIVE_DEEPSEEK_ENABLED" != "true"' in workflow
 
 
 def test_gallery_covers_all_ui_methods_and_keeps_full_result_bundles():
@@ -97,7 +120,7 @@ def test_gallery_covers_all_ui_methods_and_keeps_full_result_bundles():
     assert "- large-text-regressions" in workflow
     assert "- toggle-regressions" in workflow
     assert "- shopping-recovery" in workflow
-    assert len(methods) == 30
+    assert len(methods) == 31
     assert all(f'"{method}"' in workflow for method in methods)
     assert "build-for-testing" in workflow
     assert "test-without-building" in workflow

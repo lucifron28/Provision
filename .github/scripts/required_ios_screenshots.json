@@ -68,7 +68,8 @@
     "Staging_Authenticated_Home",
     "Staging_Logged_Out",
     "Staging_Relaunch_Recovery",
-    "Staging_Relogin_Relaunch_Recovery"
+    "Staging_Relogin_Relaunch_Recovery",
+    "Cook_with_Pip_Needs_Review"
   ],
   "scenarioDescriptions": {
         "Inventory_Quick_Add_Minimal": "Minimal manual Quick Add with only a product identity, explicit unit, and quantity entered; advanced fields remain collapsed.",
@@ -91,6 +92,7 @@
     "Staging_Authenticated_Home": "The synthetic staging account reaches its authenticated household dashboard.",
     "Staging_Logged_Out": "The staging account remains logged out after app relaunch.",
     "Staging_Relaunch_Recovery": "The authenticated synthetic staging session restores its loaded pantry after relaunch.",
-    "Staging_Relogin_Relaunch_Recovery": "After a new synthetic staging login and relaunch, the fixture product is visible in Inventory."
+    "Staging_Relogin_Relaunch_Recovery": "After a new synthetic staging login and relaunch, the fixture product is visible in Inventory.",
+    "Cook_with_Pip_Needs_Review": "A synthetic household recipe with a review-required result shows the package-label action and opens its safety details."
   }
 }

@@ -64,6 +64,7 @@ class ScreenshotOrganizerTests(unittest.TestCase):
         *,
         outcome: str = "success",
         only_required: bool = False,
+        only_declared: bool = False,
         strict_names: bool = False,
     ) -> subprocess.CompletedProcess[str]:
         command = [
@@ -82,6 +83,8 @@ class ScreenshotOrganizerTests(unittest.TestCase):
         ]
         if only_required:
             command.append("--only-required")
+        if only_declared:
+            command.append("--only-declared")
         if strict_names:
             command.append("--strict-names")
         return subprocess.run(command, capture_output=True, text=True, check=False)
@@ -183,6 +186,35 @@ class ScreenshotOrganizerTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertTrue(
             any("Unexpected screenshot scenario name" in error for error in self.manifest()["errors"])
+        )
+
+    def test_only_declared_includes_supplemental_and_omits_unlisted_screenshots(self) -> None:
+        self.write_png("Extra_Scene", "extra.png", (30, 80, 120), mode="RGB")
+        self.write_png("Unexpected_Scene", "unexpected.png", (160, 100, 20), mode="RGB")
+        self.write_export_manifest()
+        self.required_path.write_text(
+            json.dumps(
+                {
+                    "requiredScreenshots": ["Cook_with_Pip", "Cook_Now"],
+                    "supplementalScreenshots": ["Extra_Scene"],
+                    "scenarioDescriptions": {
+                        "Cook_Now": "Selected recipe mode.",
+                        "Extra_Scene": "A supplemental capture.",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = self.run_organizer(only_declared=True)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        manifest = self.manifest()
+        self.assertEqual(manifest["capturedRequiredCount"], 2)
+        self.assertEqual(manifest["capturedSupplementalCount"], 1)
+        self.assertEqual(
+            {item["scenario"] for item in manifest["capturedScreenshots"]},
+            {"Cook_with_Pip", "Cook_Now", "Extra_Scene"},
         )
 
     def test_strict_gallery_accepts_declared_supplemental_scenarios(self) -> None:

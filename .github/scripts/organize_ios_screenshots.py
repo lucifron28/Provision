@@ -95,10 +95,16 @@ def main() -> int:
     )
     parser.add_argument("--output", required=True, type=Path, help="organized screenshot directory")
     parser.add_argument("--required", required=True, type=Path, help="JSON file listing required screenshot names")
-    parser.add_argument(
+    scenario_scope = parser.add_mutually_exclusive_group()
+    scenario_scope.add_argument(
         "--only-required",
         action="store_true",
-        help="copy only required scenarios (used for the small pull-request smoke gallery)",
+        help="copy only required scenarios",
+    )
+    scenario_scope.add_argument(
+        "--only-declared",
+        action="store_true",
+        help="copy only required or supplemental scenarios declared in the manifest",
     )
     parser.add_argument(
         "--strict-names",
@@ -196,6 +202,8 @@ def main() -> int:
                 continue
 
             if args.only_required and scenario not in required:
+                continue
+            if args.only_declared and scenario not in set(required) | set(supplemental):
                 continue
             if occurrence_counts[scenario] > 1:
                 continue

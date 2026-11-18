@@ -104,6 +104,7 @@ jobs:
               -only-testing:frontendUITests/CookWithPipUITests/testPipChatShoppingActionOpensTheExistingReviewScreen
               -only-testing:frontendUITests/CookWithPipUITests/testPipChatPrivacyControlsAtAccessibilitySizeInDarkMode
               -only-testing:frontendUITests/CookWithPipUITests/testInventoryQuickAddOffersScannerAndMinimalManualEntry
+              -only-testing:frontendUITests/CookWithPipUITests/testCookWithPipNeedsReviewCandidatesAreActionable
           - shard: shopping-confirmation
             tests: >-
               -only-testing:frontendUITests/CookWithPipUITests/testShoppingReviewRequiredAndBlockedStates
@@ -213,7 +214,7 @@ jobs:
           merge-multiple: false
       - name: Prepare screenshot evidence folder
         run: mkdir -p artifacts/cook-with-pip-screenshots
-      - name: Organize and verify the 12 required screenshot scenarios
+      - name: Organize and verify required screenshot evidence
         if: always()
         env:
           UI_TEST_OUTCOME: ${{ needs.ios-ui-smoke.result }}
@@ -234,7 +235,7 @@ jobs:
             "${input_args[@]}" \
             --output artifacts/cook-with-pip-screenshots \
             --required .github/scripts/required_ios_smoke_screenshots.json \
-            --only-required \
+            --only-declared \
             --commit-sha "$COMMIT_SHA" \
             --test-outcome "$UI_TEST_OUTCOME"
       - name: Package screenshot review archive

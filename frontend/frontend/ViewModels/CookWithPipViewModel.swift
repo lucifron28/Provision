@@ -40,6 +40,7 @@ public final class CookWithPipViewModel: ObservableObject {
     @Published public private(set) var excludedBlocked = 0
     @Published public private(set) var excludedReviewRequired = 0
     @Published public private(set) var excludedUnknownQuantities = 0
+    @Published public private(set) var excludedCandidates: [ExcludedRecipeCandidate] = []
 
     public let scope: HouseholdScope
     public let service: any CookWithPipService
@@ -79,6 +80,7 @@ public final class CookWithPipViewModel: ObservableObject {
                 excludedBlocked = 0
                 excludedReviewRequired = 0
                 excludedUnknownQuantities = 0
+                excludedCandidates = []
                 hasLoadedOnce = false
             }
         }
@@ -117,11 +119,14 @@ public final class CookWithPipViewModel: ObservableObject {
                     excludedBlocked = page.excluded_blocked
                     excludedReviewRequired = page.excluded_review_required
                     excludedUnknownQuantities = page.excluded_unknown_quantities
+                    excludedCandidates = page.excluded_candidates
                 } else {
                     recommendations.append(contentsOf: page.items)
                     excludedBlocked += page.excluded_blocked
                     excludedReviewRequired += page.excluded_review_required
                     excludedUnknownQuantities += page.excluded_unknown_quantities
+                    let existingIDs = Set(excludedCandidates.map(\.id))
+                    excludedCandidates.append(contentsOf: page.excluded_candidates.filter { !existingIDs.contains($0.id) })
                 }
                 candidateOffset += candidatePageSize
                 hasMore = page.has_more_candidates
@@ -162,7 +167,15 @@ public final class CookWithPipViewModel: ObservableObject {
     }
 
     public var hasExcludedCandidates: Bool {
-        excludedBlocked > 0 || excludedReviewRequired > 0 || excludedUnknownQuantities > 0
+        excludedBlocked > 0 || excludedReviewRequired > 0 || excludedUnknownQuantities > 0 || !excludedCandidates.isEmpty
+    }
+
+    public var needsReviewCandidates: [ExcludedRecipeCandidate] {
+        excludedCandidates.filter { $0.status == "review_required" || $0.status == "unknown_quantities" }
+    }
+
+    public var blockedCandidates: [ExcludedRecipeCandidate] {
+        excludedCandidates.filter { $0.status == "blocked" }
     }
 
     static func isNetworkError(_ error: Error) -> Bool {

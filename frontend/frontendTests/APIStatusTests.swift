@@ -489,7 +489,20 @@ extension APIStatusTests {
         XCTAssertEqual(response.items.first?.evaluation.availability.requirements.first?.available_amount,
                        ExactQuantity(Decimal(string: "0.123456")!))
         XCTAssertEqual(response.items.first?.evaluation.decision, "eligible")
+        XCTAssertTrue(response.excluded_candidates.isEmpty,
+                      "Older recommendation responses remain decodable without review candidates")
         XCTAssertFalse(response.provider_enabled)
+    }
+
+    func testExcludedRecipeCandidateDecodesActionableSafetyReasons() throws {
+        let json = #"""
+        {"recipe_id": 42, "title": "Garlic rice", "status": "review_required",
+         "reasons": ["allergy_information_not_provided"], "unknown_ingredients": []}
+        """#
+        let candidate = try JSONDecoder().decode(ExcludedRecipeCandidate.self, from: Data(json.utf8))
+        XCTAssertEqual(candidate.id, 42)
+        XCTAssertEqual(candidate.status, "review_required")
+        XCTAssertEqual(candidate.reasons, ["allergy_information_not_provided"])
     }
 }
 

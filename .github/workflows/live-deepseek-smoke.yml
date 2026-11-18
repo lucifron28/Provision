@@ -7,6 +7,14 @@ on:
         description: Full commit SHA currently deployed to Render staging
         required: true
         type: string
+      deployment_source:
+        description: Verify either an approved main commit or the exact open PR #11 head
+        required: true
+        type: choice
+        options:
+          - main
+          - pr-11
+        default: main
       live_confirmation:
         description: Type RUN_ONE_SYNTHETIC_DEEPSEEK_REQUEST to authorize exactly one provider request
         required: true
@@ -14,6 +22,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: provision-staging-e2e
@@ -28,6 +37,7 @@ jobs:
     environment: staging
     env:
       PROVISION_EXPECTED_RENDER_COMMIT: ${{ inputs.expected_render_commit }}
+      PROVISION_EXPECTED_COMMIT_SOURCE: ${{ inputs.deployment_source }}
       PROVISION_STAGING_API_BASE_URL: ${{ vars.PROVISION_STAGING_API_BASE_URL }}
       PROVISION_LIVE_DEEPSEEK_CONFIRMATION: ${{ inputs.live_confirmation }}
       PROVISION_LIVE_DEEPSEEK_ENABLED: ${{ vars.PROVISION_LIVE_DEEPSEEK_ENABLED }}
@@ -62,10 +72,31 @@ jobs:
             echo "Checked out $actual, expected $expected." >&2
             exit 1
           }
-          git merge-base --is-ancestor "$actual" refs/remotes/origin/main || {
-            echo "The live smoke only accepts commits reachable from approved main." >&2
-            exit 1
-          }
+          git fetch --no-tags origin main
+          case "$PROVISION_EXPECTED_COMMIT_SOURCE" in
+            main)
+              git merge-base --is-ancestor "$actual" refs/remotes/origin/main || {
+                echo "The main source option only accepts commits reachable from main." >&2
+                exit 1
+              }
+              ;;
+            pr-11)
+              metadata="$(gh api "repos/$GITHUB_REPOSITORY/pulls/11" --jq '[.state, .head.ref, .head.sha, .base.ref, .head.repo.full_name] | @tsv')"
+              IFS=$'\t' read -r state head_ref head_sha base_ref head_repo <<< "$metadata"
+              [[ "$state" == "open" && "$head_ref" == "feat/pip-chat-foundation" && \
+                 "$base_ref" == "main" && "$head_repo" == "$GITHUB_REPOSITORY" && \
+                 "$head_sha" == "$actual" ]] || {
+                echo "PR #11 must be open, target main, come from feat/pip-chat-foundation in this repository, and match the exact checked-out SHA." >&2
+                exit 1
+              }
+              ;;
+            *)
+              echo "Choose the main source or exact PR #11 source." >&2
+              exit 1
+              ;;
+          esac
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Set up Python and uv
         uses: actions/setup-python@v5
