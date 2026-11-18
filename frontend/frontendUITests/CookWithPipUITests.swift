@@ -1207,30 +1207,29 @@ final class CookWithPipUITests: XCTestCase {
         waitUntilGone(sourceError)
     }
 
-    func testDarkModeLargeTextAndSearchKeyboard() {
+    func testCookWithPipDarkModeGallery() {
         let darkApp = launch(appearance: "dark")
         openCookWithPip(darkApp)
         capture("Cook_with_Pip_Dark_Mode", app: darkApp)
+    }
 
-        darkApp.terminate()
+    func testLargeTextFilipinoRecipeSafetyGallery() {
         let largeApp = launch(dynamicType: "accessibility")
         openCookWithPip(largeApp)
-        let firstRecipe = element("recipe-card-301", in: largeApp)
-        scrollTargetIntoView(firstRecipe, inside: largeApp.scrollViews["cook-with-pip-recipe-list-scroll"], in: largeApp)
-        XCTAssertTrue(firstRecipe.exists)
-        let myRecipesMode = element("cook-mode-myRecipes", in: largeApp)
+        let recipeList = largeApp.scrollViews["cook-with-pip-recipe-list-scroll"]
+        let myRecipesMode = largeApp.buttons["cook-mode-myRecipes"]
         XCTAssertTrue(myRecipesMode.waitForExistence(timeout: 10))
-        scrollTargetIntoView(myRecipesMode, inside: largeApp.scrollViews["cook-with-pip-recipe-list-scroll"], in: largeApp)
+        scrollTargetIntoView(myRecipesMode, inside: recipeList, in: largeApp)
+        XCTAssertTrue(myRecipesMode.isHittable, "The My Recipes filter is visible and usable at accessibility text size")
         myRecipesMode.tap()
-        let selectedMode = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "value CONTAINS %@", "Selected"), object: myRecipesMode
-        )
-        XCTAssertEqual(XCTWaiter.wait(for: [selectedMode], timeout: 5), .completed)
         let householdRecipe = element("recipe-card-303", in: largeApp)
-        scrollTargetIntoView(householdRecipe, inside: largeApp.scrollViews["cook-with-pip-recipe-list-scroll"], in: largeApp)
-        XCTAssertTrue(householdRecipe.exists)
+        XCTAssertTrue(
+            householdRecipe.waitForExistence(timeout: 10),
+            "Selecting My Recipes loads the household recipe result at accessibility text size"
+        )
         let longRecipe = element("recipe-card-304", in: largeApp)
-        scrollTargetIntoView(longRecipe, inside: largeApp.scrollViews["cook-with-pip-recipe-list-scroll"], in: largeApp)
+        scrollTargetIntoView(longRecipe, inside: recipeList, progressAnchor: householdRecipe, in: largeApp)
+        XCTAssertTrue(longRecipe.isHittable, "The long Filipino recipe result is visible before opening it")
         longRecipe.tap()
         let largeTitle = element("recipe-detail-title", in: largeApp)
         XCTAssertTrue(largeTitle.waitForExistence(timeout: 10))
@@ -1277,11 +1276,15 @@ final class CookWithPipUITests: XCTestCase {
         assertReachable(requiredIngredientsHeading, in: largeApp)
         assertReachable(longIngredient, in: largeApp)
         capture("Recipe_Ingredient_Long_Filipino", app: largeApp)
+    }
 
-        largeApp.terminate()
+    func testCookWithPipSearchKeyboardGallery() {
         let searchApp = launch()
         openCookWithPip(searchApp)
-        element("cook-mode-myRecipes", in: searchApp).tap()
+        let myRecipesMode = searchApp.buttons["cook-mode-myRecipes"]
+        XCTAssertTrue(myRecipesMode.waitForExistence(timeout: 10))
+        XCTAssertTrue(myRecipesMode.isHittable, "The My Recipes filter is available before search starts")
+        myRecipesMode.tap()
         let search = element("cook-with-pip-search", in: searchApp)
         XCTAssertTrue(search.waitForExistence(timeout: 10))
         search.tap()

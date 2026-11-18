@@ -16,6 +16,7 @@ on:
         options:
           - full-gallery
           - gallery-regressions
+          - large-text-regressions
           - toggle-regressions
           - shopping-recovery
           - ux-workflow-regressions
@@ -66,7 +67,9 @@ jobs:
               {
                 shard: "shopping-edits-and-recipes",
                 tests: [
-                  "testDarkModeLargeTextAndSearchKeyboard",
+                  "testCookWithPipDarkModeGallery",
+                  "testLargeTextFilipinoRecipeSafetyGallery",
+                  "testCookWithPipSearchKeyboardGallery",
                   "testShoppingReviewRequiredAndBlockedStates",
                   "testShoppingPreviewEditsConsolidationAndExplicitConfirmation",
                   "testSourceLookupErrorKeepsRecipeAndCanRetry",
@@ -120,11 +123,17 @@ jobs:
                 "testShoppingPreviewEditsConsolidationAndExplicitConfirmation",
                 "testStaleProductLabelReviewIsShownAsStale",
                 "testProductLabelReviewScreens",
-                "testDarkModeLargeTextAndSearchKeyboard",
+                "testCookWithPipDarkModeGallery",
+                "testLargeTextFilipinoRecipeSafetyGallery",
+                "testCookWithPipSearchKeyboardGallery",
                 "testHomeNavigationAndCaptureRecipeScreens",
                 "testInventoryQuickAddOffersScannerAndMinimalManualEntry",
                 "testPartialInventoryDiscardUsesActualCountAndUpdatesStock",
                 "testPurchasedGroceriesReviewRequiresExplicitDecisions",
+              ])],
+              "large-text-regressions": [focused("large-text-regressions", [
+                "testLargeTextFilipinoRecipeSafetyGallery",
+                "testCookWithPipSearchKeyboardGallery",
               ])],
               "toggle-regressions": [focused("toggle-regressions", [
                 "testPipChatConsentControlsGallery",
@@ -154,12 +163,18 @@ jobs:
                 per_page: 100,
               });
               const priorSuccess = data.workflow_runs.find(run => {
-              const focused = ["gallery-regressions", "toggle-regressions", "shopping-recovery", "ux-workflow-regressions"]
+              const isFocusedRun = [
+                "gallery-regressions",
+                "large-text-regressions",
+                "toggle-regressions",
+                "shopping-recovery",
+                "ux-workflow-regressions",
+              ]
                   .some(name => run.display_title?.includes(`(${name})`) ?? false);
                 return run.id !== context.runId
                   && run.status === "completed"
                   && run.conclusion === "success"
-                  && !focused;
+                  && !isFocusedRun;
               });
               skip = Boolean(priorSuccess);
               if (priorSuccess) core.info(`Full gallery already passed for this commit in run ${priorSuccess.id}.`);
@@ -167,6 +182,7 @@ jobs:
 
             const focusedManifest = {
               "gallery-regressions": ".github/scripts/required_ios_gallery_regressions.json",
+              "large-text-regressions": ".github/scripts/required_ios_large_text_regressions.json",
               "toggle-regressions": ".github/scripts/required_ios_toggle_regressions.json",
               "shopping-recovery": ".github/scripts/required_ios_shopping_recovery_regressions.json",
               "ux-workflow-regressions": ".github/scripts/required_ios_ux_workflow_regressions.json",

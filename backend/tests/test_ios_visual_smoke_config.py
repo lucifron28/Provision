@@ -93,9 +93,10 @@ def test_gallery_covers_all_ui_methods_and_keeps_full_result_bundles():
     assert "schedule:" in workflow
     assert "- full-gallery" in workflow
     assert "- gallery-regressions" in workflow
+    assert "- large-text-regressions" in workflow
     assert "- toggle-regressions" in workflow
     assert "- shopping-recovery" in workflow
-    assert len(methods) == 27
+    assert len(methods) == 29
     assert all(f'"{method}"' in workflow for method in methods)
     assert "build-for-testing" in workflow
     assert "test-without-building" in workflow
@@ -122,7 +123,9 @@ def test_focused_gallery_runs_prior_failures_and_duplicate_capture_regressions()
     }
     duplicate_capture_tests = {
         "testProductLabelReviewScreens",
-        "testDarkModeLargeTextAndSearchKeyboard",
+        "testCookWithPipDarkModeGallery",
+        "testLargeTextFilipinoRecipeSafetyGallery",
+        "testCookWithPipSearchKeyboardGallery",
     }
     assert all(f'"{test}"' in workflow for test in failures)
     assert all(f'"{test}"' in workflow for test in duplicate_capture_tests)
@@ -136,6 +139,34 @@ def test_focused_gallery_runs_prior_failures_and_duplicate_capture_regressions()
     gallery = set(gallery_manifest["requiredScreenshots"])
     gallery_supplemental = set(gallery_manifest.get("supplementalScreenshots", []))
     assert set(manifest) <= gallery | gallery_supplemental
+
+
+def test_large_text_regressions_have_a_focused_capture_manifest():
+    workflow = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "cook-with-pip-visual-gallery.yml"
+    ).read_text(encoding="utf-8")
+    source = (
+        REPOSITORY_ROOT / "frontend" / "frontendUITests" / "CookWithPipUITests.swift"
+    ).read_text(encoding="utf-8")
+    manifest = _read_manifest("required_ios_large_text_regressions.json")
+    focused_tests = {
+        "testLargeTextFilipinoRecipeSafetyGallery",
+        "testCookWithPipSearchKeyboardGallery",
+    }
+
+    assert "- large-text-regressions" in workflow
+    assert "required_ios_large_text_regressions.json" in workflow
+    assert all(f'"{test}"' in workflow for test in focused_tests)
+    assert all(f'func {test}()' in source for test in focused_tests)
+    assert all(f'capture("{scenario}"' in source for scenario in manifest)
+    gallery_manifest = json.loads(
+        (REPOSITORY_ROOT / ".github" / "scripts" / "required_ios_screenshots.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    gallery_scenarios = set(gallery_manifest["requiredScreenshots"])
+    gallery_scenarios.update(gallery_manifest.get("supplementalScreenshots", []))
+    assert set(manifest) <= gallery_scenarios
 
 
 def test_toggle_and_shopping_recovery_regression_manifests_remain_in_the_gallery():
