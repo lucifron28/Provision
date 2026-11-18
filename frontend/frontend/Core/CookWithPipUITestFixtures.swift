@@ -281,7 +281,12 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
         if scenario == "recipes-loading" {
             await loadingGate.waitForRelease()
         }
-        let candidates = scenario == "recipes-empty" ? [] : (payload.mode == "cook_now" ? cookNowResults : almostThereResults)
+        let candidates: [RecipeRecommendation]
+        if scenario == "recipes-empty" || (scenario == "recipes-needs-review" && payload.mode == "cook_now") {
+            candidates = []
+        } else {
+            candidates = payload.mode == "cook_now" ? cookNowResults : almostThereResults
+        }
         let excludedCandidates: [ExcludedRecipeCandidate] = scenario == "recipes-needs-review" && payload.mode == "cook_now"
             ? [ExcludedRecipeCandidate(recipe_id: 303, title: "Test Recipe: Bicol Express",
                 status: "review_required", reasons: ["ingredient_mapping_unknown", "product_allergen_label_not_reviewed"],
