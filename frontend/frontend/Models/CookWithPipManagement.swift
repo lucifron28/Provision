@@ -27,6 +27,11 @@ nonisolated public struct FoodPreferences: Codable, Equatable, Sendable {
     public var preferred_language: String
     public var servings: Decimal
 
+    private enum CodingKeys: String, CodingKey {
+        case preferred_cuisines, preferred_regions, dislikes, diet_patterns, ingredient_exclusions
+        case heat_tolerance, equipment, max_cook_minutes, meal_budget_php, preferred_language, servings
+    }
+
     public init(preferred_cuisines: [String] = ["Filipino"], preferred_regions: [String] = [],
                 dislikes: [String] = [], diet_patterns: [String] = [], ingredient_exclusions: [Int] = [],
                 heat_tolerance: String = "no_preference", equipment: [String] = [],
@@ -43,6 +48,45 @@ nonisolated public struct FoodPreferences: Codable, Equatable, Sendable {
         self.meal_budget_php = meal_budget_php
         self.preferred_language = preferred_language
         self.servings = servings
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        preferred_cuisines = try container.decode([String].self, forKey: .preferred_cuisines)
+        preferred_regions = try container.decode([String].self, forKey: .preferred_regions)
+        dislikes = try container.decode([String].self, forKey: .dislikes)
+        diet_patterns = try container.decode([String].self, forKey: .diet_patterns)
+        ingredient_exclusions = try container.decode([Int].self, forKey: .ingredient_exclusions)
+        heat_tolerance = try container.decode(String.self, forKey: .heat_tolerance)
+        equipment = try container.decode([String].self, forKey: .equipment)
+        max_cook_minutes = try container.decodeIfPresent(Int.self, forKey: .max_cook_minutes)
+        if container.contains(.meal_budget_php) {
+            meal_budget_php = try container.decodeNil(forKey: .meal_budget_php)
+                ? nil
+                : Self.decodeDecimal(from: container, forKey: .meal_budget_php)
+        } else {
+            meal_budget_php = nil
+        }
+        preferred_language = try container.decode(String.self, forKey: .preferred_language)
+        servings = try Self.decodeDecimal(from: container, forKey: .servings)
+    }
+
+    private static func decodeDecimal(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys
+    ) throws -> Decimal {
+        if let number = try? container.decode(Decimal.self, forKey: key) {
+            return number
+        }
+        if let text = try? container.decode(String.self, forKey: key),
+           let number = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")) {
+            return number
+        }
+        throw DecodingError.dataCorruptedError(
+            forKey: key,
+            in: container,
+            debugDescription: "Expected a decimal number or numeric string"
+        )
     }
 }
 

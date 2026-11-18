@@ -223,6 +223,24 @@ final class CookWithPipViewModelTests: XCTestCase {
         XCTAssertEqual(RecipeStatusPresentation.availability("missing").title, "Missing")
         XCTAssertEqual(RecipeStatusPresentation.availability("unknown").title, "Unknown")
     }
+    func testFoodPreferencesDecodeBackendDecimalStringsAndJSONNumbers() throws {
+        let backendStringJSON = #"{"preferred_cuisines":["Filipino"],"preferred_regions":[],"dislikes":[],"diet_patterns":[],"ingredient_exclusions":[],"heat_tolerance":"no_preference","equipment":["stovetop"],"max_cook_minutes":45,"meal_budget_php":"250.75","preferred_language":"en","servings":"2.5000"}"#
+        let stringPreferences = try JSONDecoder().decode(
+            FoodPreferences.self,
+            from: Data(backendStringJSON.utf8)
+        )
+        XCTAssertEqual(stringPreferences.servings, Decimal(string: "2.5000"))
+        XCTAssertEqual(stringPreferences.meal_budget_php, Decimal(string: "250.75"))
+
+        let backendNumberJSON = #"{"preferred_cuisines":["Filipino"],"preferred_regions":[],"dislikes":[],"diet_patterns":[],"ingredient_exclusions":[],"heat_tolerance":"no_preference","equipment":[],"max_cook_minutes":null,"meal_budget_php":null,"preferred_language":"en","servings":3.25}"#
+        let numberPreferences = try JSONDecoder().decode(
+            FoodPreferences.self,
+            from: Data(backendNumberJSON.utf8)
+        )
+        XCTAssertEqual(numberPreferences.servings, Decimal(string: "3.25"))
+        XCTAssertNil(numberPreferences.meal_budget_php)
+    }
+
 }
 
 private final class CookWithPipRequestProtocol: URLProtocol {
