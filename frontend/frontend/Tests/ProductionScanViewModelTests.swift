@@ -181,8 +181,15 @@ public struct ScanViewModelProductionTests {
         try assertEquals(lines.count, 2, "Receipt headers, payment metadata, dates, and totals must be excluded")
         try assertEquals(lines.map(\.parsedName), [
             "Gardenia Classic White Bread",
-            "DATU PUTI VINEGAR BOTTLE 1L"
-        ], "Only grocery lines should remain for intake review")
+            "Datu Puti White Vinegar"
+        ], "Receipt matching must resolve the vinegar line to vinegar, not a same-brand product")
+        try assertEquals(
+            lines[1].matchedProduct?.id,
+            PreviewData.datuPutiVinegar.id,
+            "A Datu Puti vinegar receipt line must not be linked to Datu Puti soy sauce"
+        )
+        let (brandOnlyMatch, _) = service.findBestCatalogMatch(name: "Datu Puti", catalog: PreviewData.products)
+        try assertEquals(brandOnlyMatch?.id, nil, "A brand-only line must stay unresolved until the product is identified")
     }
 
     public static func testGeneratedBarcodesStayInternal() throws {

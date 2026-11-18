@@ -252,18 +252,26 @@ public final class ReceiptOCRService: Sendable {
             let pName = product.name.lowercased()
             let pTokens = pName.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { $0.count >= 3 }
             let pTokenSet = Set(pTokens)
+            let brandTokens = Set(
+                (product.brand ?? "")
+                    .lowercased()
+                    .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                    .filter { $0.count >= 3 }
+            )
+            let productIdentityTokens = pTokenSet.subtracting(brandTokens)
+            let needleIdentityTokens = needleTokenSet.subtracting(brandTokens)
 
-            // Brand present + product keyword
-            if let brand = product.brand?.lowercased(), !brand.isEmpty, needle.contains(brand) {
-                let remainingTokens = needleTokens.filter { $0 != brand }
-                if remainingTokens.contains(where: { pName.contains($0) }) {
-                    return (product, .high)
-                }
+            // Match the brand and at least one product-specific token. Brand
+            // tokens alone must never select a sibling product from the same brand.
+            if !brandTokens.isEmpty,
+               brandTokens.isSubset(of: needleTokenSet),
+               !needleIdentityTokens.isDisjoint(with: productIdentityTokens) {
+                return (product, .high)
             }
 
             // Overlap of >= 2 tokens (length > 3)
-            let significantNeedle = needleTokenSet.filter { $0.count > 3 }
-            let significantProd = pTokenSet.filter { $0.count > 3 }
+            let significantNeedle = needleIdentityTokens.filter { $0.count > 3 }
+            let significantProd = productIdentityTokens.filter { $0.count > 3 }
             let overlap = significantNeedle.intersection(significantProd)
             if overlap.count >= 2 {
                 return (product, .high)
@@ -272,9 +280,18 @@ public final class ReceiptOCRService: Sendable {
 
         // 3. Uncertain confidence: single token overlap
         for product in catalog {
-            let pName = product.name.lowercased()
-            let pTokenSet = Set(pName.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { $0.count >= 3 })
-            let overlap = needleTokenSet.intersection(pTokenSet)
+            let pTokens = product.name.lowercased()
+                .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                .filter { $0.count >= 3 }
+            let pTokenSet = Set(pTokens)
+            let brandTokens = Set(
+                (product.brand ?? "")
+                    .lowercased()
+                    .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                    .filter { $0.count >= 3 }
+            )
+            let overlap = needleTokenSet.subtracting(brandTokens)
+                .intersection(pTokenSet.subtracting(brandTokens))
             if !overlap.isEmpty {
                 return (product, .uncertain)
             }
