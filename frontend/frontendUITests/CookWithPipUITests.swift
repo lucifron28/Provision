@@ -56,14 +56,24 @@ final class CookWithPipUITests: XCTestCase {
 
         let previewAction = element("pip-chat-open-shopping-preview-305", in: app)
         XCTAssertTrue(previewAction.waitForExistence(timeout: 10))
-        scrollTargetIntoView(previewAction, inside: app.scrollViews["pip-chat-scroll"], in: app)
+        let chatScroll = app.scrollViews["pip-chat-scroll"]
+        scrollTargetIntoView(previewAction, inside: chatScroll, in: app)
+        let composer = element("pip-chat-input", in: app)
+        XCTAssertTrue(composer.exists)
+        XCTAssertLessThan(previewAction.frame.maxY, composer.frame.minY,
+                          "The shopping action must remain above the fixed message composer")
         assertReachable(previewAction, in: app)
         capturePipChat("Pip_Chat_Shopping_Preview_Action", app: app)
         previewAction.tap()
 
+        XCTAssertTrue(app.navigationBars["Shopping Preview"].waitForExistence(timeout: 10),
+                      "Pip's shopping action opens the existing shopping review screen")
         XCTAssertTrue(element("recipe-shopping-safety-status", in: app).waitForExistence(timeout: 10))
-        XCTAssertTrue(element("recipe-shopping-confirm", in: app).exists,
+        let confirmShopping = element("recipe-shopping-confirm", in: app)
+        XCTAssertTrue(confirmShopping.exists,
                       "Chat opens the existing preview; the household must still review and confirm it")
+        XCTAssertFalse(element("recipe-shopping-confirm-action", in: app).exists,
+                         "Opening the preview never submits shopping changes")
     }
 
     func testPipChatPrivacyControlsAtAccessibilitySizeInDarkMode() {
@@ -177,11 +187,9 @@ final class CookWithPipUITests: XCTestCase {
         let findKangkongRecipes = element("expiring-find-recipes-15", in: app)
         XCTAssertTrue(findKangkongRecipes.waitForExistence(timeout: 5),
                       "The expiring Kangkong card offers a recipe route")
-        if !findKangkongRecipes.isHittable {
-            expiringItemsScroll.swipeLeft()
-        }
-        scrollTargetIntoView(findKangkongRecipes, inside: dashboardScroll,
-                             progressAnchor: expiringHeading, in: app)
+        scrollTargetIntoView(findKangkongRecipes, inside: expiringItemsScroll,
+                             targetDescription: "the expiring Kangkong Find Recipes action",
+                             in: app, axis: .horizontal)
         XCTAssertTrue(findKangkongRecipes.isHittable,
                       "Find Recipes is visible and usable from the expiring Kangkong card")
         findKangkongRecipes.tap()
@@ -234,8 +242,14 @@ final class CookWithPipUITests: XCTestCase {
         shoppingPreviewLink.tap()
         XCTAssertTrue(element("recipe-shopping-safety-status", in: app).waitForExistence(timeout: 10))
         XCTAssertEqual(element("recipe-shopping-availability-status", in: app).label, "Partial")
-        XCTAssertEqual(element("recipe-shopping-name-911", in: app).label, "baboy")
-        XCTAssertEqual(element("recipe-shopping-name-912", in: app).label, "sampalok")
+        let shoppingReviewForm = scrollContainer("recipe-shopping-review-form", in: app)
+        let porkShoppingLine = element("recipe-shopping-name-911", in: app)
+        scrollTargetIntoView(porkShoppingLine, inside: shoppingReviewForm, in: app)
+        XCTAssertEqual(porkShoppingLine.label, "baboy")
+        let sampalokShoppingLine = element("recipe-shopping-name-912", in: app)
+        scrollTargetIntoView(sampalokShoppingLine, inside: shoppingReviewForm,
+                             progressAnchor: porkShoppingLine, in: app)
+        XCTAssertEqual(sampalokShoppingLine.label, "sampalok")
         let confirmShopping = element("recipe-shopping-confirm", in: app)
         XCTAssertTrue(confirmShopping.waitForExistence(timeout: 5))
         XCTAssertTrue(confirmShopping.isEnabled,
@@ -1596,6 +1610,11 @@ final class CookWithPipUITests: XCTestCase {
         case towardStart
     }
 
+    private enum ScrollAxis {
+        case vertical
+        case horizontal
+    }
+
     private func scrollContainer(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
         let collection = app.collectionViews.matching(identifier: identifier).firstMatch
         if collection.exists { return collection }
@@ -1617,7 +1636,8 @@ final class CookWithPipUITests: XCTestCase {
         targetDescription: String? = nil,
         in app: XCUIApplication,
         maximumSwipes: Int = 12,
-        initialDirection: ScrollDirection = .towardEnd
+        initialDirection: ScrollDirection = .towardEnd,
+        axis: ScrollAxis = .vertical
     ) {
         let targetName = targetDescription ?? "target element"
         guard container.waitForExistence(timeout: 5) else {
@@ -1638,20 +1658,42 @@ final class CookWithPipUITests: XCTestCase {
             let direction: ScrollDirection
             if let targetFrame = previousTargetFrame,
                let visibleFrame = unobscuredViewport(in: app, inside: container) {
-                if targetFrame.midY < visibleFrame.minY {
-                    direction = .towardStart
-                } else if targetFrame.midY > visibleFrame.maxY {
-                    direction = .towardEnd
-                } else {
-                    direction = initialDirection
+                switch axis {
+                case .vertical:
+                    if targetFrame.midY < visibleFrame.minY {
+                        direction = .towardStart
+                    } else if targetFrame.midY > visibleFrame.maxY {
+                        direction = .towardEnd
+                    } else {
+                        direction = initialDirection
+                    }
+                case .horizontal:
+                    if targetFrame.midX < visibleFrame.minX {
+                        direction = .towardStart
+                    } else if targetFrame.midX > visibleFrame.maxX {
+                        direction = .towardEnd
+                    } else {
+                        direction = initialDirection
+                    }
                 }
             } else if let targetFrame = previousTargetFrame, let containerFrame {
-                if targetFrame.minY < containerFrame.minY {
-                    direction = .towardStart
-                } else if targetFrame.maxY > containerFrame.maxY {
-                    direction = .towardEnd
-                } else {
-                    direction = initialDirection
+                switch axis {
+                case .vertical:
+                    if targetFrame.minY < containerFrame.minY {
+                        direction = .towardStart
+                    } else if targetFrame.maxY > containerFrame.maxY {
+                        direction = .towardEnd
+                    } else {
+                        direction = initialDirection
+                    }
+                case .horizontal:
+                    if targetFrame.minX < containerFrame.minX {
+                        direction = .towardStart
+                    } else if targetFrame.maxX > containerFrame.maxX {
+                        direction = .towardEnd
+                    } else {
+                        direction = initialDirection
+                    }
                 }
             } else {
                 direction = initialDirection
@@ -1659,9 +1701,15 @@ final class CookWithPipUITests: XCTestCase {
 
             switch direction {
             case .towardEnd:
-                container.swipeUp()
+                switch axis {
+                case .vertical: container.swipeUp()
+                case .horizontal: container.swipeLeft()
+                }
             case .towardStart:
-                container.swipeDown()
+                switch axis {
+                case .vertical: container.swipeDown()
+                case .horizontal: container.swipeRight()
+                }
             }
 
             targetExists = target.exists
@@ -1856,10 +1904,21 @@ final class CookWithPipUITests: XCTestCase {
 
     private func capture(_ name: String, app: XCUIApplication) {
         guard ProcessInfo.processInfo.environment["PROVISION_SKIP_UI_SCREENSHOTS"] != "1" else { return }
+        assertDemoScreenshotHasNoDeveloperText(name, app: app)
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    private func assertDemoScreenshotHasNoDeveloperText(_ name: String, app: XCUIApplication) {
+        let generatedIdentifier = "(?:[0-9a-f]{8}-[0-9a-f-]{27,}|(?:fixture|synthetic|mock)[-_]?[0-9]+)"
+        let developerText = "(?is).*(?:synthetic|mock|test[ _-]?fixtures?|fixture|e2e|debug|\(generatedIdentifier)).*"
+        let matchingElements = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label MATCHES %@ OR value MATCHES %@", developerText, developerText)
+        )
+        XCTAssertFalse(matchingElements.firstMatch.exists,
+                       "Screenshot \(name) must not expose developer labels or generated identifiers")
     }
 
     private func capturePipChat(_ name: String, app: XCUIApplication) {

@@ -52,75 +52,93 @@ public struct PipChatView: View {
     }
 
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                consentCard
+        VStack(spacing: 0) {
+            ScrollViewReader { scrollProxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        consentCard
 
-                if let context, let contextTitle, !contextTitle.isEmpty {
-                    contextCard(kind: context.kind, title: contextTitle)
-                }
+                        if let context, let contextTitle, !contextTitle.isEmpty {
+                            contextCard(kind: context.kind, title: contextTitle)
+                        }
 
-                if viewModel.isLoadingConsent && !viewModel.hasLoadedConsent {
-                    ProgressView("Loading privacy settings")
-                        .tint(ProvisionTheme.provisionGreen)
-                        .frame(maxWidth: .infinity)
-                        .padding(24)
-                        .accessibilityIdentifier("pip-chat-consent-loading")
-                } else if let consent = viewModel.consent {
-                    if !consent.chat_granted {
-                        stateCard(
-                            title: "Enable Pip Chat",
-                            message: "Review the data notice above, then turn on chat sharing to continue.",
-                            symbol: "lock.shield"
-                        )
-                        .accessibilityIdentifier("pip-chat-consent-required")
-                    } else if !consent.all_active_members_chat_granted {
-                        stateCard(
-                            title: "Waiting for household consent",
-                            message: "Every active household member needs to opt in before chat messages can be sent.",
-                            symbol: "person.2"
-                        )
-                        .accessibilityIdentifier("pip-chat-household-consent-pending")
-                    } else if !consent.provider_enabled {
-                        stateCard(
-                            title: "Pip Chat is unavailable",
-                            message: "The chat service is not enabled right now. Your message has not been sent.",
-                            symbol: "wifi.slash"
-                        )
-                        .accessibilityIdentifier("pip-chat-provider-disabled")
-                    } else {
-                        conversation
+                        if viewModel.isLoadingConsent && !viewModel.hasLoadedConsent {
+                            ProgressView("Loading privacy settings")
+                                .tint(ProvisionTheme.provisionGreen)
+                                .frame(maxWidth: .infinity)
+                                .padding(24)
+                                .accessibilityIdentifier("pip-chat-consent-loading")
+                        } else if let consent = viewModel.consent {
+                            if !consent.chat_granted {
+                                stateCard(
+                                    title: "Enable Pip Chat",
+                                    message: "Review the data notice above, then turn on chat sharing to continue.",
+                                    symbol: "lock.shield"
+                                )
+                                .accessibilityIdentifier("pip-chat-consent-required")
+                            } else if !consent.all_active_members_chat_granted {
+                                stateCard(
+                                    title: "Waiting for household consent",
+                                    message: "Every active household member needs to opt in before chat messages can be sent.",
+                                    symbol: "person.2"
+                                )
+                                .accessibilityIdentifier("pip-chat-household-consent-pending")
+                            } else if !consent.provider_enabled {
+                                stateCard(
+                                    title: "Pip Chat is unavailable",
+                                    message: "The chat service is not enabled right now. Your message has not been sent.",
+                                    symbol: "wifi.slash"
+                                )
+                                .accessibilityIdentifier("pip-chat-provider-disabled")
+                            } else {
+                                conversation
+                            }
+                        } else if viewModel.hasLoadedConsent {
+                            stateCard(
+                                title: viewModel.isOffline ? "You're offline" : "Privacy settings unavailable",
+                                message: viewModel.isOffline
+                                    ? "Reconnect to load household privacy settings. No chat message was sent."
+                                    : (viewModel.errorMessage ?? "Connect to Provision and try again."),
+                                symbol: viewModel.isOffline ? "wifi.slash" : "exclamationmark.triangle"
+                            )
+                            Button("Try again") { Task { await viewModel.loadConsent() } }
+                                .frame(minHeight: 44)
+                                .accessibilityIdentifier("pip-chat-consent-retry")
+                        }
+
+                        if let error = viewModel.errorMessage, viewModel.consent != nil {
+                            Label(
+                                viewModel.isOffline ? "You're offline. Your unsent message remains in the composer." : error,
+                                systemImage: viewModel.isOffline ? "wifi.slash" : "exclamationmark.triangle.fill"
+                            )
+                                .font(.footnote)
+                                .foregroundStyle(ProvisionTheme.redAlert)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("pip-chat-error")
+                        }
+
+                        Color.clear
+                            .frame(height: 1)
+                            .accessibilityHidden(true)
+                            .id("pip-chat-bottom-anchor")
                     }
-                } else if viewModel.hasLoadedConsent {
-                    stateCard(
-                        title: viewModel.isOffline ? "You're offline" : "Privacy settings unavailable",
-                        message: viewModel.isOffline
-                            ? "Reconnect to load household privacy settings. No chat message was sent."
-                            : (viewModel.errorMessage ?? "Connect to Provision and try again."),
-                        symbol: viewModel.isOffline ? "wifi.slash" : "exclamationmark.triangle"
-                    )
-                    Button("Try again") { Task { await viewModel.loadConsent() } }
-                        .frame(minHeight: 44)
-                        .accessibilityIdentifier("pip-chat-consent-retry")
+                    .padding(.horizontal, 16)
+                    .padding(.top, 14)
+                    .padding(.bottom, 20)
                 }
-
-                if let error = viewModel.errorMessage, viewModel.consent != nil {
-                    Label(
-                        viewModel.isOffline ? "You're offline. Your unsent message remains in the composer." : error,
-                        systemImage: viewModel.isOffline ? "wifi.slash" : "exclamationmark.triangle.fill"
-                    )
-                        .font(.footnote)
-                        .foregroundStyle(ProvisionTheme.redAlert)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("pip-chat-error")
+                .accessibilityIdentifier("pip-chat-scroll")
+                .onChange(of: viewModel.messages.count) { oldCount, newCount in
+                    if newCount > oldCount {
+                        scrollToLatestMessage(using: scrollProxy)
+                    }
+                }
+                .onChange(of: viewModel.isSending) { wasSending, isSending in
+                    if wasSending && !isSending {
+                        scrollToLatestMessage(using: scrollProxy)
+                    }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 14)
-            .padding(.bottom, 20)
-        }
-        .accessibilityIdentifier("pip-chat-scroll")
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+
             if viewModel.isChatReady {
                 composer
             }
@@ -149,6 +167,12 @@ public struct PipChatView: View {
             if !viewModel.hasLoadedConsent {
                 await viewModel.loadConsent()
             }
+        }
+    }
+
+    private func scrollToLatestMessage(using proxy: ScrollViewProxy) {
+        withAnimation(.easeOut(duration: 0.2)) {
+            proxy.scrollTo("pip-chat-bottom-anchor", anchor: .bottom)
         }
     }
 

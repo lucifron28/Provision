@@ -1,6 +1,7 @@
 {
   "requiredScreenshots": [
     "Home_Cook_with_Pip",
+    "Pip_Chat_Shopping_Preview_Action",
     "Inventory_Receipt_Intake_Entry",
     "Inventory_Quick_Add_Minimal",
     "Shopping_Purchased_Pantry_Review",
@@ -9,6 +10,7 @@
   ],
   "scenarioDescriptions": {
     "Home_Cook_with_Pip": "A first-time household sees the pantry next step alongside the dashboard actions.",
+    "Pip_Chat_Shopping_Preview_Action": "Pip Chat opens the existing Ginataang Kangkong shopping review from locally supplied household fixtures; no shopping change is applied until the household confirms.",
     "Inventory_Receipt_Intake_Entry": "Inventory navigation opens the existing receipt intake scanner.",
     "Inventory_Quick_Add_Minimal": "Manual Quick Add accepts identity, an explicit unit, and quantity while leaving advanced fields available.",
     "Shopping_Purchased_Pantry_Review": "Purchased groceries require explicit add or exclude decisions before pantry review is confirmed.",
