@@ -734,7 +734,11 @@ public struct ScanView: View {
     }
 
     private func compactIntakeRow(for item: ScannedIntakeItem) -> some View {
-        Button {
+        let locationName = item.storageLocationId.flatMap { locationID in
+            viewModel.availableLocations.first(where: { $0.id == locationID })?.name
+        } ?? "No location selected"
+
+        return Button {
             reviewingItem = item
         } label: {
             let state = viewModel.validationState(for: item)
@@ -824,7 +828,8 @@ public struct ScanView: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(item.name), \(formattedQuantity(item.quantity)) \(item.unit), \(item.storageLocationId != nil ? "location selected" : "no location selected"), status: \(viewModel.validationState(for: item).rawValue)")
+        .accessibilityIdentifier("intake-preview-item-\(item.barcode)")
+        .accessibilityLabel("\(item.name), \(formattedQuantity(item.quantity)) \(item.unit), location: \(locationName), status: \(viewModel.validationState(for: item).rawValue)")
         .accessibilityHint("Double tap to inspect and edit item details")
     }
 
