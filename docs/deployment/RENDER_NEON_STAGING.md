@@ -7,7 +7,7 @@ This guide covers Provision's separate synthetic-data staging service. It does n
 - Render runs the FastAPI backend from the root `Dockerfile`.
 - Neon provides an isolated PostgreSQL 18 staging project in Singapore.
 - The iOS app keeps its normal local API default. Debug and UI-test launches can opt into a validated Render HTTPS URL.
-- GitHub Actions keeps routine PostgreSQL 18 and iOS tests local. The PR visual smoke captures 12 representative screens; a separate manual workflow retains the full screenshot gallery and `.xcresult`. Other manual workflows check staging and, after explicit confirmation, make one DeepSeek request.
+- GitHub Actions keeps routine PostgreSQL 18 and iOS tests local. The PR visual smoke captures 12 representative screens; the manual gallery declares 58 scenarios and retains the full gallery and `.xcresult`. Other manual workflows check staging and, after explicit confirmation, make one DeepSeek request.
 
 The service is configured to auto-deploy commits from `feat/pip-chat-foundation`; `render.yaml` records `autoDeployTrigger: commit`. After PR #11 is merged, switch the service's linked branch to `main` if staging should follow main. Keep the service on the Free plan and for synthetic staging only. Render free services have limits and can spin down while idle. [Render free plan limits](https://render.com/docs/free)
 
@@ -35,7 +35,7 @@ The backend uses bounded SQLAlchemy pools, stale-connection checks, and disables
 
 ## Migration validation and future changes
 
-The initial migration was applied to the isolated Neon database and `alembic check` passed at revision `9c31f410ab82`, the current Alembic head. A pooled application-role `SELECT 1` and a synthetic transaction insert/update/delete also passed. The database contains the migration-created schema and quarantine household, with no user accounts or imported household data.
+The isolated Neon database is migrated through Alembic revision `72a1c9e45f08` (the repository head verified on 2026-11-18); `alembic check` reported no new operations. A pooled application-role `SELECT 1` and a synthetic transaction insert/update/delete also passed. The database contains the migration-created schema and quarantine household, with no imported household data.
 
 Render's pre-deploy command is unavailable on the free web plan, so this setup uses one guarded migration run from a trusted Windows workstation before deploying each schema change. The migration guard requires the direct Neon endpoint to match the application endpoint and database, TLS, a database name containing `staging`, and an explicit confirmation value. Online PostgreSQL migrations also take a session advisory lock and wait up to ten minutes for another migration to finish. [Render pre-deploy command availability](https://render.com/docs/deploys)
 
@@ -107,7 +107,7 @@ Keep DeepSeek disabled for all routine tests and initial staging validation. The
 5. Confirm the output reports one synthetic request, valid proposal schema and provenance, a deterministic safety result, and no inventory, recipe, or shopping writes. The workflow does not configure automatic retries.
 6. Turn `DEEPSEEK_ENABLED` off, set `PROVISION_LIVE_DEEPSEEK_ENABLED=false`, and remove or rotate the staging provider key after the check.
 
-This workflow is not a Pip Chat test. Pip Chat is not part of this deployment-preparation change.
+This optional live DeepSeek workflow checks one provider proposal. It is separate from the deterministic mocked Pip Chat integration tests; this goal did not make a live provider request.
 
 ## Inspect results and recover
 
@@ -125,4 +125,6 @@ If an auto-deploy fails, Render keeps the previous successful deploy running. In
 
 ## Current verification boundary
 
-On 2026-11-18, the public Render service returned `deployment=staging` and revision `9958b62622085db12fc1ef128d31ccf30d47c2b2` from `/health`; `/ready` returned `{"status":"ready"}`. This verifies unauthenticated HTTP and database readiness only, not authenticated iOS workflows or a new staging E2E run. No live DeepSeek request was made during this Mac preparation. Keep staging database credentials, fixture tokens, and provider credentials out of the shared Mac and Xcode schemes.
+The connected Render service view reports `provision-staging-04dt` on `cefb016279c2e9194196fb9e3f532df03fb329bd`. Direct requests to `/health` and `/ready` timed out during the Windows demo-readiness check, so current HTTP and database readiness are unverified. The last successful health/readiness result recorded here was on `9958b62622085db12fc1ef128d31ccf30d47c2b2`; it is historical. Staging workflow [44205671372](https://github.com/lucifron28/Provision/actions/runs/44205671372) is also historical and ran on `7b716aab2229431d0bcbad70d8e4283f3796b11d`, with Neon at Alembic revision `72a1c9e45f08` at that time.
+
+The repository's `render.yaml` keeps `DEEPSEEK_ENABLED=false`. The Render connection used for this check did not expose environment values, so the presence of `DEEPSEEK_API_KEY` in the service could not be confirmed. No live provider request was made. Do not include database credentials, fixture tokens, or provider keys in screenshots, Xcode schemes, or shared Mac environments. Use the latest PR checks and staging workflow for later revisions, and keep fixture switches enabled only for the relevant workflow window.

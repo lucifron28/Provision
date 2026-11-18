@@ -6,13 +6,13 @@ Updated 2026-11-18
 
 - Repository: `lucifron28/Provision`
 - Branch: `feat/pip-chat-foundation`
-- PR head observed at the start of this preparation: `9958b62622085db12fc1ef128d31ccf30d47c2b2`; local branch also contained two test-only commits.
-- Latest application-code checkpoint: `3ca1a8eeab59c8cf907fd134ebba47d3b7c59773`.
 - PR: [#11](https://github.com/lucifron28/Provision/pull/11)
-- Staging: [provision-staging-04dt](https://provision-staging-04dt.onrender.com). On 2026-11-18, `/health` returned deployment `staging` at revision `9958b62622085db12fc1ef128d31ccf30d47c2b2`; `/ready` returned `{"status":"ready"}`. This was a health/readiness check, not an authenticated app workflow.
-- Latest required CI run on `9958b62` is [44244226820](https://github.com/lucifron28/Provision/actions/runs/44244226820); it completed successfully.
-- The receipt-intake regression was fixed in `3ca1a8e`. The focused test passed locally on `a0a6cf4` (application code from `9958b62`) with ad-hoc simulator signing; camera/OCR hardware was not tested.
-- The full gallery has 58 required scenarios and 9 supplemental captures. Run [44235560950](https://github.com/lucifron28/Provision/actions/runs/44235560950) captured its simulator shards, but the workflow did not finish successfully because the substitution-preview capture was missing from the manifest at that time. The manifest now includes it; the complete gallery has not yet passed on the current product commit.
+- Before this Windows demo-readiness update, PR #11 and Render staging were on `cefb016279c2e9194196fb9e3f532df03fb329bd`. The branch push updates the existing PR; Render auto-deploys that branch.
+- The last required CI on that baseline is [run 44268190421, attempt 2](https://github.com/lucifron28/Provision/actions/runs/44268190421). Backend, 47 Swift unit tests, all 11 UI methods, and all 12 mandatory screenshot scenarios passed. A new `Needs Review` capture is supplemental, so the required count stays 12.
+- The 12-screen artifact from that run was downloaded and its manifest reports passed capture integrity, synthetic fixtures, and no live data. I inspected one representative Cook with Pip image. Automated capture status does not mean all images received human review. That baseline artifact predates the supplemental Needs Review capture; inspect it in the latest post-push PR artifact.
+- Focused local verification for this update passed 12 recommendation and visual-smoke configuration tests, plus all 12 screenshot-organizer tests. Windows has no Xcode; the latest PR checks are the authority for Swift compilation and simulator behavior.
+- Render was still reporting baseline `cefb016` as live. Direct `/health` and `/ready` requests timed out during this check, so current HTTP and database readiness were not confirmed. The repository config keeps DeepSeek disabled; Render's secret values and the key's presence were not readable through the connected service view. No paid provider request or authenticated Ron-account workflow was run.
+- The full gallery remains a separate manual workflow. Do not run its 58 required scenarios for the presentation handoff.
 
 ## First check in the lab
 
