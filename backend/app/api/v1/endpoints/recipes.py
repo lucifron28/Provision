@@ -1,11 +1,14 @@
 from fastapi import APIRouter, Depends, Query, Response
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.v1.dependencies import get_current_household_id
 from app.api.v1.endpoints.auth import get_current_user
 from app.core.database import get_db
-from app.models.recipe import Recipe, SavedRecipe
+from app.core.time import household_today
+from app.models.batch import InventoryBatch
+from app.models.ingredient import ProductIngredientMapping
+from app.models.recipe import Recipe, RecipeIngredient, SavedRecipe
 from app.models.user import User
 from app.schemas.recipe import (RecipeEvaluationInput, RecipeEvaluationRead, RecipeRead, RecipeWrite,
     SavedRecipeRead, SaveRecipeInput)
@@ -28,11 +31,33 @@ def recommendations(request: RecommendationInput, response: Response,
 @router.get("/", response_model=list[RecipeRead])
 def list_recipes(response: Response, query: str | None = Query(None, max_length=180),
                  limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0, le=100000),
+                 inventory_batch_id: int | None = Query(None, ge=1),
                  household_id: int = Depends(get_current_household_id), db: Session = Depends(get_db)):
     response.headers["Cache-Control"] = "no-store"
     statement = select(Recipe).where(Recipe.household_id == household_id, Recipe.is_active.is_(True))
     if query:
         statement = statement.where(Recipe.title.icontains(query, autoescape=True))
+    if inventory_batch_id is not None:
+        batch = db.scalar(select(InventoryBatch).where(
+            InventoryBatch.household_id == household_id,
+            InventoryBatch.id == inventory_batch_id,
+            InventoryBatch.remaining_quantity > 0,
+            or_(InventoryBatch.expiration_date.is_(None),
+                InventoryBatch.expiration_date >= household_today())))
+        if batch is None:
+            return []
+        mapping = db.scalar(select(ProductIngredientMapping).where(
+            ProductIngredientMapping.household_id == household_id,
+            ProductIngredientMapping.product_id == batch.product_id,
+            ProductIngredientMapping.is_current.is_(True),
+            ProductIngredientMapping.mode == "DIRECT",
+            ProductIngredientMapping.verification_status == "VERIFIED"))
+        if mapping is None or mapping.ingredient_id is None:
+            return []
+        matching_recipe_ids = select(RecipeIngredient.recipe_id).where(
+            RecipeIngredient.household_id == household_id,
+            RecipeIngredient.ingredient_id == mapping.ingredient_id)
+        statement = statement.where(Recipe.id.in_(matching_recipe_ids))
     records = db.scalars(statement.order_by(func.lower(Recipe.title), Recipe.id).limit(limit).offset(offset)).all()
     return [read_recipe(db, record) for record in records]
 

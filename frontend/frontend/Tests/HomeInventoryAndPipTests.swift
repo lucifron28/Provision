@@ -123,7 +123,7 @@ public struct HomeInventoryAndPipTests {
     public static func testChefPipRecipeIdeasWithRealExpiringProducts() throws {
         let vm = HomeViewModel(isPreview: true)
         vm.valuation = InventoryValuation(total_value: 5000, total_active_batches: 6, total_active_products: 4)
-        vm.expiringSoonItems = PreviewData.expiringSoonItems // Magnolia Milk, Gardenia Bread, Bounty Eggs
+        vm.expiringSoonItems = PreviewData.expiringSoonItems // Filipino groceries with near-term expiry dates
         let ideas = vm.chefPipRecipeIdeas
         try assertTrue(!ideas.isEmpty, "Chef Pip should generate recipe ideas")
         try assertTrue(ideas.count <= 2, "Chef Pip should highlight 1-2 top ideas")

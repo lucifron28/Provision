@@ -656,7 +656,7 @@ public actor APIClient {
         return try await fetchAllPages(components, generation: sessionGeneration, expectedScope: scope, offsetName: "offset")
     }
 
-    public func fetchRecipePage(query: String?, limit: Int, offset: Int,
+    public func fetchRecipePage(query: String?, inventoryBatchID: Int?, limit: Int, offset: Int,
                                 scope: HouseholdScope) async throws -> [HouseholdRecipe] {
         guard scope == householdScope else { throw APIError.sessionChanged }
         var components = URLComponents(url: baseURL.appendingPathComponent("recipes/"), resolvingAgainstBaseURL: true)
@@ -664,6 +664,9 @@ public actor APIClient {
                           URLQueryItem(name: "offset", value: String(min(max(offset, 0), 100_000)))]
         if let query, !query.isEmpty {
             queryItems.append(URLQueryItem(name: "query", value: String(query.prefix(180))))
+        }
+        if let inventoryBatchID {
+            queryItems.append(URLQueryItem(name: "inventory_batch_id", value: String(inventoryBatchID)))
         }
         components?.queryItems = queryItems
         guard let url = components?.url else { throw APIError.invalidURL }

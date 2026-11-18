@@ -50,12 +50,12 @@ def _login(client: httpx.Client, email: str, password: str) -> str:
     return access_token
 
 
-def _register(client: httpx.Client, email: str, password: str) -> dict:
+def _register(client: httpx.Client, email: str, password: str, display_name: str = "Maria Santos") -> dict:
     response = _request(
         client,
         "POST",
         "/auth/register",
-        json={"email": email, "password": password, "display_name": "Provision E2E"},
+        json={"email": email, "password": password, "display_name": display_name},
     )
     user = response.json()
     if not isinstance(user.get("default_household_id"), int):
@@ -199,7 +199,7 @@ def api_smoke() -> None:
     second_email = _new_staging_test_email()
     second_password = secrets.token_urlsafe(32)
 
-    product_name = f"Synthetic pantry item {run_id}"
+    product_name = "Kangkong"
     second_registered = False
     with httpx.Client(timeout=20, follow_redirects=False, trust_env=False) as client:
         first_token = _login(client, email, password)
@@ -214,7 +214,7 @@ def api_smoke() -> None:
         )
         try:
             _remember_account(second_email, second_password, slot="2")
-            second_user = _register(client, second_email, second_password)
+            second_user = _register(client, second_email, second_password, display_name="Luis Reyes")
             second_registered = True
             _remember_account(
                 second_email,
@@ -265,13 +265,13 @@ def api_smoke() -> None:
             )
 
             ingredient_lookup = _request(
-                client, "GET", "/ingredients/?query=garlic", headers=first_headers
+                client, "GET", "/ingredients/?query=kangkong", headers=first_headers
             ).json()
             ingredient = next(
-                (item for item in ingredient_lookup.get("results", []) if item.get("canonical_name") == "garlic"),
+                (item for item in ingredient_lookup.get("results", []) if item.get("canonical_name") == "kangkong"),
                 None,
             )
-            _expect(ingredient is not None, "The staging ingredient catalog did not return garlic")
+            _expect(ingredient is not None, "The staging ingredient catalog did not return kangkong")
             ingredient_id = ingredient["id"]
 
             created = _request(
@@ -279,11 +279,11 @@ def api_smoke() -> None:
                 "POST",
                 "/products/",
                 headers=first_headers,
-                json={"name": product_name, "category": "E2E test", "unit": "g"},
+                json={"name": product_name, "category": "Fresh Produce", "unit": "kg"},
             ).json()
             product_id = created["id"]
             _remember_product_id(product_id)
-            updated_name = f"{product_name} edited"
+            updated_name = "Fresh Kangkong"
             updated = _request(
                 client,
                 "PATCH",
@@ -308,7 +308,7 @@ def api_smoke() -> None:
                     "ingredient_id": ingredient_id,
                     "verified": True,
                     "unknown_composition": False,
-                    "method": "Synthetic staging label review",
+                    "method": "Household label review",
                 },
             ).json()
             _expect(mapping.get("version") == 1, "Product ingredient mapping did not persist")
@@ -328,12 +328,12 @@ def api_smoke() -> None:
                     "declared_allergens": [],
                     "possible_allergens": [],
                     "custom_allergens": [],
-                    "source_reference": "Synthetic staging label fixture: garlic",
+                    "source_reference": "Fresh produce section tag",
                 },
             ).json()
             _expect(label.get("current_for_product") is True, "Reviewed product label did not persist")
 
-            expiration_date = (date.today() + timedelta(days=30)).isoformat()
+            expiration_date = (date.today() + timedelta(days=2)).isoformat()
             batch = _request(
                 client,
                 "POST",
@@ -341,14 +341,14 @@ def api_smoke() -> None:
                 headers=first_headers,
                 json={
                     "product_id": product_id,
-                    "original_quantity": "8",
-                    "unit_price": "1.25",
+                    "original_quantity": "0.2",
+                    "unit_price": "60.00",
                     "expiration_date": expiration_date,
                 },
             ).json()
             _expect(
                 batch.get("expiration_date") == expiration_date
-                and Decimal(str(batch.get("remaining_quantity"))) == Decimal("8"),
+                and Decimal(str(batch.get("remaining_quantity"))) == Decimal("0.2"),
                 "Inventory quantity or expiration date did not persist",
             )
             listed_batches = _request(
@@ -384,13 +384,16 @@ def api_smoke() -> None:
                 "/recipes/",
                 headers=first_headers,
                 json={
-                    "title": f"Synthetic garlic rice {run_id}",
+                    "title": "Ginisang Kangkong",
                     "cuisine": "Filipino",
                     "content_permission": "OWNED_OR_PERMISSION_GRANTED",
                     "ph_regions": ["region_unknown"],
                     "servings": "1",
-                    "instructions": ["Mix the synthetic ingredients."],
-                    "ingredients": [{"ingredient_id": ingredient_id, "amount": "10", "unit": "g"}],
+                    "instructions": [
+                        "Rinse the kangkong and separate the leaves from the stems.",
+                        "Sauté garlic in a little oil, add the stems, then the leaves, and cook until just wilted.",
+                    ],
+                    "ingredients": [{"ingredient_id": ingredient_id, "amount": "300", "unit": "g"}],
                 },
             ).json()
             detail = _request(
@@ -410,7 +413,7 @@ def api_smoke() -> None:
             ).json()
             requirement = evaluation.get("result", {}).get("availability", {}).get("requirements", [{}])[0]
             _expect(
-                Decimal(str(requirement.get("shortfall"))) == Decimal("2"),
+                Decimal(str(requirement.get("shortfall"))) == Decimal("100"),
                 "Recipe evaluation did not reflect the persisted pantry quantity",
             )
 
@@ -541,7 +544,7 @@ def api_smoke() -> None:
                 "accepted_lines": [
                     {
                         "ingredient_id": ingredient_id,
-                        "target_quantity": "2",
+                        "target_quantity": "100",
                         "consolidate_existing": False,
                     }
                 ],
@@ -555,13 +558,13 @@ def api_smoke() -> None:
             _expect(confirmed == replay, "Retrying a confirmed shopping preview was not idempotent")
             _expect(
                 len(confirmed.get("created", [])) == 1
-                and Decimal(str(confirmed["created"][0].get("quantity"))) == Decimal("2"),
+                and Decimal(str(confirmed["created"][0].get("quantity"))) == Decimal("100"),
                 "Shopping confirmation did not create the exact accepted quantity",
             )
             shopping_items = _request(client, "GET", "/shopping-list/", headers=first_headers).json()
             _expect(
                 len(shopping_items) == 1
-                and Decimal(str(shopping_items[0].get("quantity"))) == Decimal("2")
+                and Decimal(str(shopping_items[0].get("quantity"))) == Decimal("100")
                 and shopping_items[0].get("origin_recipe_id") == recipe["id"],
                 "Confirmed shopping quantity did not persist through the API",
             )

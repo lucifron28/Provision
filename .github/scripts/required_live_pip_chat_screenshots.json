@@ -1,11 +1,11 @@
 {
   "requiredScreenshots": [
-    "Pip_Chat_Consent_Enabled_Synthetic",
-    "Pip_Chat_Staging_Live_Response_Synthetic"
+    "Pip_Chat_Consent_Enabled",
+    "Pip_Chat_Staging_Live_Response"
   ],
   "supplementalScreenshots": [],
   "scenarioDescriptions": {
-    "Pip_Chat_Consent_Enabled_Synthetic": "An iPhone 17 Simulator shows the consent-enabled synthetic Pip Chat controls before a provider request; allergy sharing remains off.",
-    "Pip_Chat_Staging_Live_Response_Synthetic": "An iPhone 17 Simulator displays a genuine DeepSeek Pip Chat response for a run-owned synthetic household; allergy sharing remains off."
+    "Pip_Chat_Consent_Enabled": "The consent controls are shown for the run-owned staging household; allergy sharing remains off. The synthetic account and its source are internal to the staging workflow.",
+    "Pip_Chat_Staging_Live_Response": "An iPhone 17 Simulator displays a genuine DeepSeek response for the run-owned staging household. The staging account and its seeded Filipino pantry data are internal to the workflow; allergy sharing remains off."
   }
 }

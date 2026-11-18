@@ -17,7 +17,9 @@ public struct CookWithPipView: View {
                 workflowService: any CookWithPipWorkflowService = APIClient.shared,
                 pendingStore: any PendingRecipeShoppingStore = KeychainStore.shared,
                 onShoppingConfirmed: @escaping () async -> Void = {},
-                onNavigateToShopping: @escaping () -> Void = {}) {
+                onNavigateToShopping: @escaping () -> Void = {},
+                initialMode: CookWithPipMode = .cookNow, inventoryBatchID: Int? = nil,
+                ingredientFilterLabel: String? = nil) {
         self.scope = scope
         self.service = service
         self.chatService = chatService
@@ -25,7 +27,9 @@ public struct CookWithPipView: View {
         self.pendingStore = pendingStore
         self.onShoppingConfirmed = onShoppingConfirmed
         self.onNavigateToShopping = onNavigateToShopping
-        _viewModel = StateObject(wrappedValue: CookWithPipViewModel(scope: scope, service: service))
+        _viewModel = StateObject(wrappedValue: CookWithPipViewModel(
+            scope: scope, service: service, initialMode: initialMode,
+            inventoryBatchID: inventoryBatchID, ingredientFilterLabel: ingredientFilterLabel))
     }
 
     @FocusState private var searchFieldFocused: Bool
@@ -88,6 +92,13 @@ public struct CookWithPipView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     introduction
+                    if let ingredient = viewModel.ingredientFilterLabel {
+                        Label("Stored recipes using \(ingredient)", systemImage: "leaf")
+                            .font(.headline)
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("cook-with-pip-ingredient-filter")
+                    }
                     NavigationLink {
                         CookWithPipManagementView(scope: scope, service: workflowService)
                     } label: {
@@ -436,6 +447,9 @@ public struct CookWithPipView: View {
     }
 
     private var emptyTitle: String {
+        if let ingredient = viewModel.ingredientFilterLabel {
+            return "No stored recipes use \(ingredient) yet"
+        }
         if !viewModel.normalizedQuery.isEmpty { return "No matching household recipes" }
         return switch viewModel.mode {
         case .cookNow: "No recipes are ready to cook"
@@ -445,6 +459,9 @@ public struct CookWithPipView: View {
     }
 
     private var emptyMessage: String {
+        if viewModel.ingredientFilterLabel != nil {
+            return "Recipes appear here when their ingredient is linked to a verified pantry match."
+        }
         if !viewModel.normalizedQuery.isEmpty {
             return "Try another title search. This screen only searches recipes stored in your household."
         }

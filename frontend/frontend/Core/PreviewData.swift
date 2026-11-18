@@ -115,6 +115,57 @@ public enum PreviewData {
         total_remaining_quantity: 0.3,
         active_batches_count: 1
     )
+
+    public static let freshKangkong = Product(
+        id: 15,
+        name: "Fresh Kangkong",
+        category: "Fresh Produce",
+        package_size: 1.0,
+        unit: "kg",
+        total_remaining_quantity: 0.5,
+        active_batches_count: 1
+    )
+
+    public static let datuPutiVinegar = Product(
+        id: 16,
+        name: "Datu Puti White Vinegar",
+        brand: "Datu Puti",
+        category: "Condiments & Sauces",
+        package_size: 1.0,
+        unit: "L",
+        total_remaining_quantity: 0.03,
+        active_batches_count: 1
+    )
+
+    public static let romaTomatoes = Product(
+        id: 17,
+        name: "Roma Tomatoes",
+        category: "Fresh Produce",
+        package_size: 1.0,
+        unit: "kg",
+        total_remaining_quantity: 0.5,
+        active_batches_count: 1
+    )
+
+    public static let porkShoulder = Product(
+        id: 18,
+        name: "Pork Shoulder",
+        category: "Fresh Meat",
+        package_size: 1.0,
+        unit: "kg",
+        total_remaining_quantity: 0.25,
+        active_batches_count: 1
+    )
+
+    public static let chickenBreast = Product(
+        id: 19,
+        name: "Chicken Breast",
+        category: "Poultry",
+        package_size: 1.0,
+        unit: "kg",
+        total_remaining_quantity: 0.5,
+        active_batches_count: 1
+    )
     
     public static let purefoodsCornedBeef = Product(
         id: 4,
@@ -252,6 +303,11 @@ public enum PreviewData {
         centuryTuna,
         pancitCanton,
         datuPutiSoySauce,
+        freshKangkong,
+        datuPutiVinegar,
+        romaTomatoes,
+        porkShoulder,
+        chickenBreast,
         purefoodsCornedBeef,
         magnoliaMilk,
         tenderJuicyHotdog,
@@ -295,6 +351,76 @@ public enum PreviewData {
         unit_price: 82.00,
         product: gardeniaBread,
         storage_location: pantryShelfB
+    )
+
+    public static let freshKangkongBatch = InventoryBatch(
+        id: 15,
+        product_id: freshKangkong.id,
+        storage_location_id: refrigeratorCrisper.id,
+        grocery_session_id: 4,
+        purchased_at: isoDateString(daysAgo: 1),
+        expiration_date: dateString(daysFromNow: 2),
+        original_quantity: 0.75,
+        remaining_quantity: 0.5,
+        unit_price: 60.00,
+        product: freshKangkong,
+        storage_location: refrigeratorCrisper
+    )
+
+    public static let datuPutiVinegarBatch = InventoryBatch(
+        id: 16,
+        product_id: datuPutiVinegar.id,
+        storage_location_id: spiceStation.id,
+        grocery_session_id: 2,
+        purchased_at: isoDateString(daysAgo: 20),
+        expiration_date: dateString(daysFromNow: 300),
+        original_quantity: 1.0,
+        remaining_quantity: 0.03,
+        unit_price: 38.00,
+        product: datuPutiVinegar,
+        storage_location: spiceStation
+    )
+
+    public static let romaTomatoesBatch = InventoryBatch(
+        id: 17,
+        product_id: romaTomatoes.id,
+        storage_location_id: refrigeratorCrisper.id,
+        grocery_session_id: 4,
+        purchased_at: isoDateString(daysAgo: 1),
+        expiration_date: dateString(daysFromNow: 5),
+        original_quantity: 0.5,
+        remaining_quantity: 0.5,
+        unit_price: 78.00,
+        product: romaTomatoes,
+        storage_location: refrigeratorCrisper
+    )
+
+    public static let porkShoulderBatch = InventoryBatch(
+        id: 18,
+        product_id: porkShoulder.id,
+        storage_location_id: freezer.id,
+        grocery_session_id: 4,
+        purchased_at: isoDateString(daysAgo: 3),
+        expiration_date: dateString(daysFromNow: 90),
+        original_quantity: 1.0,
+        remaining_quantity: 0.25,
+        unit_price: 360.00,
+        product: porkShoulder,
+        storage_location: freezer
+    )
+
+    public static let chickenBreastBatch = InventoryBatch(
+        id: 19,
+        product_id: chickenBreast.id,
+        storage_location_id: freezer.id,
+        grocery_session_id: 5,
+        purchased_at: isoDateString(daysAgo: 3),
+        expiration_date: dateString(daysFromNow: 90),
+        original_quantity: 1.0,
+        remaining_quantity: 0.5,
+        unit_price: 285.00,
+        product: chickenBreast,
+        storage_location: freezer
     )
     
     // Century Tuna Batch 1: Expiring in 90 days ("USE FIRST" under FEFO)
@@ -427,7 +553,12 @@ public enum PreviewData {
         tenderJuicyHotdogBatch,
         bountyEggsBatch,
         pancitCantonBatch,
-        datuPutiSoySauceBatch
+        datuPutiSoySauceBatch,
+        freshKangkongBatch,
+        datuPutiVinegarBatch,
+        romaTomatoesBatch,
+        porkShoulderBatch,
+        chickenBreastBatch
     ]
     
     public static let centuryTunaBatches: [InventoryBatch] = [
@@ -486,6 +617,17 @@ public enum PreviewData {
             expiration_date: dateString(daysFromNow: 2),
             days_until_expiration: 2,
             storage_location: "Pantry - Shelf B"
+        ),
+        ExpiringSoonItem(
+            batch_id: 15,
+            product_id: 15,
+            product_name: "Fresh Kangkong",
+            brand: nil,
+            remaining_quantity: 0.5,
+            unit: "kg",
+            expiration_date: dateString(daysFromNow: 2),
+            days_until_expiration: 2,
+            storage_location: "Refrigerator - Crisper"
         ),
         ExpiringSoonItem(
             batch_id: 8,

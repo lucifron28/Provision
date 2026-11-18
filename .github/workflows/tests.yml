@@ -98,6 +98,7 @@ jobs:
           - shard: recipes-chat-accessibility
             tests: >-
               -only-testing:frontendUITests/CookWithPipUITests/testFormsStayReadableInDarkModeAndLargeText
+              -only-testing:frontendUITests/CookWithPipUITests/testExpiringKangkongFindsSinigangWithCurrentIngredientAvailability
               -only-testing:frontendUITests/CookWithPipUITests/testHomeNavigationAndCaptureRecipeScreens
               -only-testing:frontendUITests/CookWithPipUITests/testSafetyAndAvailabilityStatesWithLongFilipinoNames
               -only-testing:frontendUITests/CookWithPipUITests/testPipChatConsentConversationAndValidatedRecipeAction

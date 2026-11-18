@@ -27,7 +27,7 @@ public enum CookWithPipMode: String, CaseIterable, Identifiable, Sendable {
 
 @MainActor
 public final class CookWithPipViewModel: ObservableObject {
-    @Published public var mode: CookWithPipMode = .cookNow
+    @Published public var mode: CookWithPipMode
     @Published public var searchQuery = ""
     @Published public private(set) var recommendations: [RecipeRecommendation] = []
     @Published public private(set) var recipes: [HouseholdRecipe] = []
@@ -44,6 +44,8 @@ public final class CookWithPipViewModel: ObservableObject {
 
     public let scope: HouseholdScope
     public let service: any CookWithPipService
+    public let inventoryBatchID: Int?
+    public let ingredientFilterLabel: String?
 
     private let pageSize = 20
     private let candidatePageSize = 100
@@ -51,9 +53,14 @@ public final class CookWithPipViewModel: ObservableObject {
     private var candidateOffset = 0
     private var activeRequestID = UUID()
 
-    public init(scope: HouseholdScope, service: any CookWithPipService = APIClient.shared) {
+    public init(scope: HouseholdScope, service: any CookWithPipService = APIClient.shared,
+                initialMode: CookWithPipMode = .cookNow, inventoryBatchID: Int? = nil,
+                ingredientFilterLabel: String? = nil) {
         self.scope = scope
         self.service = service
+        self.mode = initialMode
+        self.inventoryBatchID = inventoryBatchID
+        self.ingredientFilterLabel = ingredientFilterLabel
     }
 
     public func select(_ mode: CookWithPipMode) async {
@@ -94,6 +101,7 @@ public final class CookWithPipViewModel: ObservableObject {
             if requestedMode == .myRecipes {
                 let page = try await service.fetchRecipePage(
                     query: query.isEmpty ? nil : query,
+                    inventoryBatchID: inventoryBatchID,
                     limit: pageSize,
                     offset: recipeOffset,
                     scope: scope

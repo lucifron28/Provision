@@ -541,9 +541,11 @@ private struct RecipeIngredientRow: View {
                 Text("Pantry availability")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(ProvisionTheme.textSecondary)
+                    .accessibilityIdentifier("recipe-ingredient-availability-heading-\(index)")
                 if let availability {
                     StatusPill(presentation: .availability(availability.status))
-                    availabilityQuantities(availability)
+                        .accessibilityIdentifier("recipe-ingredient-availability-\(index)")
+                    availabilityQuantities(availability, index: index)
                     if !availability.unknown_reasons.isEmpty {
                         reasonList(availability.unknown_reasons, title: "Quantity uncertainty")
                     }
@@ -576,18 +578,21 @@ private struct RecipeIngredientRow: View {
     }
 
     @ViewBuilder
-    private func availabilityQuantities(_ line: IngredientAvailabilitySnapshot) -> some View {
+    private func availabilityQuantities(_ line: IngredientAvailabilitySnapshot, index: Int) -> some View {
         let unit = line.unit ?? substitution?.unit ?? ingredient.unit
         VStack(alignment: .leading, spacing: 3) {
             if let required = line.required_amount {
                 Text("Needed: \(QuantityText.string(required)) \(unit)")
+                    .accessibilityIdentifier("recipe-ingredient-needed-\(index)")
             }
             if let available = line.available_amount {
                 Text("Counted on hand: \(QuantityText.string(available)) \(unit)")
+                    .accessibilityIdentifier("recipe-ingredient-on-hand-\(index)")
             }
             if let shortfall = line.shortfall, shortfall.value > 0 {
                 Text("Short: \(QuantityText.string(shortfall)) \(unit)")
                     .foregroundStyle(ProvisionTheme.amberWarning)
+                    .accessibilityIdentifier("recipe-ingredient-short-\(index)")
             }
         }
         .font(.footnote)

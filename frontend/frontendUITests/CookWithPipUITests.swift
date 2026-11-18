@@ -54,7 +54,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertEqual(input.value as? String, "What ingredients am I missing?")
         app.buttons["pip-chat-send"].tap()
 
-        let previewAction = element("pip-chat-open-shopping-preview-301", in: app)
+        let previewAction = element("pip-chat-open-shopping-preview-305", in: app)
         XCTAssertTrue(previewAction.waitForExistence(timeout: 10))
         scrollTargetIntoView(previewAction, inside: app.scrollViews["pip-chat-scroll"], in: app)
         assertReachable(previewAction, in: app)
@@ -140,7 +140,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(contextCard.waitForExistence(timeout: 10))
         XCTAssertTrue(contextTitle.waitForExistence(timeout: 5))
         XCTAssertTrue(element("pip-chat-empty-state", in: app).waitForExistence(timeout: 10))
-        XCTAssertEqual(contextTitle.label, "Test Recipe: Sinigang na Baboy")
+        XCTAssertEqual(contextTitle.label, "Sinigang na Baboy")
         XCTAssertTrue(element("pip-chat-suggested-prompt-substitute", in: app).exists)
         assertReachable(contextCard, in: app)
         capturePipChat("Pip_Chat_Recipe_Context", app: app)
@@ -164,6 +164,96 @@ final class CookWithPipUITests: XCTestCase {
         capturePipChat("Pip_Chat_Product_Context", app: app)
     }
 
+    func testExpiringKangkongFindsSinigangWithCurrentIngredientAvailability() {
+        let app = launch(screen: "expiring-recipe-flow")
+        XCTAssertTrue(element("home-dashboard-loaded", in: app).waitForExistence(timeout: 10))
+
+        let dashboardScroll = app.scrollViews["home-dashboard-scroll"]
+        let expiringHeading = element("home-expiring-soon-heading", in: app)
+        scrollTargetIntoView(expiringHeading, inside: dashboardScroll, in: app)
+        let expiringItemsScroll = app.scrollViews["home-expiring-items-scroll"]
+        scrollTargetIntoView(expiringItemsScroll, inside: dashboardScroll,
+                             progressAnchor: expiringHeading, in: app)
+        let findKangkongRecipes = element("expiring-find-recipes-15", in: app)
+        XCTAssertTrue(findKangkongRecipes.waitForExistence(timeout: 5),
+                      "The expiring Kangkong card offers a recipe route")
+        if !findKangkongRecipes.isHittable {
+            expiringItemsScroll.swipeLeft()
+        }
+        scrollTargetIntoView(findKangkongRecipes, inside: dashboardScroll,
+                             progressAnchor: expiringHeading, in: app)
+        XCTAssertTrue(findKangkongRecipes.isHittable,
+                      "Find Recipes is visible and usable from the expiring Kangkong card")
+        findKangkongRecipes.tap()
+
+        let ingredientFilter = element("cook-with-pip-ingredient-filter", in: app)
+        XCTAssertTrue(ingredientFilter.waitForExistence(timeout: 10))
+        XCTAssertTrue(ingredientFilter.label.contains("Fresh Kangkong"))
+        let recipeList = app.scrollViews["cook-with-pip-recipe-list-scroll"]
+        let matchingSinigang = element("recipe-card-301", in: app)
+        XCTAssertTrue(matchingSinigang.waitForExistence(timeout: 10),
+                      "The filtered household recipe list includes Sinigang na Baboy")
+        XCTAssertTrue(matchingSinigang.label.contains("Sinigang na Baboy"))
+        scrollTargetIntoView(matchingSinigang, inside: recipeList, in: app)
+        matchingSinigang.tap()
+
+        XCTAssertTrue(element("recipe-detail-title", in: app).waitForExistence(timeout: 10))
+        XCTAssertEqual(element("recipe-safety-status", in: app).label, "Eligible")
+        XCTAssertEqual(element("recipe-availability-status", in: app).label, "Partial")
+        let recipeDetailScroll = app.scrollViews["recipe-detail-scroll"]
+        let porkNeeded = element("recipe-ingredient-needed-0", in: app)
+        scrollTargetIntoView(porkNeeded, inside: recipeDetailScroll, in: app)
+        XCTAssertEqual(element("recipe-ingredient-name-0", in: app).label, "baboy")
+        XCTAssertEqual(element("recipe-ingredient-availability-0", in: app).label, "Partial")
+        XCTAssertEqual(porkNeeded.label, "Needed: 0.5 kg")
+        XCTAssertEqual(element("recipe-ingredient-on-hand-0", in: app).label, "Counted on hand: 0.25 kg")
+        XCTAssertEqual(element("recipe-ingredient-short-0", in: app).label, "Short: 0.25 kg")
+
+        let sampalokMissing = element("recipe-ingredient-availability-1", in: app)
+        scrollTargetIntoView(sampalokMissing, inside: recipeDetailScroll,
+                             progressAnchor: porkNeeded, in: app)
+        XCTAssertEqual(sampalokMissing.label, "Missing")
+        XCTAssertEqual(element("recipe-ingredient-needed-1", in: app).label, "Needed: 45.25 g")
+        XCTAssertEqual(element("recipe-ingredient-short-1", in: app).label, "Short: 45.25 g")
+
+        let kangkongAvailable = element("recipe-ingredient-availability-2", in: app)
+        scrollTargetIntoView(kangkongAvailable, inside: recipeDetailScroll,
+                             progressAnchor: sampalokMissing, in: app)
+        XCTAssertEqual(kangkongAvailable.label, "Available")
+        XCTAssertEqual(element("recipe-ingredient-on-hand-2", in: app).label, "Counted on hand: 500 g")
+        let instructions = element("recipe-instructions", in: app)
+        scrollTargetIntoView(instructions, inside: recipeDetailScroll,
+                             progressAnchor: kangkongAvailable, in: app)
+        XCTAssertTrue(instructions.isHittable,
+                      "The recipe route opens the existing cooking instructions")
+
+        let shoppingPreviewLink = element("recipe-shopping-preview-link", in: app)
+        scrollTargetIntoView(shoppingPreviewLink, inside: recipeDetailScroll,
+                             progressAnchor: instructions, in: app)
+        XCTAssertTrue(shoppingPreviewLink.isHittable)
+        shoppingPreviewLink.tap()
+        XCTAssertTrue(element("recipe-shopping-safety-status", in: app).waitForExistence(timeout: 10))
+        XCTAssertEqual(element("recipe-shopping-availability-status", in: app).label, "Partial")
+        XCTAssertEqual(element("recipe-shopping-name-911", in: app).label, "baboy")
+        XCTAssertEqual(element("recipe-shopping-name-912", in: app).label, "sampalok")
+        let confirmShopping = element("recipe-shopping-confirm", in: app)
+        XCTAssertTrue(confirmShopping.waitForExistence(timeout: 5))
+        XCTAssertTrue(confirmShopping.isEnabled,
+                      "Only the reviewed, eligible shortage lines are selected for confirmation")
+        confirmShopping.tap()
+        let confirmAction = app.buttons.matching(identifier: "recipe-shopping-confirm-action").firstMatch
+        XCTAssertTrue(confirmAction.waitForExistence(timeout: 5))
+        confirmAction.tap()
+        let resultCounts = element("recipe-shopping-result-counts", in: app)
+        XCTAssertTrue(resultCounts.waitForExistence(timeout: 10))
+        XCTAssertEqual(resultCounts.label, "Created 2 · Updated 0 · Unchanged 0 · Consolidated 0")
+        element("recipe-shopping-view-list", in: app).tap()
+        XCTAssertTrue(app.navigationBars["Shopping List"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["baboy"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["sampalok"].exists,
+                      "The confirmed missing ingredients appear in the existing Shopping List")
+    }
+
     func testHomeNavigationAndCaptureRecipeScreens() {
         let app = launch()
         let homeEntry = element("cook-with-pip-entry", in: app)
@@ -181,13 +271,12 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(cancelQuickAdd.waitForExistence(timeout: 5))
         cancelQuickAdd.tap()
         XCTAssertTrue(homeEntry.waitForExistence(timeout: 5))
-        XCTAssertTrue(element("ui-test-fixture-banner", in: app).exists)
-        let emptyPantryTitle = element("home-empty-pantry-title", in: app)
-        let emptyPantryGuidance = element("home-empty-pantry-guidance", in: app)
-        XCTAssertTrue(emptyPantryTitle.waitForExistence(timeout: 5))
-        XCTAssertTrue(emptyPantryGuidance.waitForExistence(timeout: 5))
-        XCTAssertTrue(emptyPantryGuidance.isHittable,
-                      "The home empty-pantry guidance remains accessible on the first screen")
+        XCTAssertFalse(element("ui-test-fixture-banner", in: app).exists,
+                        "The demo must not show a developer fixture banner")
+        let dashboardLoaded = element("home-dashboard-loaded", in: app)
+        XCTAssertTrue(dashboardLoaded.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Fresh Kangkong"].exists,
+                      "The home demo shows believable household inventory")
         capture("Home_Cook_with_Pip", app: app)
         homeEntry.tap()
 
@@ -201,13 +290,13 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(search.isHittable,
                       "Household recipe search remains available after selecting My Recipes")
         search.tap()
-        search.typeText("Bicol Express")
+        search.typeText("Ginisang Kangkong")
         let searchDone = app.buttons["cook-with-pip-search-keyboard-done"]
         XCTAssertTrue(searchDone.waitForExistence(timeout: 5))
         searchDone.tap()
         let searchedRecipe = app.buttons["recipe-card-303"]
         XCTAssertTrue(searchedRecipe.waitForExistence(timeout: 10))
-        XCTAssertTrue(searchedRecipe.label.contains("Test Recipe: Bicol Express"))
+        XCTAssertTrue(searchedRecipe.label.contains("Ginisang Kangkong"))
         XCTAssertTrue(searchedRecipe.isHittable,
                       "The filtered household recipe is visible in the Cook with Pip search state")
         XCTAssertFalse(app.keyboards.firstMatch.isHittable,
@@ -282,7 +371,7 @@ final class CookWithPipUITests: XCTestCase {
             firstInstruction,
             inside: recipeScroll,
             progressAnchor: instructions,
-            targetDescription: "first instruction for Test Recipe: Bicol Express",
+            targetDescription: "first instruction for Ginisang Kangkong",
             in: app
         )
         XCTAssertEqual(firstInstruction.label, "Prepare the measured ingredients.",
@@ -520,8 +609,8 @@ final class CookWithPipUITests: XCTestCase {
         let keyboard = app.keyboards.firstMatch
         XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
         XCTAssertTrue(source.isHittable, "The focused label source stays available with the keyboard open")
-        typeTextAndWait("Synthetic package label", in: source)
-        XCTAssertEqual(source.value as? String, "Synthetic package label")
+        typeTextAndWait("Kara Coconut Milk, Original", in: source)
+        XCTAssertEqual(source.value as? String, "Kara Coconut Milk, Original")
         let keyboardDone = app.buttons["pip-label-keyboard-done"]
         XCTAssertTrue(keyboardDone.waitForExistence(timeout: 5))
         keyboardDone.tap()
@@ -832,7 +921,7 @@ final class CookWithPipUITests: XCTestCase {
         let submit = element("inventory-add-submit", in: app)
         XCTAssertFalse(submit.isEnabled, "A new product still needs an identity and a known unit")
         productName.tap()
-        productName.typeText("Synthetic Quick Add")
+        productName.typeText("Fresh Kangkong")
         XCTAssertFalse(submit.isEnabled, "The app must not assume an unknown product's unit")
         let unitPicker = element("inventory-add-unit-picker", in: app)
         XCTAssertTrue(unitPicker.waitForExistence(timeout: 5))
@@ -1362,7 +1451,7 @@ final class CookWithPipUITests: XCTestCase {
             XCTAssertTrue(button.isHittable, "The recipe filter remains usable while search is focused")
         }
         capture("Cook_with_Pip_Search_Keyboard", app: searchApp)
-        search.typeText("Laing")
+        search.typeText("Chicken Adobo")
         let matchingRecipe = element("recipe-card-302", in: searchApp)
         XCTAssertTrue(matchingRecipe.waitForExistence(timeout: 10))
         let recipeScrollView = searchApp.scrollViews["cook-with-pip-recipe-list-scroll"]
@@ -1423,8 +1512,8 @@ final class CookWithPipUITests: XCTestCase {
     private func openCookWithPip(_ app: XCUIApplication, timeout: TimeInterval = 10) {
         let entry = element("cook-with-pip-entry", in: app)
         XCTAssertTrue(entry.waitForExistence(timeout: timeout))
-        let homeGuidance = element("home-empty-pantry-guidance", in: app)
-        XCTAssertTrue(homeGuidance.waitForExistence(timeout: timeout),
+        let dashboardLoaded = element("home-dashboard-loaded", in: app)
+        XCTAssertTrue(dashboardLoaded.waitForExistence(timeout: timeout),
                       "The home dashboard finishes rendering before navigation")
         XCTAssertTrue(entry.isHittable,
                       "The Cook with Pip navigation link is visible before it is tapped")
@@ -1457,7 +1546,7 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(recipeList.waitForExistence(timeout: 5))
         scrollTargetIntoView(recipe, inside: recipeList, progressAnchor: myRecipes, in: app)
         XCTAssertTrue(recipe.exists, "The selected My Recipes list contains the saved preview fixture")
-        XCTAssertTrue(recipe.label.contains("Test Recipe: Ginataang Kangkong"))
+        XCTAssertTrue(recipe.label.contains("Ginataang Kangkong"))
         recipe.tap()
         let recipeTitle = app.staticTexts["recipe-detail-title"]
         XCTAssertTrue(recipeTitle.waitForExistence(timeout: 10),
@@ -1822,13 +1911,13 @@ extension CookWithPipUITests {
         XCTAssertEqual(allergyConsent.value as? String, "0", "Allergy sharing remains separately disabled")
         assertReachable(chatConsent, in: app)
         assertReachable(allergyConsent, in: app)
-        capture("Pip_Chat_Consent_Enabled_Synthetic", app: app)
+        capture("Pip_Chat_Consent_Enabled", app: app)
 
         let input = element("pip-chat-input", in: app)
         XCTAssertTrue(input.waitForExistence(timeout: 15))
         scrollTargetIntoView(input, inside: chatScroll, in: app)
         input.tap()
-        input.typeText("How much synthetic jasmine rice is in my pantry?")
+        input.typeText("How much kangkong do I have in the pantry?")
         let send = app.buttons["pip-chat-send"]
         XCTAssertTrue(send.isEnabled)
         send.tap()
@@ -1842,7 +1931,7 @@ extension CookWithPipUITests {
                          "Pip Chat displayed an error instead of a provider response")
         scrollTargetIntoView(assistantReply, inside: chatScroll, in: app)
         assertReachable(assistantReply, in: app)
-        capture("Pip_Chat_Staging_Live_Response_Synthetic", app: app)
+        capture("Pip_Chat_Staging_Live_Response", app: app)
     }
 
     func testStagingPipChatContextAndShoppingPreviewRoutes() throws {
@@ -1909,7 +1998,7 @@ extension CookWithPipUITests {
                       "Chat opens the existing review screen without confirming changes")
         XCTAssertFalse(app.alerts.firstMatch.exists,
                        "No confirmation dialog appears until the user starts the existing confirmation flow")
-        capture("Pip_Chat_Shopping_Preview_Staging_Synthetic", app: app)
+        capture("Pip_Chat_Shopping_Preview_Staging", app: app)
 
         navigateBack(app, to: chatInput, screen: "Pip Chat")
         navigateBack(app, to: element("recipe-detail-title", in: app), screen: "Recipe Detail")

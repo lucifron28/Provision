@@ -154,6 +154,7 @@ public struct HomeView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 24)
             }
+            .accessibilityIdentifier("home-dashboard-scroll")
             .background(ProvisionTheme.background.ignoresSafeArea())
             .refreshable {
                 await viewModel.loadDashboard()
@@ -662,6 +663,7 @@ public struct HomeView: View {
                 Text("Expiring Soon")
                     .font(.system(size: 18, weight: .bold, design: .serif))
                     .foregroundStyle(ProvisionTheme.textPrimary)
+                    .accessibilityIdentifier("home-expiring-soon-heading")
 
                 Spacer()
 
@@ -703,6 +705,7 @@ public struct HomeView: View {
                     }
                     .padding(.vertical, 2)
                 }
+                .accessibilityIdentifier("home-expiring-items-scroll")
             }
         }
     }
@@ -741,21 +744,56 @@ public struct HomeView: View {
                     .foregroundStyle(ProvisionTheme.textSecondary)
             }
 
-            Button {
-                itemToConsume = item
-                consumeAmountText = ProductUnits.formatAmount(min(1, item.remaining_quantity))
-            } label: {
-                HStack {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 11, weight: .bold))
-                    Text("Consume")
-                        .font(.system(size: 12, weight: .semibold))
+            if item.days_until_expiration < 0 {
+                Label("Expired · not recipe eligible", systemImage: "xmark.octagon.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(ProvisionTheme.redAlert)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("expiring-expired-safety-\(item.batch_id)")
+            } else {
+                Button {
+                    itemToConsume = item
+                    consumeAmountText = ProductUnits.formatAmount(min(1, item.remaining_quantity))
+                } label: {
+                    HStack {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .bold))
+                        Text("Consume")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                    .background(ProvisionTheme.provisionGreenLight)
+                    .foregroundStyle(ProvisionTheme.provisionGreen)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
-                .background(ProvisionTheme.provisionGreenLight)
-                .foregroundStyle(ProvisionTheme.provisionGreen)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                if let scope = activeCookWithPipScope {
+                    NavigationLink {
+                        CookWithPipView(
+                            scope: scope,
+                            service: cookWithPipService,
+                            chatService: cookWithPipChatService,
+                            workflowService: cookWithPipWorkflowService,
+                            pendingStore: cookWithPipPendingStore,
+                            onShoppingConfirmed: onShoppingConfirmed,
+                            onNavigateToShopping: onNavigateToShopping,
+                            initialMode: .myRecipes,
+                            inventoryBatchID: item.batch_id,
+                            ingredientFilterLabel: item.product_name
+                        )
+                    } label: {
+                        Label("Find Recipes", systemImage: "book.closed")
+                            .font(.system(size: 12, weight: .semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                            .background(ProvisionTheme.surfaceSecondary)
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("expiring-find-recipes-\(item.batch_id)")
+                    .accessibilityHint("Shows stored recipes using this item and current food-safety status.")
+                }
             }
         }
         .padding(14)
