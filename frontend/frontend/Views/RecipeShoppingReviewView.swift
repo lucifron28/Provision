@@ -115,7 +115,10 @@ public struct RecipeShoppingReviewView: View {
             }
         }
         .alert("Add the selected recipe ingredients to the household shopping list?", isPresented: $showingConfirmation) {
-            Button("Confirm shopping changes") { Task { await confirmSelectedLines() } }
+            Button("Confirm shopping changes") {
+                showingConfirmation = false
+                Task { await confirmSelectedLines() }
+            }
                 .accessibilityIdentifier("recipe-shopping-confirm-action")
             Button("Keep reviewing", role: .cancel) {}
         } message: {
