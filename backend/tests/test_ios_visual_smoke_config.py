@@ -93,10 +93,11 @@ def test_gallery_covers_all_ui_methods_and_keeps_full_result_bundles():
     assert "schedule:" in workflow
     assert "- full-gallery" in workflow
     assert "- gallery-regressions" in workflow
+    assert "- shopping-preview-regressions" in workflow
     assert "- large-text-regressions" in workflow
     assert "- toggle-regressions" in workflow
     assert "- shopping-recovery" in workflow
-    assert len(methods) == 29
+    assert len(methods) == 30
     assert all(f'"{method}"' in workflow for method in methods)
     assert "build-for-testing" in workflow
     assert "test-without-building" in workflow

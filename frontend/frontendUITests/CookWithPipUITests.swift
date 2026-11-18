@@ -748,8 +748,12 @@ final class CookWithPipUITests: XCTestCase {
         scrollTargetIntoView(shoppingPreview, inside: app.scrollViews["recipe-detail-scroll"], in: app)
         XCTAssertTrue(shoppingPreview.isHittable)
         shoppingPreview.tap()
+        let appliedSubstitutionsHeading = element("recipe-shopping-applied-substitutions", in: app)
+        XCTAssertTrue(appliedSubstitutionsHeading.waitForExistence(timeout: 5))
+        XCTAssertEqual(appliedSubstitutionsHeading.label, "Applied substitutions")
         let appliedShoppingSubstitution = element("recipe-shopping-applied-substitution-0", in: app)
         XCTAssertTrue(appliedShoppingSubstitution.waitForExistence(timeout: 10))
+        XCTAssertTrue(appliedShoppingSubstitution.isHittable)
         XCTAssertTrue(appliedShoppingSubstitution.label.contains("calamansi"))
         XCTAssertTrue(appliedShoppingSubstitution.label.contains("sampalok"))
         capture("Shopping_Preview_Applied_Substitution", app: app)
@@ -902,6 +906,8 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertEqual(actionSummary.label, "Add 100 g kangkong to shopping list")
         let quantityDetails = element("recipe-shopping-quantity-details-901", in: app)
         XCTAssertEqual(quantityDetails.value as? String, "Collapsed")
+        XCTAssertFalse(element("recipe-shopping-unlinked-9920", in: app).exists,
+                        "The ready preview fixture does not include an unlinked manual item")
         capture("Shopping_Preview_Ready", app: app)
         quantityDetails.tap()
         let requiredQuantity = element("recipe-shopping-quantity-required-901", in: app)
@@ -909,16 +915,9 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(requiredQuantity.label.contains("120 g"))
         XCTAssertEqual(quantityDetails.value as? String, "Expanded")
         quantityDetails.tap()
-        let unlinked = element("recipe-shopping-unlinked-9920", in: app)
-        scrollTargetIntoView(unlinked, inside: shoppingForm, progressAnchor: safetyStatus, in: app)
-        XCTAssertTrue(unlinked.exists)
-        XCTAssertTrue(unlinked.isHittable)
-        capture("Shopping_Unlinked_Manual_Items", app: app)
 
         let includeOptional = app.switches["recipe-shopping-include-optional"]
-        scrollTargetIntoView(includeOptional, inside: shoppingForm,
-                             progressAnchor: unlinked, in: app,
-                             initialDirection: .towardStart)
+        scrollTargetIntoView(includeOptional, inside: shoppingForm, progressAnchor: safetyStatus, in: app)
         guard setSwitch(includeOptional, to: "1") else { return }
         let stalePreview = element("recipe-shopping-stale-preview", in: app)
         XCTAssertTrue(stalePreview.waitForExistence(timeout: 5))
@@ -965,6 +964,17 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["kangkong"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["gata"].exists)
         capture("Shopping_List_Updated", app: app)
+    }
+
+    func testShoppingPreviewShowsUnlinkedManualItems() {
+        let app = launch(scenario: "shopping-unlinked-manual")
+        openShoppingPreview(app)
+
+        let unlinked = element("recipe-shopping-unlinked-9920", in: app)
+        XCTAssertTrue(unlinked.waitForExistence(timeout: 10))
+        XCTAssertTrue(unlinked.isHittable)
+        XCTAssertTrue(unlinked.label.contains("manual market note"))
+        capture("Shopping_Unlinked_Manual_Items", app: app)
     }
 
     func testShoppingPreviewDarkAndLargeTextStates() {

@@ -17,6 +17,7 @@ on:
           - full-gallery
           - gallery-regressions
           - large-text-regressions
+          - shopping-preview-regressions
           - toggle-regressions
           - shopping-recovery
           - ux-workflow-regressions
@@ -72,6 +73,7 @@ jobs:
                   "testCookWithPipSearchKeyboardGallery",
                   "testShoppingReviewRequiredAndBlockedStates",
                   "testShoppingPreviewEditsConsolidationAndExplicitConfirmation",
+                  "testShoppingPreviewShowsUnlinkedManualItems",
                   "testSourceLookupErrorKeepsRecipeAndCanRetry",
                   "testPreferencesAllergySettings",
                 ],
@@ -131,6 +133,11 @@ jobs:
                 "testPartialInventoryDiscardUsesActualCountAndUpdatesStock",
                 "testPurchasedGroceriesReviewRequiresExplicitDecisions",
               ])],
+              "shopping-preview-regressions": [focused("shopping-preview-regressions", [
+                "testSubstitutionChoicesUseStoredAmountsAndRefreshEvaluation",
+                "testShoppingPreviewEditsConsolidationAndExplicitConfirmation",
+                "testShoppingPreviewShowsUnlinkedManualItems",
+              ])],
               "large-text-regressions": [focused("large-text-regressions", [
                 "testLargeTextFilipinoRecipeSafetyGallery",
                 "testCookWithPipSearchKeyboardGallery",
@@ -165,6 +172,7 @@ jobs:
               const priorSuccess = data.workflow_runs.find(run => {
               const isFocusedRun = [
                 "gallery-regressions",
+                "shopping-preview-regressions",
                 "large-text-regressions",
                 "toggle-regressions",
                 "shopping-recovery",
@@ -182,6 +190,7 @@ jobs:
 
             const focusedManifest = {
               "gallery-regressions": ".github/scripts/required_ios_gallery_regressions.json",
+              "shopping-preview-regressions": ".github/scripts/required_ios_shopping_preview_regressions.json",
               "large-text-regressions": ".github/scripts/required_ios_large_text_regressions.json",
               "toggle-regressions": ".github/scripts/required_ios_toggle_regressions.json",
               "shopping-recovery": ".github/scripts/required_ios_shopping_recovery_regressions.json",

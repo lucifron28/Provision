@@ -188,7 +188,7 @@ public struct RecipeShoppingReviewView: View {
     }
 
     private func appliedSubstitutionsSection(_ preview: RecipeShoppingPreview) -> some View {
-        Section("Applied substitutions") {
+        Section {
             ForEach(Array(preview.substitutions.enumerated()), id: \.offset) { entry in
                 let substitution = entry.element
                 let original = recipe.ingredients.indices.contains(substitution.requirement_index)
@@ -200,8 +200,10 @@ public struct RecipeShoppingReviewView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("recipe-shopping-applied-substitution-\(entry.offset)")
             }
+        } header: {
+            Text("Applied substitutions")
+                .accessibilityIdentifier("recipe-shopping-applied-substitutions")
         }
-        .accessibilityIdentifier("recipe-shopping-applied-substitutions")
     }
 
     @ViewBuilder

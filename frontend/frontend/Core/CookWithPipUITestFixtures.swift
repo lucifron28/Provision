@@ -443,6 +443,10 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
             expiration = ISO8601DateFormatter().string(from: Date().addingTimeInterval(lifetime))
         }
         await counter.setPreviewRecipeID(request.recipe_id)
+        let unlinkedManualItems = scenario == "shopping-unlinked-manual"
+            ? [UnlinkedShoppingReview(item_id: 9920, name: "manual market note",
+                quantity: Self.quantity("1"), unit: nil, candidate_ingredient_ids: [], reason: "not_linked")]
+            : []
         return RecipeShoppingPreview(
             preview_id: "synthetic-preview-\(request.recipe_id)-\(request.expected_recipe_revision)",
             expires_at: expiration,
@@ -452,8 +456,7 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
             shopping_revision: 3, inventory_revision: 7,
             included_requirement_indexes: request.include_optional ? [0, 1, 2] : [0, 1], safety: readySafety,
             lines: request.include_optional ? [firstLine, secondLine, optionalLine] : [firstLine, secondLine],
-            unlinked_manual_items: [UnlinkedShoppingReview(item_id: 9920, name: "manual market note",
-                quantity: Self.quantity("1"), unit: nil, candidate_ingredient_ids: [], reason: "not_linked")]
+            unlinked_manual_items: unlinkedManualItems
         )
     }
 
