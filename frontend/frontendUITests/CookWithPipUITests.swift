@@ -331,6 +331,14 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(explanation.waitForExistence(timeout: 5))
         XCTAssertTrue(explanation.label.contains("Review the package label"),
                       "The review card gives a concrete package-label action")
+        XCTAssertTrue(explanation.label.contains("cannot match kangkong to an ingredient in its catalog"),
+                      "The review card identifies the unresolved ingredient mapping")
+        XCTAssertTrue(explanation.label.contains("cannot check pantry stock or ingredient-based safety"),
+                      "The review card explains which checks remain unavailable")
+        XCTAssertTrue(explanation.label.contains("stays under review until the match is corrected"),
+                      "The review card keeps the recipe in review until its ingredient is identified")
+        XCTAssertFalse(explanation.label.contains("Check quantities and units for kangkong"),
+                       "Ingredient mapping uncertainty must not be mislabeled as a quantity issue")
         scrollTargetIntoView(candidate, inside: app.scrollViews["cook-with-pip-recipe-list-scroll"], in: app)
         XCTAssertTrue(candidate.isHittable, "The review card remains tappable after deterministic scrolling")
         capture("Cook_with_Pip_Needs_Review", app: app)

@@ -349,14 +349,23 @@ public struct CookWithPipView: View {
         if candidate.reasons.contains("product_allergen_label_not_reviewed") {
             actions.append("Review the package label in Preferences and product labels.")
         }
-        if candidate.reasons.contains("ingredient_unresolved_or_ambiguous") {
-            actions.append("Resolve the ingredient name or choose a catalog ingredient.")
+        let ingredientMappingNeedsReview = candidate.reasons.contains(where: {
+            ["ingredient_mapping_unknown", "ingredient_unresolved_or_ambiguous", "ambiguous_ingredient_name",
+             "ingredient_name_not_found", "ingredient_reference_missing"].contains($0)
+        })
+        if ingredientMappingNeedsReview {
+            let ingredients = candidate.unknown_ingredients.joined(separator: ", ")
+            let subject = ingredients.isEmpty ? "the unresolved ingredient" : ingredients
+            let explanation = "Provision cannot match \(subject) to an ingredient in its catalog, " +
+                "so it cannot check pantry stock or ingredient-based safety. " +
+                "This recipe stays under review until the match is corrected."
+            actions.append(explanation)
         }
         if candidate.reasons.contains("recipe_content_permission_not_declared") ||
             candidate.reasons.contains("recipe_source_unavailable") {
             actions.append("Review the recipe's source and content permission.")
         }
-        if !candidate.unknown_ingredients.isEmpty {
+        if !candidate.unknown_ingredients.isEmpty && !ingredientMappingNeedsReview {
             actions.append("Check quantities and units for \(candidate.unknown_ingredients.joined(separator: ", ")).")
         }
         if !actions.isEmpty {

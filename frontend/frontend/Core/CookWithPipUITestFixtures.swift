@@ -290,7 +290,7 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
         let excludedCandidates: [ExcludedRecipeCandidate] = scenario == "recipes-needs-review" && payload.mode == "cook_now"
             ? [ExcludedRecipeCandidate(recipe_id: 303, title: "Test Recipe: Bicol Express",
                 status: "review_required", reasons: ["ingredient_mapping_unknown", "product_allergen_label_not_reviewed"],
-                unknown_ingredients: [])]
+                unknown_ingredients: ["kangkong"])]
             : []
         let matching = candidates.filter { recommendation in
             guard let query = payload.query, !query.isEmpty else { return true }
