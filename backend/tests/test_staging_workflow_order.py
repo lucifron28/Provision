@@ -257,7 +257,11 @@ def test_api_smoke_cleanup_preserves_another_run_owned_stale_household(
 
         def request(self, method, url, **kwargs):
             kwargs.pop("timeout", None)
-            return unauthed_client.request(method, urlsplit(url).path, **kwargs)
+            parsed_url = urlsplit(url)
+            path = parsed_url.path
+            if parsed_url.query:
+                path = f"{path}?{parsed_url.query}"
+            return unauthed_client.request(method, path, **kwargs)
 
         def get(self, url, **kwargs):
             return self.request("GET", url, **kwargs)

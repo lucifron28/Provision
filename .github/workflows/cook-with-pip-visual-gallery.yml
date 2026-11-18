@@ -71,6 +71,7 @@ jobs:
                   "testCookWithPipDarkModeGallery",
                   "testLargeTextFilipinoRecipeSafetyGallery",
                   "testCookWithPipSearchKeyboardGallery",
+                  "testExpiringKangkongFindsSinigangWithCurrentIngredientAvailability",
                   "testShoppingReviewRequiredAndBlockedStates",
                   "testShoppingPreviewEditsConsolidationAndExplicitConfirmation",
                   "testShoppingPreviewShowsUnlinkedManualItems",

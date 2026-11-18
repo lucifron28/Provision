@@ -268,10 +268,15 @@ def api_smoke() -> None:
                 client, "GET", "/ingredients/?query=kangkong", headers=first_headers
             ).json()
             ingredient = next(
-                (item for item in ingredient_lookup.get("results", []) if item.get("canonical_name") == "kangkong"),
+                (
+                    item
+                    for item in ingredient_lookup.get("results", [])
+                    if item.get("canonical_name") == "water spinach"
+                    and item.get("matched_alias") == "kangkong"
+                ),
                 None,
             )
-            _expect(ingredient is not None, "The staging ingredient catalog did not return kangkong")
+            _expect(ingredient is not None, "The staging ingredient catalog could not resolve kangkong")
             ingredient_id = ingredient["id"]
 
             created = _request(
@@ -533,9 +538,11 @@ def api_smoke() -> None:
                 },
             ).json()
             _expect(preview.get("safety", {}).get("decision") == "eligible", "Shopping preview was not safety eligible")
+            preview_line = preview.get("lines", [{}])[0]
             _expect(
-                Decimal(str(preview.get("lines", [{}])[0].get("shortage"))) == Decimal("2"),
-                "Shopping preview did not preserve the exact inventory shortage",
+                preview_line.get("unit") == "g"
+                and Decimal(str(preview_line.get("shortage"))) == Decimal("100"),
+                "Shopping preview did not preserve the exact 100 g Kangkong shortage",
             )
             confirm_payload = {
                 "preview_id": preview["preview_id"],

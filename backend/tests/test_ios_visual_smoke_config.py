@@ -131,7 +131,7 @@ def test_gallery_covers_gallery_methods_and_keeps_full_result_bundles():
     assert "- large-text-regressions" in workflow
     assert "- toggle-regressions" in workflow
     assert "- shopping-recovery" in workflow
-    assert len(gallery_methods) == 31
+    assert len(gallery_methods) == 32
     assert live_only_methods <= methods
     assert all(f'"{method}"' in workflow for method in gallery_methods)
     assert all(f'"{method}"' not in workflow for method in live_only_methods)
