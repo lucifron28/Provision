@@ -1570,8 +1570,9 @@ public struct IntakeItemReviewSheet: View {
                         .font(.system(size: 13, weight: .semibold))
                 }
                 .foregroundStyle(ProvisionTheme.provisionGreen)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("intake-register-product-disclosure")
             }
-            .accessibilityIdentifier("intake-register-product-disclosure")
         }
         .padding(12)
         .background(ProvisionTheme.amberLight)
