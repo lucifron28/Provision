@@ -2287,13 +2287,18 @@ extension CookWithPipUITests {
                     let nameField = element("intake-register-product-name", in: app)
                     XCTAssertTrue(nameField.waitForExistence(timeout: 5))
                     replaceText(nameField, with: productName)
-                    if let brand = item.brand {
-                        replaceText(element("intake-register-product-brand", in: app), with: brand)
-                    }
                     let registrationKeyboardDone = app.buttons["intake-register-keyboard-done"]
                     XCTAssertTrue(registrationKeyboardDone.waitForExistence(timeout: 5),
                                   "The receipt product form should expose a keyboard dismissal action")
                     registrationKeyboardDone.tap()
+                    if let brand = item.brand {
+                        let brandField = element("intake-register-product-brand", in: app)
+                        scrollTargetIntoView(brandField, inside: detailScroll, in: app)
+                        replaceText(brandField, with: brand)
+                        XCTAssertTrue(registrationKeyboardDone.waitForExistence(timeout: 5),
+                                      "The receipt product form should expose a keyboard dismissal action for the brand")
+                        registrationKeyboardDone.tap()
+                    }
                     if let category = item.category {
                         chooseReceiptPickerValue("intake-register-product-category", value: category, scroll: detailScroll, app: app)
                     }
