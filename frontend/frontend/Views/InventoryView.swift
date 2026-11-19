@@ -54,6 +54,12 @@ public struct InventoryView: View {
                 resultCountBar
                     .padding(.horizontal, 16)
                     .padding(.bottom, 6)
+
+                if !viewModel.filteredProducts.isEmpty {
+                    stockInsight
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 4)
+                }
                 
                 // Products List
                 if viewModel.isLoading && viewModel.products.isEmpty {
@@ -389,6 +395,31 @@ public struct InventoryView: View {
         }
     }
 
+    private var stockInsight: some View {
+        let lowStockCount = viewModel.filteredProducts.filter { product in
+            product.isLowStock || ((product.total_remaining_quantity ?? 0) > 0
+                && (product.total_remaining_quantity ?? 0) <= 2)
+        }.count
+        return HStack(spacing: 8) {
+            Image("pip_guardian")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 38, height: 38)
+                .accessibilityHidden(true)
+            Text(lowStockCount == 0
+                ? "Review freshness dates as you update pantry quantities."
+                : "\(lowStockCount) groceries are running low. Check these amounts before shopping.")
+                .font(.footnote)
+                .foregroundStyle(ProvisionTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .provisionCard(backgroundColor: ProvisionTheme.surfaceSecondary)
+        .accessibilityIdentifier("inventory-stock-insight")
+    }
+
     private var isAnyFilterActive: Bool {
         !viewModel.searchText.isEmpty ||
         viewModel.selectedCategory != nil ||
@@ -516,31 +547,48 @@ public struct InventoryView: View {
     private var emptyInventoryState: some View {
         VStack(spacing: 16) {
             Spacer()
-            Image(systemName: "tray.fill")
-                .font(.system(size: 48))
-                .foregroundStyle(ProvisionTheme.textTertiary)
-            
-            Text("No Products Found")
+            Image("pip_guardian")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 72, height: 72)
+                .accessibilityHidden(true)
+
+            Text(viewModel.products.isEmpty ? "Your pantry is ready to fill" : "No groceries match this view")
                 .font(.system(size: 18, weight: .bold, design: .serif))
                 .foregroundStyle(ProvisionTheme.textPrimary)
-            
-            Text("Try clearing your search or category filters, or scan new items into your pantry.")
+
+            Text(emptyInventoryMessage)
                 .font(.system(size: 14))
                 .foregroundStyle(ProvisionTheme.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
-            
-            if !viewModel.searchText.isEmpty || viewModel.selectedCategory != nil {
-                Button("Reset All Filters") {
+
+            if hasInventoryFilters {
+                Button("Clear filters") {
                     viewModel.searchText = ""
                     viewModel.selectedCategory = nil
+                    viewModel.selectedLocationId = nil
                     viewModel.applyFilter(.all)
                 }
                 .foregroundStyle(ProvisionTheme.provisionGreen)
                 .padding(.top, 4)
+                .accessibilityIdentifier("inventory-empty-clear-filters")
             }
             Spacer()
         }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var hasInventoryFilters: Bool {
+        !viewModel.searchText.isEmpty || viewModel.selectedCategory != nil
+            || viewModel.selectedLocationId != nil || viewModel.activeQuickFilter != .all
+    }
+
+    private var emptyInventoryMessage: String {
+        if hasInventoryFilters {
+            return "Try another search or clear filters to see your household stock."
+        }
+        return "Add kangkong, eggs, or other groceries to start tracking quantities and freshness."
     }
     
     private func statusColor(for product: Product) -> Color {

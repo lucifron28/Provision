@@ -685,8 +685,11 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
         guard let recipe = recipes.first(where: { $0.id == targetRecipeID }) else {
             throw APIError.http(status: 404, detail: nil, retryAfter: nil)
         }
+        let reply = opensShoppingPreview
+            ? "Sa current check ng Ginataang Kangkong, kulang ang 100 g kangkong at 150 mL gata. Review the shopping preview; walang maidadagdag hangga't hindi mo kinukumpirma."
+            : "May Sinigang na Baboy sa recipes natin. Kailangan nito ng 120 g kangkong, at 120 g ang nasa pantry ngayon. Pasok ang kasalukuyang recipe check; buksan ang recipe para tingnan ang iba pang sangkap at safety details."
         return PipChatResponse(
-            reply: "Sige, puwede tayong tumingin sa household recipes. Check the verified recipe details in Cook with Pip.",
+            reply: reply,
             language: "taglish",
             actions: [PipChatAction(kind: actionKind, reference: "R1", recipeID: recipe.id,
                                     title: recipe.title)],

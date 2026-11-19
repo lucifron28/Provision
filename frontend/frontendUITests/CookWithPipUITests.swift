@@ -24,7 +24,7 @@ final class CookWithPipUITests: XCTestCase {
         app.buttons["pip-chat-send"].tap()
 
         let reply = app.staticTexts[
-            "Sige, puwede tayong tumingin sa household recipes. Check the verified recipe details in Cook with Pip."
+            "May Sinigang na Baboy sa recipes natin. Kailangan nito ng 120 g kangkong, at 120 g ang nasa pantry ngayon. Pasok ang kasalukuyang recipe check; buksan ang recipe para tingnan ang iba pang sangkap at safety details."
         ]
         XCTAssertTrue(reply.waitForExistence(timeout: 10))
         let recipeCard = element("pip-chat-recipe-card-301", in: app)
@@ -53,6 +53,11 @@ final class CookWithPipUITests: XCTestCase {
         prompt.tap()
         XCTAssertEqual(input.value as? String, "What ingredients am I missing?")
         app.buttons["pip-chat-send"].tap()
+        let shoppingReply = app.staticTexts.containing(
+            NSPredicate(format: "label CONTAINS %@", "kulang ang 100 g kangkong")
+        ).firstMatch
+        XCTAssertTrue(shoppingReply.waitForExistence(timeout: 10),
+                      "The scripted reply uses the recipe check's exact kangkong shortfall")
 
         let previewAction = element("pip-chat-open-shopping-preview-305", in: app)
         XCTAssertTrue(previewAction.waitForExistence(timeout: 10))
@@ -90,7 +95,15 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(chatConsent.isHittable)
         scrollTargetIntoView(allergyConsent, inside: chatScroll, progressAnchor: chatConsent, in: app)
         XCTAssertTrue(allergyConsent.isHittable)
-        XCTAssertTrue(element("pip-chat-data-notice", in: app).waitForExistence(timeout: 10))
+        let privacyDetails = element("pip-chat-privacy-details", in: app)
+        XCTAssertTrue(privacyDetails.waitForExistence(timeout: 10))
+        scrollTargetIntoView(privacyDetails, inside: chatScroll, progressAnchor: allergyConsent, in: app)
+        XCTAssertTrue(privacyDetails.isHittable)
+        privacyDetails.tap()
+        let privacyNotice = element("pip-chat-data-notice", in: app)
+        XCTAssertTrue(privacyNotice.waitForExistence(timeout: 5))
+        scrollTargetIntoView(privacyNotice, inside: chatScroll, progressAnchor: privacyDetails, in: app)
+        XCTAssertTrue(privacyNotice.isHittable)
         capturePipChat("Pip_Chat_Dark_Large_Text", app: app)
     }
 
@@ -128,7 +141,8 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [allergyConsentEnabled], timeout: 10), .completed)
         XCTAssertTrue(allergyConsent.isEnabled)
         XCTAssertTrue(allergyConsent.isHittable)
-        XCTAssertTrue(element("pip-chat-data-notice", in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(element("pip-chat-privacy-details", in: app).waitForExistence(timeout: 5),
+                      "Full privacy details remain available after chat consent")
         capturePipChat("Pip_Chat_Consent_Controls", app: app)
     }
 
@@ -208,27 +222,31 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(element("recipe-detail-title", in: app).waitForExistence(timeout: 10))
         XCTAssertEqual(element("recipe-safety-status", in: app).label, "Eligible")
         XCTAssertEqual(element("recipe-availability-status", in: app).label, "Partial")
+        XCTAssertTrue(element("recipe-ingredient-availability-overview", in: app).exists)
+        XCTAssertTrue(element("recipe-ingredient-availability-summary-0", in: app).label.contains("Have 0.25 kg"))
+        XCTAssertTrue(element("recipe-ingredient-availability-summary-0", in: app).label.contains("Missing 0.25 kg"))
+        XCTAssertTrue(element("recipe-ingredient-availability-summary-1", in: app).label.contains("Missing 45.25 g"))
         let recipeDetailScroll = app.scrollViews["recipe-detail-scroll"]
         let porkNeeded = element("recipe-ingredient-needed-0", in: app)
         scrollTargetIntoView(porkNeeded, inside: recipeDetailScroll, in: app)
         XCTAssertEqual(element("recipe-ingredient-name-0", in: app).label, "baboy")
         XCTAssertEqual(element("recipe-ingredient-availability-0", in: app).label, "Partial")
-        XCTAssertEqual(porkNeeded.label, "Needed: 0.5 kg")
-        XCTAssertEqual(element("recipe-ingredient-on-hand-0", in: app).label, "Counted on hand: 0.25 kg")
-        XCTAssertEqual(element("recipe-ingredient-short-0", in: app).label, "Short: 0.25 kg")
+        XCTAssertEqual(porkNeeded.label, "Need: 0.5 kg")
+        XCTAssertEqual(element("recipe-ingredient-on-hand-0", in: app).label, "Have: 0.25 kg")
+        XCTAssertEqual(element("recipe-ingredient-short-0", in: app).label, "Missing: 0.25 kg")
 
         let sampalokMissing = element("recipe-ingredient-availability-1", in: app)
         scrollTargetIntoView(sampalokMissing, inside: recipeDetailScroll,
                              progressAnchor: porkNeeded, in: app)
         XCTAssertEqual(sampalokMissing.label, "Missing")
-        XCTAssertEqual(element("recipe-ingredient-needed-1", in: app).label, "Needed: 45.25 g")
-        XCTAssertEqual(element("recipe-ingredient-short-1", in: app).label, "Short: 45.25 g")
+        XCTAssertEqual(element("recipe-ingredient-needed-1", in: app).label, "Need: 45.25 g")
+        XCTAssertEqual(element("recipe-ingredient-short-1", in: app).label, "Missing: 45.25 g")
 
         let kangkongAvailable = element("recipe-ingredient-availability-2", in: app)
         scrollTargetIntoView(kangkongAvailable, inside: recipeDetailScroll,
                              progressAnchor: sampalokMissing, in: app)
         XCTAssertEqual(kangkongAvailable.label, "Available")
-        XCTAssertEqual(element("recipe-ingredient-on-hand-2", in: app).label, "Counted on hand: 500 g")
+        XCTAssertEqual(element("recipe-ingredient-on-hand-2", in: app).label, "Have: 500 g")
         let instructions = element("recipe-instructions", in: app)
         scrollTargetIntoView(instructions, inside: recipeDetailScroll,
                              progressAnchor: kangkongAvailable, in: app)
@@ -239,6 +257,7 @@ final class CookWithPipUITests: XCTestCase {
         scrollTargetIntoView(shoppingPreviewLink, inside: recipeDetailScroll,
                              progressAnchor: instructions, in: app)
         XCTAssertTrue(shoppingPreviewLink.isHittable)
+        XCTAssertTrue(shoppingPreviewLink.label.contains("Review shopping list"))
         shoppingPreviewLink.tap()
         XCTAssertTrue(element("recipe-shopping-safety-status", in: app).waitForExistence(timeout: 10))
         XCTAssertEqual(element("recipe-shopping-availability-status", in: app).label, "Partial")

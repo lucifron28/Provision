@@ -160,6 +160,7 @@ private struct RecipeDetailContents: View {
         VStack(alignment: .leading, spacing: 18) {
             titleSection
             evaluationSection
+            ingredientAvailabilityOverview
             workflowActions
             if dynamicTypeSize.isAccessibilitySize {
                 summarySection
@@ -237,7 +238,7 @@ private struct RecipeDetailContents: View {
                                          onShoppingConfirmed: onShoppingConfirmed,
                                          onNavigateToShopping: onNavigateToShopping)
             } label: {
-                Label("Preview shopping list changes", systemImage: "cart.badge.plus")
+                Label("Review shopping list", systemImage: "cart.badge.plus")
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             }
             .accessibilityIdentifier("recipe-shopping-preview-link")
@@ -342,7 +343,7 @@ private struct RecipeDetailContents: View {
                 .foregroundStyle(ProvisionTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("recipe-safety-notice")
-            Text("Evaluation uses all active household members unless the server request names diners.")
+            Text("Food-safety checks include all active household members unless you select specific diners.")
                 .font(.footnote)
                 .foregroundStyle(ProvisionTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -372,6 +373,55 @@ private struct RecipeDetailContents: View {
                 StatusPill(presentation: .availability(evaluation.result.availability.overall_status))
                     .accessibilityIdentifier("recipe-availability-status")
             }
+        }
+    }
+
+    @ViewBuilder
+    private var ingredientAvailabilityOverview: some View {
+        if !requiredIngredients.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Ingredient check")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+                    .accessibilityAddTraits(.isHeader)
+                ForEach(requiredIngredients, id: \.self) { index in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(recipe.ingredients[index].display_name)
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+                        ingredientAvailabilitySummary(index)
+                            .font(.footnote.weight(.semibold))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("recipe-ingredient-availability-summary-\(index)")
+                    }
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .provisionCard(backgroundColor: ProvisionTheme.surfaceSecondary)
+            .accessibilityIdentifier("recipe-ingredient-availability-overview")
+        }
+    }
+
+    @ViewBuilder
+    private func ingredientAvailabilitySummary(_ index: Int) -> some View {
+        if let line = availabilityByRecipeIndex[index] {
+            let unit = line.unit ?? recipe.ingredients[index].unit
+            let needed = line.required_amount.map { "Need \(QuantityText.string($0)) \(unit)" }
+            if line.status == "unknown" || !line.unknown_reasons.isEmpty {
+                Text(["Needs review", needed].compactMap { $0 }.joined(separator: " · "))
+                    .foregroundStyle(ProvisionTheme.amberWarning)
+            } else {
+                let have = line.available_amount.map { "Have \(QuantityText.string($0)) \(unit)" }
+                let missing = line.shortfall.flatMap {
+                    $0.value > 0 ? "Missing \(QuantityText.string($0)) \(unit)" : nil
+                }
+                Text([have, needed, missing].compactMap { $0 }.joined(separator: " · "))
+                    .foregroundStyle(line.status == "full" ? ProvisionTheme.provisionGreen : ProvisionTheme.amberWarning)
+            }
+        } else {
+            Text("Needs review · Pantry amount is unavailable")
+                .foregroundStyle(ProvisionTheme.amberWarning)
         }
     }
 
@@ -476,10 +526,17 @@ private struct RecipeDetailContents: View {
 
     private var instructionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Instructions")
-                .font(ProvisionTypography.sectionSerif)
-                .foregroundStyle(ProvisionTheme.textPrimary)
-                .accessibilityIdentifier("recipe-instructions")
+            HStack(spacing: 8) {
+                Image("pip_cooking")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 36, height: 36)
+                    .accessibilityHidden(true)
+                Text("Instructions")
+                    .font(ProvisionTypography.sectionSerif)
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+                    .accessibilityIdentifier("recipe-instructions")
+            }
             ForEach(Array(recipe.instructions.enumerated()), id: \.offset) { step in
                 HStack(alignment: .top, spacing: 12) {
                     Text("\(step.offset + 1)")
@@ -582,15 +639,15 @@ private struct RecipeIngredientRow: View {
         let unit = line.unit ?? substitution?.unit ?? ingredient.unit
         VStack(alignment: .leading, spacing: 3) {
             if let required = line.required_amount {
-                Text("Needed: \(QuantityText.string(required)) \(unit)")
+                Text("Need: \(QuantityText.string(required)) \(unit)")
                     .accessibilityIdentifier("recipe-ingredient-needed-\(index)")
             }
             if let available = line.available_amount {
-                Text("Counted on hand: \(QuantityText.string(available)) \(unit)")
+                Text("Have: \(QuantityText.string(available)) \(unit)")
                     .accessibilityIdentifier("recipe-ingredient-on-hand-\(index)")
             }
             if let shortfall = line.shortfall, shortfall.value > 0 {
-                Text("Short: \(QuantityText.string(shortfall)) \(unit)")
+                Text("Missing: \(QuantityText.string(shortfall)) \(unit)")
                     .foregroundStyle(ProvisionTheme.amberWarning)
                     .accessibilityIdentifier("recipe-ingredient-short-\(index)")
             }

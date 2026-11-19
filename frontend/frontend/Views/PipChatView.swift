@@ -15,6 +15,7 @@ public struct PipChatView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @StateObject private var viewModel: PipChatViewModel
     @State private var selectedDestination: Destination?
+    @State private var privacyNoticeExpanded = false
     @FocusState private var composerFocused: Bool
     private let scope: HouseholdScope
     private let context: PipChatContext?
@@ -182,6 +183,10 @@ public struct PipChatView: View {
                 .font(.headline)
                 .foregroundStyle(ProvisionTheme.textPrimary)
 
+            if let consent = viewModel.consent, !consent.chat_granted {
+                privacyNotice(consent.notice)
+            }
+
             Toggle(isOn: Binding(
                 get: { viewModel.consent?.chat_granted ?? false },
                 set: { value in Task { await viewModel.setConsent(.chat, granted: value) } }
@@ -216,12 +221,19 @@ public struct PipChatView: View {
             .disabled(viewModel.isUpdatingConsent || viewModel.isLoadingConsent || viewModel.consent?.chat_granted != true)
             .accessibilityIdentifier("pip-chat-consent-allergies")
 
+            if let consent = viewModel.consent, consent.chat_granted {
+                DisclosureGroup(isExpanded: $privacyNoticeExpanded) {
+                    privacyNotice(consent.notice)
+                        .padding(.top, 8)
+                } label: {
+                    Text("Review privacy details")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(ProvisionTheme.provisionGreen)
+                }
+                .accessibilityIdentifier("pip-chat-privacy-details")
+            }
+
             if let consent = viewModel.consent {
-                Text(consent.notice)
-                    .font(.footnote)
-                    .foregroundStyle(ProvisionTheme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("pip-chat-data-notice")
                 if consent.allergy_sharing_granted && !consent.all_active_members_allergy_sharing_granted {
                     Text("Allergy labels stay out of chat until every active member separately opts in.")
                         .font(.footnote.weight(.medium))
@@ -236,6 +248,14 @@ public struct PipChatView: View {
         .provisionCard(backgroundColor: ProvisionTheme.surface)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("pip-chat-privacy-card")
+    }
+
+    private func privacyNotice(_ notice: String) -> some View {
+        Text(notice)
+            .font(.footnote)
+            .foregroundStyle(ProvisionTheme.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("pip-chat-data-notice")
     }
 
     private func contextCard(kind: PipChatContext.Kind, title: String) -> some View {
@@ -260,11 +280,18 @@ public struct PipChatView: View {
     private var conversation: some View {
         VStack(alignment: .leading, spacing: 12) {
             if viewModel.messages.isEmpty {
-                stateCard(
-                    title: "Ask Pip about cooking",
-                    message: "Chat history stays on this screen and is not saved to your household account.",
-                    symbol: "bubble.left.and.bubble.right"
-                )
+                HStack(alignment: .center, spacing: 10) {
+                    Image("pip_happy")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 56, height: 56)
+                        .accessibilityHidden(true)
+                    stateCard(
+                        title: "Ask Pip about cooking",
+                        message: "Chat history stays on this screen and is not saved to your household account.",
+                        symbol: "bubble.left.and.bubble.right"
+                    )
+                }
                 .accessibilityIdentifier("pip-chat-empty-state")
                 suggestedPromptsSection
             }
@@ -275,6 +302,11 @@ public struct PipChatView: View {
 
             if viewModel.isSending {
                 HStack(spacing: 10) {
+                    Image("pip_thinking")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 40, height: 40)
+                        .accessibilityHidden(true)
                     ProgressView().tint(ProvisionTheme.provisionGreen)
                     Text("Pip is thinking")
                         .font(.subheadline)
@@ -289,75 +321,88 @@ public struct PipChatView: View {
 
     @ViewBuilder
     private func messageBubble(_ message: PipChatDisplayMessage) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(message.text)
-                .font(.body)
-                .foregroundStyle(ProvisionTheme.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            ForEach(message.facts) { fact in
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(fact.label)
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(ProvisionTheme.textPrimary)
-                    Text(fact.detail)
-                        .font(.footnote)
-                        .foregroundStyle(ProvisionTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(ProvisionTheme.surfaceSecondary, in: RoundedRectangle(cornerRadius: 10))
-                .accessibilityIdentifier("pip-chat-fact-\(fact.reference)")
+        HStack(alignment: .bottom, spacing: 8) {
+            if message.role == .assistant {
+                Image("pip_happy")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 34, height: 34)
+                    .accessibilityHidden(true)
+            } else {
+                Spacer(minLength: 38)
             }
 
-            ForEach(message.recipeCards) { card in
-                Button {
-                    selectedDestination = Destination(recipeID: card.recipe_id, opensShoppingPreview: false)
-                } label: {
-                    recipeCardLabel(card)
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("pip-chat-recipe-card-\(card.recipe_id)")
-            }
+            VStack(alignment: .leading, spacing: 10) {
+                Text(message.text)
+                    .font(.body)
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            ForEach(message.actions) { action in
-                if action.kind == "open_recipe" || action.kind == "open_shopping_preview" {
+                ForEach(message.facts) { fact in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(fact.label)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+                        Text(fact.detail)
+                            .font(.footnote)
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(ProvisionTheme.surfaceSecondary, in: RoundedRectangle(cornerRadius: 10))
+                    .accessibilityIdentifier("pip-chat-fact-\(fact.reference)")
+                }
+
+                ForEach(message.recipeCards) { card in
                     Button {
-                        selectedDestination = Destination(
-                            recipeID: action.recipe_id,
-                            opensShoppingPreview: action.kind == "open_shopping_preview"
-                        )
+                        selectedDestination = Destination(recipeID: card.recipe_id, opensShoppingPreview: false)
                     } label: {
-                        Label(
-                            action.kind == "open_shopping_preview"
-                                ? "Review shopping for \(action.title)"
-                                : "Open \(action.title)",
-                            systemImage: action.kind == "open_shopping_preview" ? "cart" : "book.closed"
-                        )
+                        recipeCardLabel(card)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("pip-chat-recipe-card-\(card.recipe_id)")
+                }
+
+                ForEach(message.actions) { action in
+                    if action.kind == "open_recipe" || action.kind == "open_shopping_preview" {
+                        Button {
+                            selectedDestination = Destination(
+                                recipeID: action.recipe_id,
+                                opensShoppingPreview: action.kind == "open_shopping_preview"
+                            )
+                        } label: {
+                            Label(
+                                action.kind == "open_shopping_preview"
+                                    ? "Review shopping for \(action.title)"
+                                    : "Open \(action.title)",
+                                systemImage: action.kind == "open_shopping_preview" ? "cart" : "book.closed"
+                            )
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(ProvisionTheme.provisionGreen)
                             .frame(minHeight: 44)
+                        }
+                        .accessibilityIdentifier(
+                            "pip-chat-open-\(action.kind == "open_shopping_preview" ? "shopping-preview" : "recipe")-\(action.recipe_id)"
+                        )
+                        .buttonStyle(.plain)
                     }
-                    .accessibilityIdentifier(
-                        "pip-chat-open-\(action.kind == "open_shopping_preview" ? "shopping-preview" : "recipe")-\(action.recipe_id)"
-                    )
-                    .buttonStyle(.plain)
+                }
+
+                if let notice = message.safetyNotice {
+                    Text(notice)
+                        .font(.caption)
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-
-            if let notice = message.safetyNotice {
-                Text(notice)
-                    .font(.caption)
-                    .foregroundStyle(ProvisionTheme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            .padding(14)
+            .frame(maxWidth: 320, alignment: .leading)
+            .background(message.role == .assistant ? ProvisionTheme.surface : ProvisionTheme.provisionGreenLight)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(ProvisionTheme.border, lineWidth: 1))
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(message.role == .assistant ? ProvisionTheme.surface : ProvisionTheme.provisionGreenLight)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(ProvisionTheme.border, lineWidth: 1))
+        .frame(maxWidth: .infinity, alignment: message.role == .assistant ? .leading : .trailing)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(message.role == .assistant ? "pip-chat-message-assistant" : "pip-chat-message-user")
     }

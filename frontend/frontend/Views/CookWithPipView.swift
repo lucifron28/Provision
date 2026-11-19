@@ -99,6 +99,9 @@ public struct CookWithPipView: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("cook-with-pip-ingredient-filter")
                     }
+                    if !searchFieldFocused {
+                        modePicker
+                    }
                     NavigationLink {
                         CookWithPipManagementView(scope: scope, service: workflowService)
                     } label: {
@@ -126,10 +129,6 @@ public struct CookWithPipView: View {
                             .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
                     }
                     .accessibilityIdentifier("cook-with-pip-chat-link")
-                    if !searchFieldFocused {
-                        modePicker
-                    }
-
                     if viewModel.mode != .myRecipes {
                         if !viewModel.needsReviewCandidates.isEmpty {
                             excludedCandidatesSection(
@@ -221,8 +220,8 @@ public struct CookWithPipView: View {
             Image("pip_chef")
                 .resizable()
                 .scaledToFit()
-                .frame(width: 68, height: 68)
-                .padding(8)
+                .frame(width: 54, height: 54)
+                .padding(6)
                 .background(ProvisionTheme.surface, in: Circle())
                 .overlay(Circle().stroke(ProvisionTheme.border, lineWidth: 1))
                 .accessibilityHidden(true)
@@ -232,7 +231,7 @@ public struct CookWithPipView: View {
                     .font(ProvisionTypography.sectionSerif)
                     .foregroundStyle(ProvisionTheme.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("Cook Now and Almost There use the server's current stock and safety evaluation. No live internet search.")
+                Text("Browse household recipes with current pantry and food-safety checks.")
                     .font(.subheadline)
                     .foregroundStyle(ProvisionTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -382,7 +381,7 @@ public struct CookWithPipView: View {
         if !actions.isEmpty {
             return actions.joined(separator: " ") + " Recheck this recipe before cooking."
         }
-        return "Open the recipe to see the server's safety details. It stays unavailable until the required checks pass."
+        return "Open the recipe to review its current safety details. It stays unavailable until the required checks pass."
     }
 
     private var excludedCandidateSummary: String {
@@ -390,7 +389,7 @@ public struct CookWithPipView: View {
         if viewModel.excludedBlocked > 0 { counts.append("\(viewModel.excludedBlocked) blocked") }
         if viewModel.excludedReviewRequired > 0 { counts.append("\(viewModel.excludedReviewRequired) needing review") }
         if viewModel.excludedUnknownQuantities > 0 { counts.append("\(viewModel.excludedUnknownQuantities) with unknown quantities") }
-        return "The server excluded " + counts.joined(separator: ", ") + " under its current checks."
+        return "Not shown: " + counts.joined(separator: ", ") + " under the current food-safety and ingredient checks."
     }
 
     private var recipeList: some View {
@@ -426,9 +425,10 @@ public struct CookWithPipView: View {
 
     private var emptyState: some View {
         VStack(spacing: 10) {
-            Image(systemName: viewModel.mode == .cookNow ? "basket" : "book.closed")
-                .font(.system(size: 30, weight: .regular))
-                .foregroundStyle(ProvisionTheme.provisionGreen)
+            Image("pip_chef")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 56, height: 56)
                 .accessibilityHidden(true)
             Text(emptyTitle)
                 .font(ProvisionTypography.sectionSerif)
@@ -460,18 +460,18 @@ public struct CookWithPipView: View {
 
     private var emptyMessage: String {
         if viewModel.ingredientFilterLabel != nil {
-            return "Recipes appear here when their ingredient is linked to a verified pantry match."
+            return "Recipes appear here when this ingredient is included in a saved recipe and matched to your pantry."
         }
         if !viewModel.normalizedQuery.isEmpty {
-            return "Try another title search. This screen only searches recipes stored in your household."
+            return "Try another title. This search looks through recipes saved for your household."
         }
         switch viewModel.mode {
         case .cookNow:
-            return "The server found no stored recipe with all required quantities currently available."
+            return "No saved recipe has all its required quantities in the pantry right now."
         case .almostThere:
-            return "The server found no eligible stored recipe with a small, known ingredient shortage."
+            return "No saved recipe is close enough to cook with a small, known ingredient shortage."
         case .myRecipes:
-            return "Recipes entered for this household will appear here. This is not an internet recipe search."
+            return "Recipes saved for your household will appear here."
         }
     }
 

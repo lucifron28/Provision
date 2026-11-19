@@ -320,19 +320,16 @@ public struct HomeView: View {
                     Image("pip_chef")
                         .resizable()
                         .scaledToFit()
-                        .frame(width: 60, height: 60)
+                        .frame(width: 52, height: 52)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Cook with Pip")
                             .font(ProvisionTypography.sectionSerif)
                             .foregroundStyle(ProvisionTheme.textPrimary)
-                        Text("Explore household recipes checked against current stock")
+                        Text("Find something to cook with what you have")
                             .font(.subheadline)
                             .foregroundStyle(ProvisionTheme.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
-                        Text("No live internet search")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(ProvisionTheme.textSecondary)
                     }
                     Spacer(minLength: 4)
                     Image(systemName: "arrow.up.right")
@@ -351,7 +348,7 @@ public struct HomeView: View {
                 .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Cook with Pip. Browse household recipes checked against current stock.")
+            .accessibilityLabel("Cook with Pip. Find household recipes using current pantry stock and food-safety checks.")
             .accessibilityHint("Opens Cook Now, Almost There, and My Recipes.")
             .accessibilityIdentifier("cook-with-pip-entry")
         }
@@ -511,7 +508,7 @@ public struct HomeView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text("PIP'S PANTRY INSIGHT")
+                    Text("Pantry insight")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(ProvisionTheme.textSecondary)
                         .tracking(0.6)
@@ -572,7 +569,7 @@ public struct HomeView: View {
     private var chefPipKitchenCorner: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                Image(viewModel.expiredItems.isEmpty ? "pip_cooking" : "pip_chef")
+                Image(viewModel.expiredItems.isEmpty ? "pip_cooking" : "pip_concerned")
                     .resizable()
                     .scaledToFit()
                     .frame(width: 44, height: 44)
@@ -584,7 +581,7 @@ public struct HomeView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
-                        Text("Chef Pip's Kitchen Corner")
+                        Text("Use these items soon")
                             .font(.system(size: 15, weight: .bold, design: .serif))
                             .foregroundStyle(ProvisionTheme.textPrimary)
                         Spacer()
@@ -782,7 +779,7 @@ public struct HomeView: View {
                             ingredientFilterLabel: item.product_name
                         )
                     } label: {
-                        Label("Find Recipes", systemImage: "book.closed")
+                        Label("Find recipes with this", systemImage: "book.closed")
                             .font(.system(size: 12, weight: .semibold))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 6)
