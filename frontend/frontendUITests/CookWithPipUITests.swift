@@ -2346,7 +2346,9 @@ extension CookWithPipUITests {
     }
 
     private func formatReceiptQuantity(_ amount: Double) -> String {
-        ProductUnits.formatAmount(amount)
+        String(format: "%.2f", amount)
+            .replacingOccurrences(of: #"0+$"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"\.$"#, with: "", options: .regularExpression)
     }
 
     private func chooseReceiptPickerValue(
