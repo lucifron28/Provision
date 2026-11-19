@@ -294,16 +294,10 @@ public struct RecipeShoppingReviewView: View {
                         }
                     }
                     let isCovered = line.status == "ready" && (line.additional_quantity?.value ?? 0) == 0
-                    let readinessLabel: String
-                    if isCovered {
-                        readinessLabel = "Already covered"
-                    } else if line.status == "ready" && preview.safety.decision != "eligible" {
-                        readinessLabel = "Line ready"
-                    } else if line.status == "ready" {
-                        readinessLabel = "Ready to add"
-                    } else {
-                        readinessLabel = "Review required"
-                    }
+                    let readinessLabel = isCovered ? "Already covered"
+                        : (line.status == "ready"
+                            ? (preview.safety.decision == "eligible" ? "Ready to add" : "Line ready")
+                            : "Review required")
                     Label(readinessLabel,
                           systemImage: isCovered ? "checkmark.circle" : (line.status == "ready" ? "plus.circle" : "exclamationmark.triangle"))
                         .font(.caption.weight(.semibold))
