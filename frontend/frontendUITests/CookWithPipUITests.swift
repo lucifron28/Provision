@@ -2003,6 +2003,61 @@ final class CookWithPipUITests: XCTestCase {
     }
 }
 extension CookWithPipUITests {
+    func testRealDemoAccountLoginAndInventoryRelaunch() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["PROVISION_REAL_DEMO_ACCOUNT_TEST"] == "true",
+              let baseURL = environment["PROVISION_API_BASE_URL"],
+              let email = environment["PROVISION_STAGING_TEST_EMAIL"],
+              let password = environment["PROVISION_STAGING_TEST_PASSWORD"] else {
+            throw XCTSkip("Real demo account credentials are supplied only by the manual staging workflow")
+        }
+
+        let app = XCUIApplication()
+        app.launchEnvironment["PROVISION_API_BASE_URL"] = baseURL
+        app.launchEnvironment["PROVISION_STAGING_TEST_EMAIL"] = email
+        app.launchEnvironment["PROVISION_STAGING_TEST_PASSWORD"] = password
+        app.launchArguments = ["--provision-reset-staging-session"]
+        app.launch()
+
+        let emailField = app.textFields["login-email"]
+        let passwordField = app.secureTextFields["login-password"]
+        let signIn = app.buttons["login-submit"]
+        XCTAssertTrue(emailField.waitForExistence(timeout: 20))
+        emailField.tap()
+        emailField.typeText(email)
+        passwordField.tap()
+        passwordField.typeText(password)
+        signIn.tap()
+
+        let inventoryTab = app.buttons["Inventory"]
+        guard finishStagingSignInIfNeeded(
+            app: app,
+            signIn: signIn,
+            signedInTab: inventoryTab,
+            signedInTabLabel: "Inventory",
+            failureMessage: "The real demo account did not reach Inventory after sign-in"
+        ) else { return }
+        dismissSavePasswordPromptIfPresent(app: app, readyElement: inventoryTab)
+        assertStagingDashboardLoaded(app, phase: "The real demo household dashboard loaded")
+
+        app.terminate()
+        app.launchArguments = []
+        app.launch()
+        XCTAssertTrue(inventoryTab.waitForExistence(timeout: 40),
+                      "The real demo account session did not recover after app relaunch")
+        assertStagingDashboardLoaded(app, phase: "The real demo household session restored after relaunch")
+
+        inventoryTab.tap()
+        let productRows = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "product-row-")
+        )
+        let firstProduct = productRows.firstMatch
+        XCTAssertTrue(firstProduct.waitForExistence(timeout: 30),
+                      "The real demo household inventory did not load after relaunch")
+        XCTAssertTrue(firstProduct.isHittable,
+                      "A real demo household product should be visible in Inventory")
+    }
+
     func testStagingLivePipChatResponseIsDisplayed() throws {
         let environment = ProcessInfo.processInfo.environment
         guard environment["PROVISION_LIVE_PIP_CHAT_TEST"] == "true",

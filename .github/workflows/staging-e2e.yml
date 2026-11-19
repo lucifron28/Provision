@@ -7,6 +7,14 @@ on:
         description: Full commit SHA currently deployed to the Render staging service
         required: true
         type: string
+      account_mode:
+        description: Use the synthetic fixture account or the real demo account
+        required: true
+        type: choice
+        options:
+          - synthetic-fixture
+          - real-demo-account
+        default: synthetic-fixture
 
 permissions:
   actions: read
@@ -98,14 +106,26 @@ jobs:
         working-directory: backend
         run: uv run --no-sync python -m scripts.staging_e2e_smoke preflight
 
+      - name: Validate real demo account secrets
+        if: ${{ inputs.account_mode == 'real-demo-account' }}
+        env:
+          DEMO_ACCOUNT_EMAIL: ${{ secrets.PROVISION_DEMO_ACCOUNT_EMAIL }}
+          DEMO_ACCOUNT_PASSWORD: ${{ secrets.PROVISION_DEMO_ACCOUNT_PASSWORD }}
+        run: |
+          test -n "$DEMO_ACCOUNT_EMAIL" || { echo "The staging environment is missing PROVISION_DEMO_ACCOUNT_EMAIL." >&2; exit 1; }
+          test -n "$DEMO_ACCOUNT_PASSWORD" || { echo "The staging environment is missing PROVISION_DEMO_ACCOUNT_PASSWORD." >&2; exit 1; }
+          echo "Real demo account smoke is configured. Credentials are not printed."
+
       - name: Create a unique synthetic household for this run
         id: staging-fixture
+        if: ${{ inputs.account_mode == 'synthetic-fixture' }}
         working-directory: backend
         env:
           PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
         run: uv run --no-sync python -m scripts.staging_e2e_smoke prepare
 
       - name: Verify authenticated persistence and household isolation
+        if: ${{ inputs.account_mode == 'synthetic-fixture' }}
         working-directory: backend
         env:
           PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
@@ -128,6 +148,7 @@ jobs:
             -only-testing:frontendUITests/CookWithPipUITests/testStagingPipChatContextAndShoppingPreviewRoutes \
             -only-testing:frontendUITests/CookWithPipUITests/testCookWithPipLoadingEmptyAndOfflineRecovery \
             -only-testing:frontendUITests/CookWithPipUITests/testShoppingOfflineRetryAndStalePreviewRecovery \
+            -only-testing:frontendUITests/CookWithPipUITests/testRealDemoAccountLoginAndInventoryRelaunch \
             -derivedDataPath artifacts/DerivedData \
             -parallel-testing-enabled NO \
             -showBuildTimingSummary \
@@ -136,8 +157,30 @@ jobs:
       - name: Recheck Render and Neon readiness before simulator login
         working-directory: backend
         run: uv run --no-sync python -m scripts.staging_e2e_smoke preflight
+      - name: Run the real demo account login and inventory relaunch check on iPhone 17
+        if: ${{ inputs.account_mode == 'real-demo-account' }}
+        env:
+          TEST_RUNNER_PROVISION_API_BASE_URL: ${{ env.PROVISION_API_BASE_URL }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_EMAIL: ${{ secrets.PROVISION_DEMO_ACCOUNT_EMAIL }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_PASSWORD: ${{ secrets.PROVISION_DEMO_ACCOUNT_PASSWORD }}
+          TEST_RUNNER_PROVISION_REAL_DEMO_ACCOUNT_TEST: "true"
+          TEST_RUNNER_PROVISION_SKIP_UI_SCREENSHOTS: "1"
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          xcodebuild test-without-building \
+            -project frontend/frontend.xcodeproj \
+            -scheme frontend \
+            -destination "platform=iOS Simulator,id=${SIMULATOR_UDID}" \
+            -only-testing:frontendUITests/CookWithPipUITests/testRealDemoAccountLoginAndInventoryRelaunch \
+            -derivedDataPath artifacts/DerivedData \
+            -resultBundlePath artifacts/staging-real-demo.xcresult \
+            -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- 2>&1 | tee artifacts/xcodebuild.log
       - name: Run staging login, offline recovery, and Keychain relaunch tests on iPhone 17
         id: ios-staging
+        if: ${{ inputs.account_mode == 'synthetic-fixture' }}
         env:
           # xcodebuild only forwards custom variables to XCTest runner processes
           # when they use the TEST_RUNNER_ prefix. The tests then read the
@@ -179,7 +222,7 @@ jobs:
           --allow-empty
 
       - name: Export staging simulator screenshots
-        if: always()
+        if: always() && inputs.account_mode == 'synthetic-fixture'
         run: |
           if [ -d artifacts/staging-e2e.xcresult ]; then
             mkdir -p artifacts/staging-screenshots
@@ -191,7 +234,7 @@ jobs:
           fi
 
       - name: Upload staging simulator screenshots and xcresult
-        if: always()
+        if: always() && inputs.account_mode == 'synthetic-fixture'
         uses: actions/upload-artifact@v4
         with:
           name: provision-staging-e2e-${{ inputs.expected_render_commit }}
