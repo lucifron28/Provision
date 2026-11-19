@@ -1282,7 +1282,6 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(reviewActionSummary.label.contains("Review the food-safety status before adding"))
         XCTAssertTrue(reviewActionSummary.isHittable)
         let acknowledgement = reviewApp.switches["recipe-shopping-safety-acknowledgement"]
-        let reviewForm = scrollContainer("recipe-shopping-review-form", in: reviewApp)
         scrollTargetIntoView(acknowledgement, inside: reviewForm, in: reviewApp)
         XCTAssertEqual(acknowledgement.value as? String, "0",
                        "Safety review stays Off until the user taps the switch")
