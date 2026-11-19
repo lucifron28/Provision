@@ -2164,11 +2164,13 @@ extension CookWithPipUITests {
                 "PXGGridLayout-Info", "Photo,"
             )
         ).firstMatch
-        guard photoThumbnail.waitForExistence(timeout: 10), photoThumbnail.isHittable else {
+        guard photoThumbnail.waitForExistence(timeout: 10) else {
             XCTFail("The system photo picker did not expose its imported photo thumbnail")
             return
         }
-        photoThumbnail.tap()
+        // The remote PhotosPicker image reports isHittable=false in XCUITest even though
+        // it is visibly selectable, so tap the center of the matched accessibility frame.
+        photoThumbnail.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         let addPhoto = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Add")).firstMatch
         if addPhoto.waitForExistence(timeout: 3) && addPhoto.isHittable {
             addPhoto.tap()
