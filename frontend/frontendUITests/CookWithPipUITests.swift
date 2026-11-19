@@ -2083,6 +2083,283 @@ extension CookWithPipUITests {
                       "The barcode lookup should show the matching grocery, got: \(lookedUpTuna.label)")
     }
 
+    func testRealDemoAccountReceiptOCRIntake() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["PROVISION_REAL_DEMO_ACCOUNT_TEST"] == "true",
+              let baseURL = environment["PROVISION_API_BASE_URL"],
+              let email = environment["PROVISION_STAGING_TEST_EMAIL"],
+              let password = environment["PROVISION_STAGING_TEST_PASSWORD"] else {
+            throw XCTSkip("The receipt OCR run requires the authorized staging demo account")
+        }
+
+        let bundle = Bundle(for: CookWithPipUITests.self)
+        let manifestURL = bundle.url(
+            forResource: "Provision_Receipt_OCR_Expected",
+            withExtension: "json",
+            subdirectory: "Resources"
+        ) ?? bundle.url(forResource: "Provision_Receipt_OCR_Expected", withExtension: "json")
+        let manifestData = try Data(contentsOf: XCTUnwrap(manifestURL))
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let manifest = try decoder.decode(ReceiptOCRManifest.self, from: manifestData)
+        XCTAssertEqual(manifest.items.count, manifest.lineCount)
+        XCTAssertEqual(manifest.itemCount, 10, "The tuna line represents two cans, while receipt headers are excluded")
+        XCTAssertEqual(manifest.store, "Bayani Fresh Mart")
+        XCTAssertEqual(manifest.totalPhp, 632, accuracy: 0.001)
+
+        let app = XCUIApplication()
+        app.launchEnvironment["PROVISION_API_BASE_URL"] = baseURL
+        app.launchEnvironment["PROVISION_STAGING_TEST_EMAIL"] = email
+        app.launchEnvironment["PROVISION_STAGING_TEST_PASSWORD"] = password
+        app.launchArguments = ["--provision-reset-staging-session"]
+        app.launch()
+
+        let emailField = app.textFields["login-email"]
+        let passwordField = app.secureTextFields["login-password"]
+        let signIn = app.buttons["login-submit"]
+        XCTAssertTrue(emailField.waitForExistence(timeout: 20))
+        emailField.tap()
+        emailField.typeText(email)
+        passwordField.tap()
+        passwordField.typeText(password)
+        signIn.tap()
+
+        let inventoryTab = app.buttons["Inventory"]
+        guard finishStagingSignInIfNeeded(
+            app: app,
+            signIn: signIn,
+            signedInTab: inventoryTab,
+            signedInTabLabel: "Inventory",
+            failureMessage: "The real demo account did not reach Inventory for receipt intake"
+        ) else { return }
+        dismissSavePasswordPromptIfPresent(app, readyElement: inventoryTab)
+        assertStagingDashboardLoaded(app, phase: "The real demo household dashboard loaded before receipt intake")
+        inventoryTab.tap()
+
+        let addMenu = app.buttons["inventory-add-menu"]
+        XCTAssertTrue(addMenu.waitForExistence(timeout: 15))
+        addMenu.tap()
+        let scanOption = app.buttons["inventory-add-scan-option"]
+        XCTAssertTrue(scanOption.waitForExistence(timeout: 10))
+        scanOption.tap()
+        let receiptMode = app.buttons["Receipt Intake"]
+        XCTAssertTrue(receiptMode.waitForExistence(timeout: 10))
+        receiptMode.tap()
+
+        let importReceipt = app.buttons["receipt-import-photo-picker"]
+        XCTAssertTrue(importReceipt.waitForExistence(timeout: 10))
+        importReceipt.tap()
+        let photoCell = app.cells.firstMatch
+        if photoCell.waitForExistence(timeout: 20) {
+            photoCell.tap()
+        } else {
+            let photoImage = app.images.firstMatch
+            XCTAssertTrue(photoImage.waitForExistence(timeout: 10), "The simulator Photos picker did not show the imported receipt")
+            photoImage.tap()
+        }
+        let addPhoto = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Add")).firstMatch
+        if addPhoto.waitForExistence(timeout: 3) && addPhoto.isHittable {
+            addPhoto.tap()
+        }
+
+        let totalLabel = element("intake-summary-total", in: app)
+        let workspaceButton = app.buttons["intake-review-workspace-open"]
+        XCTAssertTrue(workspaceButton.waitForExistence(timeout: 75),
+                      "Vision OCR did not produce the nine expected grocery lines")
+        XCTAssertEqual(totalLabel.label, "Total: \(manifest.lineCount)",
+                       "Store details, transaction numbers, and payment totals must not become grocery items")
+        workspaceButton.tap()
+
+        let search = element("intake-workspace-search", in: app)
+        XCTAssertTrue(search.waitForExistence(timeout: 10))
+        for item in manifest.items {
+            let row = try findReceiptWorkspaceRow(item, search: search, app: app)
+            let expectedQuantity = formatReceiptQuantity(item.quantity)
+            XCTAssertTrue(row.label.localizedCaseInsensitiveContains("\(expectedQuantity) \(item.unit)"),
+                          "\(item.sourceName) should be recognized as \(expectedQuantity) \(item.unit), got: \(row.label)")
+            print("REAL_RECEIPT_OCR_ROW \(row.label)")
+            row.tap()
+
+            let detailScroll = app.scrollViews["intake-item-review-scroll"]
+            XCTAssertTrue(detailScroll.waitForExistence(timeout: 10))
+            let catalogSelector = element("intake-product-catalog-selector", in: app)
+            let hasCatalogSelector = catalogSelector.waitForExistence(timeout: 2)
+            if item.catalogAction == "select", let catalogSearchText = item.catalogSearch {
+                XCTAssertTrue(hasCatalogSelector, "The staging household catalog should be available to review \(item.sourceName)")
+                scrollTargetIntoView(catalogSelector, inside: detailScroll, in: app)
+                catalogSelector.tap()
+                let catalogSearch = app.textFields["catalog-product-search"]
+                XCTAssertTrue(catalogSearch.waitForExistence(timeout: 10))
+                catalogSearch.tap()
+                catalogSearch.typeText(catalogSearchText)
+                let matchingProduct = app.buttons.matching(
+                    NSPredicate(
+                        format: "identifier BEGINSWITH %@ AND label CONTAINS[c] %@",
+                        "catalog-product-", catalogSearchText
+                    )
+                ).firstMatch
+                XCTAssertTrue(matchingProduct.waitForExistence(timeout: 10),
+                              "The staging catalog did not contain the expected reviewed match for \(item.sourceName)")
+                matchingProduct.tap()
+            } else if item.catalogAction == "register", let productName = item.productName {
+                var usedExistingCatalogProduct = false
+                if hasCatalogSelector {
+                    scrollTargetIntoView(catalogSelector, inside: detailScroll, in: app)
+                    catalogSelector.tap()
+                    let catalogSearch = app.textFields["catalog-product-search"]
+                    XCTAssertTrue(catalogSearch.waitForExistence(timeout: 10))
+                    catalogSearch.tap()
+                    catalogSearch.typeText(productName)
+                    let exactProduct = app.buttons.matching(
+                        NSPredicate(
+                            format: "identifier BEGINSWITH %@ AND label CONTAINS[c] %@",
+                            "catalog-product-", productName
+                        )
+                    ).firstMatch
+                    if exactProduct.waitForExistence(timeout: 2) {
+                        exactProduct.tap()
+                        usedExistingCatalogProduct = true
+                    } else {
+                        app.buttons["Cancel"].tap()
+                    }
+                }
+
+                if !usedExistingCatalogProduct {
+                    let disclosure = app.buttons["intake-register-product-disclosure"]
+                    scrollTargetIntoView(disclosure, inside: detailScroll, in: app)
+                    disclosure.tap()
+                    let nameField = element("intake-register-product-name", in: app)
+                    XCTAssertTrue(nameField.waitForExistence(timeout: 5))
+                    replaceText(nameField, with: productName)
+                    if let brand = item.brand {
+                        replaceText(element("intake-register-product-brand", in: app), with: brand)
+                    }
+                    if let category = item.category {
+                        chooseReceiptPickerValue("intake-register-product-category", value: category, scroll: detailScroll, app: app)
+                    }
+                    if let unit = item.productUnit {
+                        chooseReceiptPickerValue("intake-register-product-unit", value: unit, scroll: detailScroll, app: app)
+                    }
+                    let register = app.buttons["intake-register-product-submit"]
+                    XCTAssertTrue(register.isEnabled, "The receipt item needs a complete product identity and unit")
+                    register.tap()
+                    XCTAssertTrue(app.buttons["intake-confirm-details"].waitForExistence(timeout: 15),
+                                  "The reviewed receipt product was not linked to the intake item")
+                }
+            }
+
+            if item.unit == "kg" || item.unit == "L" {
+                let quantityField = app.textFields.matching(
+                    NSPredicate(format: "identifier BEGINSWITH %@", "intake-measured-quantity-")
+                ).firstMatch
+                XCTAssertTrue(quantityField.waitForExistence(timeout: 5),
+                              "Measured receipt quantity should be editable for \(item.sourceName)")
+                XCTAssertEqual(quantityField.value as? String, expectedQuantity,
+                               "The measured amount for \(item.sourceName) must match the receipt package size")
+            }
+
+            let lineTotal = element("intake-item-line-total", in: app)
+            scrollTargetIntoView(lineTotal, inside: detailScroll, in: app)
+            XCTAssertTrue(lineTotal.waitForExistence(timeout: 5), "The receipt line price should remain visible during review")
+            XCTAssertEqual(lineTotal.label, String(format: "Total: ₱%.2f", item.lineTotalPhp),
+                           "The normalized quantity and unit price must preserve the printed line total for \(item.sourceName)")
+
+            let locationPicker = element("intake-review-location-picker", in: app)
+            scrollTargetIntoView(locationPicker, inside: detailScroll, in: app)
+            locationPicker.tap()
+            let location = app.buttons.matching(NSPredicate(format: "label == %@", item.storageLocation)).firstMatch
+            XCTAssertTrue(location.waitForExistence(timeout: 5), "The selected pantry location must exist")
+            location.tap()
+
+            let confirmDetails = app.buttons["intake-confirm-details"]
+            scrollTargetIntoView(confirmDetails, inside: detailScroll, in: app)
+            XCTAssertTrue(confirmDetails.isEnabled, "Each receipt line needs a reviewed product, quantity, and location")
+            confirmDetails.tap()
+            let done = app.buttons["intake-review-done"]
+            XCTAssertTrue(done.waitForExistence(timeout: 5))
+            done.tap()
+
+            let rowSearchTerm = item.productName ?? item.catalogSearch ?? item.searchTerms[0]
+            replaceText(search, with: rowSearchTerm)
+            let reviewedRow = app.buttons.matching(
+                NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS[c] %@", "intake-workspace-item-", rowSearchTerm)
+            ).firstMatch
+            XCTAssertTrue(reviewedRow.waitForExistence(timeout: 5),
+                          "The confirmed receipt item should remain in the workspace after review")
+            XCTAssertTrue(reviewedRow.label.localizedCaseInsensitiveContains("location: \(item.storageLocation)"),
+                          "The reviewed location should match the receipt plan for \(item.sourceName): \(reviewedRow.label)")
+            XCTAssertTrue(reviewedRow.label.localizedCaseInsensitiveContains("confirmed"),
+                          "The receipt row should be confirmed only after the details review: \(reviewedRow.label)")
+        }
+
+        let workspaceDone = app.buttons["intake-workspace-done"]
+        XCTAssertTrue(workspaceDone.waitForExistence(timeout: 10))
+        workspaceDone.tap()
+        let commit = app.buttons["intake-commit-session"]
+        XCTAssertTrue(commit.waitForExistence(timeout: 10))
+        XCTAssertTrue(commit.isEnabled, "All nine receipt lines must be explicitly confirmed before intake")
+        commit.tap()
+        XCTAssertTrue(app.staticTexts["Committed 9 items to household inventory!"].waitForExistence(timeout: 45),
+                      "The staging inventory intake did not complete")
+
+        XCTAssertTrue(inventoryTab.waitForExistence(timeout: 10))
+        inventoryTab.tap()
+        let refresh = app.buttons["Refresh Inventory"]
+        if refresh.waitForExistence(timeout: 5) { refresh.tap() }
+        let inventorySearch = element("inventory-search", in: app)
+        XCTAssertTrue(inventorySearch.waitForExistence(timeout: 10))
+        inventorySearch.tap()
+        inventorySearch.typeText("Fresh Sampalok")
+        let sampalokRow = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS[c] %@", "product-row-", "Fresh Sampalok")
+        ).firstMatch
+        XCTAssertTrue(sampalokRow.waitForExistence(timeout: 20), "The OCR intake did not add Fresh Sampalok to staging inventory")
+        XCTAssertTrue(sampalokRow.label.localizedCaseInsensitiveContains("0.1 kg"),
+                      "Staging inventory should contain the receipt's 100 g sampalok amount, got: \(sampalokRow.label)")
+        print("STAGING_RECEIPT_INVENTORY_VERIFIED \(sampalokRow.label)")
+    }
+
+    private func findReceiptWorkspaceRow(
+        _ item: ReceiptOCRManifestItem,
+        search: XCUIElement,
+        app: XCUIApplication
+    ) throws -> XCUIElement {
+        let rowCollection = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "intake-workspace-item-")
+        )
+        for term in item.searchTerms {
+            replaceText(search, with: term)
+            let row = rowCollection.matching(
+                NSPredicate(format: "label CONTAINS[c] %@", term)
+            ).firstMatch
+            if row.waitForExistence(timeout: 5) {
+                XCTAssertTrue(row.isHittable, "Receipt row for \(item.sourceName) should be interactable")
+                return row
+            }
+        }
+        XCTFail("Vision did not produce a review row for \(item.sourceName). Search terms: \(item.searchTerms). Rows: \(rowCollection.allElementsBoundByIndex.map(\.label))")
+        throw NSError(domain: "ProvisionReceiptOCR", code: 1, userInfo: [NSLocalizedDescriptionKey: "Receipt row missing for \(item.sourceName)"])
+    }
+
+    private func formatReceiptQuantity(_ amount: Double) -> String {
+        ProductUnits.formatAmount(amount)
+    }
+
+    private func chooseReceiptPickerValue(
+        _ identifier: String,
+        value: String,
+        scroll: XCUIElement,
+        app: XCUIApplication
+    ) {
+        let picker = element(identifier, in: app)
+        scrollTargetIntoView(picker, inside: scroll, in: app)
+        XCTAssertTrue(picker.isHittable, "Picker \(identifier) should be reachable before selecting \(value)")
+        picker.tap()
+        let option = app.buttons.matching(NSPredicate(format: "label == %@", value)).firstMatch
+        XCTAssertTrue(option.waitForExistence(timeout: 5), "Picker \(identifier) did not offer \(value)")
+        option.tap()
+    }
+
     func testStagingLivePipChatResponseIsDisplayed() throws {
         let environment = ProcessInfo.processInfo.environment
         guard environment["PROVISION_LIVE_PIP_CHAT_TEST"] == "true",
@@ -2421,4 +2698,27 @@ extension CookWithPipUITests {
             "The signed-in screen should be interactive after handling the password-save prompt"
         )
     }
+}
+
+private struct ReceiptOCRManifest: Decodable {
+    let store: String
+    let lineCount: Int
+    let itemCount: Int
+    let totalPhp: Double
+    let items: [ReceiptOCRManifestItem]
+}
+
+private struct ReceiptOCRManifestItem: Decodable {
+    let sourceName: String
+    let searchTerms: [String]
+    let quantity: Double
+    let unit: String
+    let lineTotalPhp: Double
+    let catalogAction: String
+    let catalogSearch: String?
+    let productName: String?
+    let brand: String?
+    let category: String?
+    let productUnit: String?
+    let storageLocation: String
 }

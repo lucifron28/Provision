@@ -39,6 +39,7 @@ public struct ScanView: View {
                         Text("Receipt Intake").tag(1)
                     }
                     .pickerStyle(.segmented)
+                    .accessibilityIdentifier("scan-mode-picker")
 
                     // Viewfinder Box
                     viewfinderCard
@@ -612,6 +613,7 @@ public struct ScanView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibleTouchTarget()
+                    .accessibilityIdentifier("intake-review-workspace-open")
                 }
             }
         }
@@ -668,6 +670,7 @@ public struct ScanView: View {
                     Text("Total: \(totalCount)")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(ProvisionTheme.textSecondary)
+                        .accessibilityIdentifier("intake-summary-total")
 
                     Text("•")
                         .font(.system(size: 10))
@@ -1026,6 +1029,7 @@ public struct ScanView: View {
                 )
             }
             .disabled(viewModel.isCommitting || viewModel.pendingCommitRecoveryError != nil || (!viewModel.hasPendingCommitRecovery && !allConfirmed))
+            .accessibilityIdentifier("intake-commit-session")
 
             if viewModel.hasPendingCommitRecovery {
                 Button("Check Status / Cancel Previous Draft") {
@@ -1051,11 +1055,7 @@ public struct ScanView: View {
     }
 
     private func formattedQuantity(_ qty: Double) -> String {
-        if qty.truncatingRemainder(dividingBy: 1) == 0 {
-            return "\(Int(qty))"
-        } else {
-            return String(format: "%.1f", qty)
-        }
+        ProductUnits.formatAmount(qty)
     }
 
     private var manualEntrySheet: some View {
@@ -1298,6 +1298,7 @@ public struct IntakeItemReviewSheet: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 16)
                     }
+                    .accessibilityIdentifier("intake-item-review-scroll")
                     .background(ProvisionTheme.background.ignoresSafeArea())
                 } else {
                     VStack(spacing: 12) {
@@ -1323,6 +1324,7 @@ public struct IntakeItemReviewSheet: View {
                     }
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(ProvisionTheme.provisionGreen)
+                .accessibilityIdentifier("intake-review-done")
                 }
             }
             .sheet(isPresented: $showingOCRScanner) {
@@ -1498,6 +1500,7 @@ public struct IntakeItemReviewSheet: View {
                         viewModel.resolveItemWithCatalogProduct(itemId: targetItem.id, product: prod)
                         selectedCatalogProductId = nil
                     }
+                    .accessibilityIdentifier("intake-product-catalog-selector")
                 }
             }
 
@@ -1507,18 +1510,22 @@ public struct IntakeItemReviewSheet: View {
                 VStack(spacing: 10) {
                     TextField("Product Name (Required)", text: $newProductName)
                         .provisionInputField()
+                        .accessibilityIdentifier("intake-register-product-name")
                     TextField("Brand (Optional)", text: $newProductBrand)
                         .provisionInputField()
+                        .accessibilityIdentifier("intake-register-product-brand")
                     Picker("Category", selection: $newProductCategory) {
                         ForEach(["Canned Goods", "Dairy & Chilled", "Snacks & Bakery", "Beverages", "Grains & Staples", "Fresh Produce", "Condiments & Sauces", "Frozen & Meats"], id: \.self) { cat in
                             Text(cat).tag(cat)
                         }
                     }
+                    .accessibilityIdentifier("intake-register-product-category")
                     Picker("Unit", selection: $newProductUnit) {
                         ForEach(ProductUnits.allUnits, id: \.self) { u in
                             Text(u).tag(u)
                         }
                     }
+                    .accessibilityIdentifier("intake-register-product-unit")
 
                     Button {
                         isRegistering = true
@@ -1553,6 +1560,7 @@ public struct IntakeItemReviewSheet: View {
                         }
                     }
                     .disabled(newProductName.trimmingCharacters(in: .whitespaces).isEmpty || isRegistering)
+                    .accessibilityIdentifier("intake-register-product-submit")
                 }
                 .padding(.top, 8)
             } label: {
@@ -1563,6 +1571,7 @@ public struct IntakeItemReviewSheet: View {
                 }
                 .foregroundStyle(ProvisionTheme.provisionGreen)
             }
+            .accessibilityIdentifier("intake-register-product-disclosure")
         }
         .padding(12)
         .background(ProvisionTheme.amberLight)
@@ -1657,6 +1666,7 @@ public struct IntakeItemReviewSheet: View {
                 .foregroundStyle(targetItem.storageLocationId == nil ? ProvisionTheme.amberWarning : ProvisionTheme.textPrimary)
                 .clipShape(Capsule())
             }
+            .accessibilityIdentifier("intake-review-location-picker")
         }
     }
 
@@ -1737,6 +1747,7 @@ public struct IntakeItemReviewSheet: View {
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
                         .frame(width: 80)
+                        .accessibilityIdentifier("intake-item-price")
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(ProvisionTheme.surfaceSecondary)
@@ -1758,6 +1769,7 @@ public struct IntakeItemReviewSheet: View {
                     Text(String(format: "Total: ₱%.2f", p * targetItem.quantity))
                         .font(ProvisionTypography.caption)
                         .foregroundStyle(ProvisionTheme.provisionGreen)
+                                .accessibilityIdentifier("intake-item-line-total")
                 }
             }
         }
@@ -1795,6 +1807,7 @@ public struct IntakeItemReviewSheet: View {
                     .foregroundStyle(viewModel.isItemEligibleForConfirmation(targetItem) ? ProvisionTheme.onAccent : ProvisionTheme.textTertiary)
                 }
                 .disabled(viewModel.isIntakeMutationLocked)
+                .accessibilityIdentifier("intake-confirm-details")
 
                 if !viewModel.isItemEligibleForConfirmation(targetItem) {
                     HStack(spacing: 4) {
@@ -1833,11 +1846,7 @@ public struct IntakeItemReviewSheet: View {
     }
 
     private func formattedQuantity(_ qty: Double) -> String {
-        if qty.truncatingRemainder(dividingBy: 1) == 0 {
-            return "\(Int(qty))"
-        } else {
-            return String(format: "%.1f", qty)
-        }
+        ProductUnits.formatAmount(qty)
     }
 }
 

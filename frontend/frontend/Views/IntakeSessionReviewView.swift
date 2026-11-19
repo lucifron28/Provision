@@ -139,6 +139,7 @@ public struct IntakeSessionReviewView: View {
                     }
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(ProvisionTheme.provisionGreen)
+                    .accessibilityIdentifier("intake-workspace-done")
                 }
 
                 ToolbarItem(placement: .primaryAction) {
@@ -174,6 +175,7 @@ public struct IntakeSessionReviewView: View {
             TextField("Search items by name, brand, or barcode...", text: $searchQuery)
                 .font(.system(size: 13))
                 .foregroundStyle(ProvisionTheme.textPrimary)
+                .accessibilityIdentifier("intake-workspace-search")
 
             if !searchQuery.isEmpty {
                 Button {
@@ -357,6 +359,7 @@ public struct IntakeSessionReviewView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(item.name), \(formattedQuantity(item.quantity)) \(item.unit), location: \(locationName), status: \(viewModel.validationState(for: item).rawValue)")
         .accessibilityHint("Double tap to inspect and edit item details")
+        .accessibilityIdentifier("intake-workspace-item-\(item.barcode)")
     }
 
     @ViewBuilder
@@ -560,10 +563,6 @@ public struct IntakeSessionReviewView: View {
     }
 
     private func formattedQuantity(_ qty: Double) -> String {
-        if qty.truncatingRemainder(dividingBy: 1) == 0 {
-            return "\(Int(qty))"
-        } else {
-            return String(format: "%.1f", qty)
-        }
+        ProductUnits.formatAmount(qty)
     }
 }

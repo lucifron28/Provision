@@ -190,6 +190,41 @@ public struct ScanViewModelProductionTests {
         )
         let (brandOnlyMatch, _) = service.findBestCatalogMatch(name: "Datu Puti", catalog: PreviewData.products)
         try assertEquals(brandOnlyMatch?.id, nil, "A brand-only line must stay unresolved until the product is identified")
+
+        let receipt = service.parseReceiptLines([
+            "BAYANI FRESH MART",
+            "GROCERIES AND FRESH PRODUCE",
+            "QUEZON CITY, PHILIPPINES",
+            "DATE: 2026-11-19  TIME: 18:40",
+            "POS: 02  TXN: 261119-0917",
+            "ITEM DESCRIPTION",
+            "KANGKONG FRESH 500G 35.00",
+            "PORK KASIM 500G 195.00",
+            "CENTURY TUNA FLAKES OIL 180G 2 @ 40.50",
+            "ITEMS PURCHASED: 10",
+            "SUBTOTAL: 632.00",
+            "TOTAL PHP: 632.00",
+            "CASH: 700.00",
+            "CHANGE: 68.00",
+            "THANK YOU FOR SHOPPING!"
+        ], catalog: [PreviewData.freshKangkong, PreviewData.porkShoulder, PreviewData.centuryTuna])
+
+        try assertEquals(receipt.count, 3, "Store, location, transaction, column header, and payment lines are not groceries")
+        try assertEquals(service.detectStoreName(in: ["BAYANI FRESH MART", "ITEM DESCRIPTION"]), "BAYANI FRESH MART", "The receipt store is retained for the intake session")
+        let kangkong = receipt.first(where: { $0.rawText.contains("KANGKONG") })
+        try assertEquals(kangkong?.quantity, 0.5, "A 500 g produce line is stored as 0.5 kg")
+        try assertEquals(kangkong?.unitPrice, 70, "The per-kilogram price preserves the receipt's ₱35 line total")
+        try assertEquals(kangkong?.lineTotal, 35, "Converted quantity and price retain the source line total")
+
+        let pork = receipt.first(where: { $0.rawText.contains("PORK KASIM") })
+        try assertEquals(pork?.confidence, .uncertain, "A pork-cut candidate remains subject to product review")
+        try assertEquals(pork?.quantity, 0.5, "A 500 g pork line is stored as 0.5 kg while awaiting identity review")
+        try assertEquals(pork?.unitPrice, 390, "The normalized pork price preserves the receipt line total")
+
+        let tuna = receipt.first(where: { $0.rawText.contains("CENTURY TUNA") })
+        try assertEquals(tuna?.quantity, 2, "A 2-can line remains a count quantity despite its 180 g package size")
+        try assertEquals(tuna?.unitPrice, 40.5, "The tuna price remains per can")
+        try assertEquals(tuna?.lineTotal, 81, "Two tuna cans preserve the ₱81 receipt line total")
     }
 
     public static func testGeneratedBarcodesStayInternal() throws {

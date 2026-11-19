@@ -218,6 +218,7 @@ public struct SearchableProductSelector: View {
                     TextField("Search catalog by name, brand, barcode...", text: $searchQuery)
                         .font(.system(size: 14))
                         .foregroundStyle(ProvisionTheme.textPrimary)
+                        .accessibilityIdentifier("catalog-product-search")
                         .tint(ProvisionTheme.provisionGreen)
 
                     if !searchQuery.isEmpty {
@@ -360,6 +361,7 @@ public struct SearchableProductSelector: View {
         }
         .buttonStyle(.plain)
         .accessibleTouchTarget()
+        .accessibilityIdentifier("catalog-product-\(product.id)")
     }
 
     private func categoryPill(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {

@@ -23,6 +23,7 @@ public struct ReceiptLineItem: Identifiable, Hashable, Sendable {
     public var parsedName: String
     public var unitPrice: Double?
     public var quantity: Double
+    public var unit: String?
     public var matchedProduct: Product?
     public var confidence: MatchConfidence
 
@@ -42,6 +43,7 @@ public struct ReceiptLineItem: Identifiable, Hashable, Sendable {
         parsedName: String,
         unitPrice: Double? = nil,
         quantity: Double = 1.0,
+        unit: String? = nil,
         matchedProduct: Product? = nil,
         confidence: MatchConfidence = .none
     ) {
@@ -50,6 +52,7 @@ public struct ReceiptLineItem: Identifiable, Hashable, Sendable {
         self.parsedName = parsedName
         self.unitPrice = unitPrice
         self.quantity = quantity
+        self.unit = unit
         self.matchedProduct = matchedProduct
         self.confidence = confidence
     }
@@ -59,6 +62,7 @@ public struct ReceiptLineItem: Identifiable, Hashable, Sendable {
         parsedName: String,
         parsedPrice: Double?,
         quantity: Double = 1.0,
+        unit: String? = nil,
         matchedProduct: Product? = nil
     ) {
         self.id = UUID()
@@ -66,6 +70,7 @@ public struct ReceiptLineItem: Identifiable, Hashable, Sendable {
         self.parsedName = parsedName
         self.unitPrice = parsedPrice
         self.quantity = quantity
+        self.unit = unit
         self.matchedProduct = matchedProduct
         self.confidence = matchedProduct != nil ? .high : .none
     }
@@ -136,7 +141,19 @@ public final class ReceiptOCRService: Sendable {
         options: .caseInsensitive
     )
     private static let paymentMetadataRegex = try? NSRegularExpression(
-        pattern: #"^\s*(?:DATE|TIME|TENDER|CARD|CREDIT|DEBIT|PAYMENT|APPROVAL|AUTH(?:ORIZATION)?|TRACE|REFERENCE|TERMINAL|ACCOUNT|CASHIER|CUSTOMER|BALANCE|AID|MID|TID|TRANS(?:ACTION)?(?:\s+NO\.?)?)\b"#,
+        pattern: #"^\s*(?:POS|TXN|DATE|TIME|TENDER|CARD|CREDIT|DEBIT|PAYMENT|APPROVAL|AUTH(?:ORIZATION)?|TRACE|REFERENCE|TERMINAL|ACCOUNT|CASHIER|CUSTOMER|BALANCE|AID|MID|TID|TRANS(?:ACTION)?(?:\s+NO\.?)?)\b"#,
+        options: .caseInsensitive
+    )
+    private static let receiptHeaderRegex = try? NSRegularExpression(
+        pattern: #"^\s*(?:[\p{L}\p{N} .,'-]+\s+(?:MART|MARKET|SUPERMARKET)|GROCERIES\s+AND\s+[\p{L}\p{N} .,'-]+|ITEM\s+DESCRIPTION|[\p{L} .'-]+,\s*PHILIPPINES)\s*$"#,
+        options: .caseInsensitive
+    )
+    private static let storeNameRegex = try? NSRegularExpression(
+        pattern: #"^\s*[\p{L}\p{N} &.'-]+\s+(?:MART|MARKET|SUPERMARKET)\s*$"#,
+        options: .caseInsensitive
+    )
+    private static let packageMeasureRegex = try? NSRegularExpression(
+        pattern: #"(\d+(?:[.,]\d+)?)\s*(KG|G|L|ML)\b"#,
         options: .caseInsensitive
     )
     private static let standaloneAmountRegex = try? NSRegularExpression(
@@ -183,6 +200,11 @@ public final class ReceiptOCRService: Sendable {
             .contains(where: { $0.firstMatch(in: trimmed, options: [], range: fullRange) != nil }) {
             return nil
         }
+        if upper == "ITEM DESCRIPTION"
+            || upper.hasPrefix("ITEMS PURCHASED")
+            || Self.receiptHeaderRegex?.firstMatch(in: trimmed, options: [], range: fullRange) != nil {
+            return nil
+        }
 
         var extractedQty: Double = 1.0
         var extractedPrice: Double? = nil
@@ -210,15 +232,82 @@ public final class ReceiptOCRService: Sendable {
         guard !cleanedName.isEmpty else { return nil }
 
         let (matched, confidence) = findBestCatalogMatch(name: cleanedName, catalog: catalog)
+        var parsedUnit = confidence == .exact || confidence == .high ? matched?.unit : nil
+
+        // Receipts often show the purchased package's weight or volume and a
+        // line total. Inventory stores measured products in their catalog unit,
+        // so convert the package amount and retain the same line total as a
+        // per-unit price. Unmatched lines use kg or L until a user links them.
+        // Count products such as cans keep their count quantity.
+        if extractedQty == 1,
+           let measure = Self.packageMeasureRegex?.firstMatch(
+                in: cleanedName,
+                options: [],
+                range: NSRange(location: 0, length: cleanedName.utf16.count)
+           ),
+           let amountRange = Range(measure.range(at: 1), in: cleanedName),
+           let unitRange = Range(measure.range(at: 2), in: cleanedName),
+           let amount = Double(String(cleanedName[amountRange]).replacingOccurrences(of: ",", with: ".")) {
+            let receiptUnit = String(cleanedName[unitRange])
+            if let matched,
+               confidence == .exact || confidence == .high,
+               let catalogUnit = matched.unit,
+               ProductUnits.isMeasured(catalogUnit),
+               let converted = Self.convertedPackageAmount(amount, receiptUnit: receiptUnit, catalogUnit: catalogUnit),
+               converted > 0 {
+                extractedQty = converted
+                parsedUnit = catalogUnit
+            } else if matched == nil || confidence == .uncertain || confidence == .none,
+                      let (quantity, unit) = Self.normalizedReceiptMeasure(amount, unit: receiptUnit),
+                      quantity > 0 {
+                extractedQty = quantity
+                parsedUnit = unit
+            }
+            if let lineTotal = extractedPrice, parsedUnit != nil, extractedQty != 1 {
+                extractedPrice = lineTotal / extractedQty
+            }
+        }
 
         return ReceiptLineItem(
             rawText: line,
-            parsedName: matched?.name ?? cleanedName,
+            parsedName: confidence == .exact || confidence == .high ? (matched?.name ?? cleanedName) : cleanedName,
             unitPrice: extractedPrice,
             quantity: extractedQty,
+            unit: parsedUnit,
             matchedProduct: matched,
             confidence: confidence
         )
+    }
+
+    private static func convertedPackageAmount(_ amount: Double, receiptUnit: String, catalogUnit: String) -> Double? {
+        let receiptUnit = receiptUnit.lowercased()
+        let catalogUnit = catalogUnit.lowercased()
+        let baseAmount: Double
+        switch receiptUnit {
+        case "kg": baseAmount = amount * 1_000
+        case "g": baseAmount = amount
+        case "l": baseAmount = amount * 1_000
+        case "ml": baseAmount = amount
+        default: return nil
+        }
+
+        switch catalogUnit {
+        case "kg": return baseAmount / 1_000
+        case "g": return baseAmount
+        case "l": return baseAmount / 1_000
+        case "ml": return baseAmount
+        default: return nil
+        }
+    }
+
+    private static func normalizedReceiptMeasure(_ amount: Double, unit: String) -> (quantity: Double, unit: String)? {
+        switch unit.lowercased() {
+        case "kg": return (amount, "kg")
+        case "g": return (amount / 1_000, "kg")
+        case "l": return (amount, "L")
+        case "ml": return (amount / 1_000, "L")
+        default: return nil
+        }
     }
 
     /// Parses extracted receipt lines into line items with candidate prices
@@ -230,6 +319,14 @@ public final class ReceiptOCRService: Sendable {
             }
         }
         return items
+    }
+
+    public func detectStoreName(in lines: [String]) -> String? {
+        lines.first { line in
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            let range = NSRange(location: 0, length: trimmed.utf16.count)
+            return Self.storeNameRegex?.firstMatch(in: trimmed, options: [], range: range) != nil
+        }?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     public func findBestCatalogMatch(name: String, catalog: [Product]) -> (Product?, MatchConfidence) {

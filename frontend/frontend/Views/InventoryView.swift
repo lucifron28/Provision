@@ -256,6 +256,7 @@ public struct InventoryView: View {
                     .font(.system(size: 15))
                     .autocorrectionDisabled()
                     .foregroundStyle(ProvisionTheme.textPrimary)
+                    .accessibilityIdentifier("inventory-search")
                 
                 if !viewModel.searchText.isEmpty {
                     Button {

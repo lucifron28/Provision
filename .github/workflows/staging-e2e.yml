@@ -136,6 +136,10 @@ jobs:
       - name: Prepare the exact iPhone 17 simulator
         run: bash .github/scripts/prepare_ios_simulator.sh
 
+      - name: Import the attached receipt into Simulator Photos
+        if: ${{ inputs.account_mode == 'real-demo-account' }}
+        run: xcrun simctl addmedia "$SIMULATOR_UDID" frontend/frontendUITests/Resources/Provision_Receipt_OCR_Demo.jpg
+
       - name: Build staging iPhone UI test products
         run: |
           set -o pipefail
@@ -149,6 +153,8 @@ jobs:
             -only-testing:frontendUITests/CookWithPipUITests/testCookWithPipLoadingEmptyAndOfflineRecovery \
             -only-testing:frontendUITests/CookWithPipUITests/testShoppingOfflineRetryAndStalePreviewRecovery \
             -only-testing:frontendUITests/CookWithPipUITests/testRealDemoAccountSessionAndBarcodeLookup \
+            -only-testing:frontendUITests/CookWithPipUITests/testRealDemoAccountReceiptOCRIntake \
+            -only-testing:frontendTests/ScannerRecoveryTests/testProductionScannerBehaviorSuite \
             -derivedDataPath artifacts/DerivedData \
             -parallel-testing-enabled NO \
             -showBuildTimingSummary \
@@ -173,11 +179,27 @@ jobs:
             -scheme frontend \
             -destination "platform=iOS Simulator,id=${SIMULATOR_UDID}" \
             -only-testing:frontendUITests/CookWithPipUITests/testRealDemoAccountSessionAndBarcodeLookup \
+            -only-testing:frontendUITests/CookWithPipUITests/testRealDemoAccountReceiptOCRIntake \
             -derivedDataPath artifacts/DerivedData \
             -resultBundlePath artifacts/staging-real-demo.xcresult \
             -parallel-testing-enabled NO \
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGN_IDENTITY=- 2>&1 | tee artifacts/xcodebuild.log
+      - name: Run focused production receipt parser regression
+        if: ${{ inputs.account_mode == 'real-demo-account' }}
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          xcodebuild test-without-building \
+            -project frontend/frontend.xcodeproj \
+            -scheme frontend \
+            -destination "platform=iOS Simulator,id=${SIMULATOR_UDID}" \
+            -only-testing:frontendTests/ScannerRecoveryTests/testProductionScannerBehaviorSuite \
+            -derivedDataPath artifacts/DerivedData \
+            -resultBundlePath artifacts/receipt-parser-unit.xcresult \
+            -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- 2>&1 | tee artifacts/xcodebuild-receipt-unit.log
       - name: Run staging login, offline recovery, and Keychain relaunch tests on iPhone 17
         id: ios-staging
         if: ${{ inputs.account_mode == 'synthetic-fixture' }}
@@ -245,6 +267,21 @@ jobs:
             artifacts/xcodebuild.log
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Upload real demo receipt verification results
+        if: always() && inputs.account_mode == 'real-demo-account'
+        uses: actions/upload-artifact@v4
+        with:
+          name: provision-real-demo-receipt-ocr-${{ inputs.expected_render_commit }}
+          path: |
+            artifacts/staging-real-demo.xcresult
+            artifacts/receipt-parser-unit.xcresult
+            artifacts/test-durations-staging.json
+            artifacts/xcodebuild-build.log
+            artifacts/xcodebuild.log
+            artifacts/xcodebuild-receipt-unit.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Remove the run-owned synthetic households
         if: always() && steps.staging-fixture.outcome != 'skipped'

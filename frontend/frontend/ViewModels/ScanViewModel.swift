@@ -822,6 +822,9 @@ public class ScanViewModel: ObservableObject {
             errorMessage = "No text could be recognized from receipt image. Please ensure the receipt is well-lit and legible."
             return
         }
+        if let detectedStoreName = ReceiptOCRService.shared.detectStoreName(in: lines) {
+            storeName = detectedStoreName
+        }
         await matchReceiptLines(lines)
     }
 
@@ -931,12 +934,13 @@ public class ScanViewModel: ObservableObject {
 
         for item in parsedItems {
             let isRecognized = (item.confidence == .exact || item.confidence == .high) && item.matchedProduct != nil
+            let resolvedProduct = isRecognized ? item.matchedProduct : nil
             let status: ScannedIntakeItem.IntakeStatus = isRecognized ? .recognized : .needsReview
             // Medium: Generate deterministic identifier for unmatched items to prevent duplicates on re-import
-            let candidateBarcode = item.matchedProduct?.barcode ?? deterministicReceiptBarcode(name: item.parsedName)
+            let candidateBarcode = resolvedProduct?.barcode ?? deterministicReceiptBarcode(name: item.parsedName)
 
             // Identify existing items using reliable product identifiers
-            if let pid = item.matchedProduct?.id, let idx = scannedItems.firstIndex(where: { $0.productId == pid }) {
+            if let pid = resolvedProduct?.id, let idx = scannedItems.firstIndex(where: { $0.productId == pid }) {
                 reconcileExistingItem(at: idx, with: item)
                 mergedCount += 1
             } else if let idx = scannedItems.firstIndex(where: { $0.barcode == candidateBarcode }) {
@@ -944,14 +948,14 @@ public class ScanViewModel: ObservableObject {
                 mergedCount += 1
             } else {
                 let intakeItem = ScannedIntakeItem(
-                    name: item.matchedProduct?.name ?? item.parsedName,
-                    brand: item.matchedProduct?.brand,
+                    name: resolvedProduct?.name ?? item.parsedName,
+                    brand: resolvedProduct?.brand,
                     barcode: candidateBarcode,
                     quantity: item.quantity,
-                    unit: item.matchedProduct?.unit ?? "pcs",
+                    unit: resolvedProduct?.unit ?? item.unit ?? "pcs",
                     expirationDate: nil,
                     status: status,
-                    productId: item.matchedProduct?.id,
+                    productId: resolvedProduct?.id,
                     storageLocationId: nil,
                     unitPrice: item.unitPrice,
                     isConfirmed: false
