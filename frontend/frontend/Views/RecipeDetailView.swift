@@ -267,7 +267,7 @@ private struct RecipeDetailContents: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             if !dynamicTypeSize.isAccessibilitySize {
-                Text("\(recipe.cuisine) · \(regionText)")
+                Text(cuisineRegionLabel)
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(ProvisionTheme.textSecondary)
             }
@@ -306,7 +306,7 @@ private struct RecipeDetailContents: View {
     private var metadataSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             if dynamicTypeSize.isAccessibilitySize {
-                Text("\(recipe.cuisine) · \(regionText)")
+                Text(cuisineRegionLabel)
                     .font(.body.weight(.medium))
                     .foregroundStyle(ProvisionTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -560,9 +560,12 @@ private struct RecipeDetailContents: View {
         .provisionCard()
     }
 
-    private var regionText: String {
+    private var cuisineRegionLabel: String {
         let regions = recipe.ph_regions.filter { $0 != "region_unknown" }
-        return regions.isEmpty ? "Region not specified" : regions.joined(separator: ", ")
+        guard !regions.isEmpty else { return "\(recipe.cuisine) · Region not specified" }
+        let distinctRegions = regions.filter { $0.localizedCaseInsensitiveCompare(recipe.cuisine) != .orderedSame }
+        guard !distinctRegions.isEmpty else { return recipe.cuisine }
+        return "\(recipe.cuisine) · \(distinctRegions.joined(separator: ", "))"
     }
 
     private func metadataLabel(_ title: String, symbol: String) -> some View {

@@ -254,9 +254,17 @@ public struct RecipeShoppingReviewView: View {
                     .foregroundStyle(ProvisionTheme.textSecondary)
             }
             if preview.safety.decision == "blocked" {
-                Text("The server blocked shopping confirmation for this preview.")
+                Text("A food-safety conflict must be resolved before you can confirm this shopping list. “Line ready” only describes the ingredient quantity.")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(ProvisionTheme.redAlert)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("recipe-shopping-safety-guidance")
+            } else if preview.safety.decision == "review_required" {
+                Text("Check the ingredient match, pantry amount, and package allergen label shown above. “Line ready” describes the quantity only; acknowledge the review before confirming.")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(ProvisionTheme.amberWarning)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("recipe-shopping-safety-guidance")
             }
         }
     }
@@ -286,10 +294,22 @@ public struct RecipeShoppingReviewView: View {
                         }
                     }
                     let isCovered = line.status == "ready" && (line.additional_quantity?.value ?? 0) == 0
-                    Label(isCovered ? "Already covered" : (line.status == "ready" ? "Ready to add" : "Review required"),
+                    let readinessLabel: String
+                    if isCovered {
+                        readinessLabel = "Already covered"
+                    } else if line.status == "ready" && preview.safety.decision != "eligible" {
+                        readinessLabel = "Line ready"
+                    } else if line.status == "ready" {
+                        readinessLabel = "Ready to add"
+                    } else {
+                        readinessLabel = "Review required"
+                    }
+                    Label(readinessLabel,
                           systemImage: isCovered ? "checkmark.circle" : (line.status == "ready" ? "plus.circle" : "exclamationmark.triangle"))
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(isCovered || line.status == "ready" ? ProvisionTheme.provisionGreen : ProvisionTheme.amberWarning)
+                        .foregroundStyle(isCovered || (line.status == "ready" && preview.safety.decision == "eligible")
+                            ? ProvisionTheme.provisionGreen : ProvisionTheme.amberWarning)
+                        .accessibilityIdentifier("recipe-shopping-line-readiness-\(entry.offset)")
                     quantitySummary(line, safetyDecision: preview.safety.decision)
                     if let id = line.ingredient_id,
                        viewModel.selectedIngredientIDs.contains(id), line.target_quantity != nil {

@@ -212,7 +212,7 @@ public struct AddInventoryView: View {
                             .accessibilityIdentifier("inventory-add-product-details")
                         }
                     } header: {
-                        Text(mode == .existing ? "Catalog Selection" : "New Product Specification")
+                        Text(mode == .existing ? "Catalog Selection" : "Add New Grocery")
                     }
                 }
                 

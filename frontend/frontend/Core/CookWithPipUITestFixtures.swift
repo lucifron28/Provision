@@ -144,7 +144,7 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
             cookMinutes: 8,
             ingredients: [
                 Self.makeIngredient(id: nil, name: "kangkong", amount: "100.000000", unit: "g"),
-                Self.makeIngredient(id: 914, name: "toyo", amount: "15.000000", unit: "mL")
+                Self.makeIngredient(id: 903, name: "toyo", amount: "15.000000", unit: "mL")
             ]
         )
         let tortangTalong = Self.makeRecipe(
@@ -226,10 +226,10 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
             recipe: ginisangKangkong,
             decision: "review_required",
             reasons: ["product_allergen_label_not_reviewed"],
-            availability: [unknown, Self.availabilityLine(id: 914, name: "gata", required: true, needed: "200.000000", available: "200.000000", shortfall: "0", unit: "ml", status: "full", batchIDs: [1905])],
+            availability: [unknown, Self.availabilityLine(id: 903, name: "toyo", required: true, needed: "15.000000", available: "300.000000", shortfall: "0", unit: "mL", status: "full", batchIDs: [10])],
             ingredientDecisions: [
                 Self.safetyLine(index: 0, id: nil, decision: "review_required", reasons: ["ingredient_mapping_unknown"]),
-                Self.safetyLine(index: 1, id: 914, decision: "review_required", reasons: ["product_allergen_label_not_reviewed"])
+                Self.safetyLine(index: 1, id: 903, decision: "review_required", reasons: ["product_allergen_label_not_reviewed"])
             ],
             overallAvailability: "unknown"
         )
@@ -424,6 +424,9 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
         if scenario == "shopping-offline-once", await counter.nextPreview() == 1 {
             throw APIError.networkError(URLError(.notConnectedToInternet))
         }
+        if request.recipe_id == 303 {
+            return await ginisangKangkongShoppingPreview(request)
+        }
         let decision = scenario == "shopping-review-required" ? "review_required"
             : (scenario == "shopping-blocked" ? "blocked" : "eligible")
         let reasons = decision == "review_required" ? ["product_allergen_label_not_reviewed"]
@@ -513,8 +516,8 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
         }
         await counter.setPreviewRecipeID(request.recipe_id)
         let unlinkedManualItems = scenario == "shopping-unlinked-manual"
-            ? [UnlinkedShoppingReview(item_id: 9920, name: "manual market note",
-                quantity: Self.quantity("1"), unit: nil, candidate_ingredient_ids: [], reason: "not_linked")]
+            ? [UnlinkedShoppingReview(item_id: 9920, name: "Gardenia Classic White Bread",
+                quantity: Self.quantity("1"), unit: "loaf", candidate_ingredient_ids: [], reason: "not_linked")]
             : []
         return RecipeShoppingPreview(
             preview_id: "synthetic-preview-\(request.recipe_id)-\(request.expected_recipe_revision)",
@@ -526,6 +529,73 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
             included_requirement_indexes: includeOptional ? [0, 1, 2] : [0, 1], safety: readySafety,
             lines: includeOptional ? [firstLine, secondLine, optionalLine] : [firstLine, secondLine],
             unlinked_manual_items: unlinkedManualItems
+        )
+    }
+
+    private func ginisangKangkongShoppingPreview(
+        _ request: RecipeShoppingPreviewRequest
+    ) async -> RecipeShoppingPreview {
+        let isBlocked = scenario == "shopping-blocked"
+        let decision = isBlocked ? "blocked" : "review_required"
+        let reasons = isBlocked
+            ? ["declared_allergen_conflict", "ingredient_mapping_unknown"]
+            : ["ingredient_mapping_unknown", "product_allergen_label_not_reviewed"]
+        let kangkong = RecipeShoppingLine(
+            ingredient_id: nil, canonical_name: nil, display_name: "kangkong", unit: "g",
+            required_quantity: Self.quantity("100"), pantry_quantity: nil, shortage: nil,
+            pending_quantity: Self.quantity("0"), target_quantity: nil, additional_quantity: nil,
+            pending_item_ids: [], covered_batch_ids: [], status: "review_required",
+            review_reasons: ["ingredient_mapping_unknown"]
+        )
+        let toyo = RecipeShoppingLine(
+            ingredient_id: 903, canonical_name: "soy sauce", display_name: "toyo", unit: "mL",
+            required_quantity: Self.quantity("15"), pantry_quantity: Self.quantity("300"),
+            shortage: Self.quantity("0"), pending_quantity: Self.quantity("0"),
+            target_quantity: Self.quantity("0"), additional_quantity: Self.quantity("0"),
+            pending_item_ids: [], covered_batch_ids: [10], status: "ready",
+            review_reasons: ["product_allergen_label_not_reviewed"]
+        )
+        let safety = FoodSafetySnapshot(
+            decision: decision,
+            reasons: reasons,
+            ingredients: [
+                Self.safetyLine(index: 0, id: nil, decision: "review_required",
+                                reasons: ["ingredient_mapping_unknown"]),
+                Self.safetyLine(index: 1, id: 903, decision: isBlocked ? "blocked" : "review_required",
+                                reasons: isBlocked ? ["declared_allergen_conflict"] : ["product_allergen_label_not_reviewed"])
+            ],
+            availability: RecipeAvailabilitySnapshot(
+                recipe_servings: request.servings, servings: request.servings, overall_status: "unknown",
+                requirements: [IngredientAvailabilitySnapshot(
+                    ingredient_id: 903, canonical_name: "soy sauce", display_names: ["toyo"],
+                    required: true, required_amount: Self.quantity("15"), available_amount: Self.quantity("300"),
+                    shortfall: Self.quantity("0"), unit: "mL", status: "full", covered_batch_ids: [10],
+                    missing_expiry_batch_ids: [], unknown_reasons: []
+                )]
+            ),
+            notice: "No known conflict is not a safety guarantee. Check actual labels and preparation."
+        )
+        let expiration: String
+        if scenario == "shopping-expired" {
+            expiration = "2020-01-01T00:00:00Z"
+        } else if scenario == "shopping-malformed-expiry" {
+            expiration = "not-a-timestamp"
+        } else {
+            let lifetime: TimeInterval = scenario == "shopping-expiring-soon" ? 2 : 300
+            expiration = ISO8601DateFormatter().string(from: Date().addingTimeInterval(lifetime))
+        }
+        await counter.setPreviewRecipeID(request.recipe_id)
+        let unlinkedManualItems = scenario == "shopping-unlinked-manual"
+            ? [UnlinkedShoppingReview(item_id: 9920, name: "Gardenia Classic White Bread",
+                quantity: Self.quantity("1"), unit: "loaf", candidate_ingredient_ids: [], reason: "not_linked")]
+            : []
+        return RecipeShoppingPreview(
+            preview_id: "synthetic-preview-\(request.recipe_id)-\(request.expected_recipe_revision)",
+            expires_at: expiration, recipe_id: request.recipe_id,
+            recipe_revision: request.expected_recipe_revision, servings: request.servings,
+            include_optional: request.include_optional, substitutions: request.substitutions,
+            shopping_revision: 3, inventory_revision: 7, included_requirement_indexes: [0, 1],
+            safety: safety, lines: [kangkong, toyo], unlinked_manual_items: unlinkedManualItems
         )
     }
 
@@ -592,6 +662,7 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
                 switch line.ingredient_id {
                 case 911: name = "baboy"; unit = "kg"
                 case 912: name = "sampalok"; unit = "g"
+                case 903: name = "toyo"; unit = "mL"
                 case 914: name = "gata"; unit = "mL"
                 case 913: name = "sili"; unit = "pcs"
                 default: name = "kangkong"; unit = "g"
@@ -630,6 +701,9 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
             case 912:
                 name = "sampalok"
                 unit = "g"
+            case 903:
+                name = "toyo"
+                unit = "mL"
             case 914:
                 name = "gata"
                 unit = "mL"

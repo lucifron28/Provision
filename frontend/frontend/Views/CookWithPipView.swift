@@ -1,5 +1,13 @@
 import SwiftUI
 
+private func cuisineRegionLine(_ cuisine: String, regions: [String], missingLabel: String) -> String {
+    let listedRegions = regions.filter { $0 != "region_unknown" }
+    guard !listedRegions.isEmpty else { return "\(cuisine) · \(missingLabel)" }
+    let distinctRegions = listedRegions.filter { $0.localizedCaseInsensitiveCompare(cuisine) != .orderedSame }
+    guard !distinctRegions.isEmpty else { return cuisine }
+    return "\(cuisine) · \(distinctRegions.joined(separator: ", "))"
+}
+
 public struct CookWithPipView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @StateObject private var viewModel: CookWithPipViewModel
@@ -602,9 +610,7 @@ private struct RecommendationRecipeCard: View {
     }
 
     private var cuisineLine: String {
-        let regions = recipe.ph_regions.filter { $0 != "region_unknown" }
-        let regionText = regions.isEmpty ? "Region not specified" : regions.joined(separator: ", ")
-        return "\(recipe.cuisine) · \(regionText)"
+        cuisineRegionLine(recipe.cuisine, regions: recipe.ph_regions, missingLabel: "Region not specified")
     }
 }
 
@@ -619,7 +625,7 @@ private struct HouseholdRecipeCard: View {
                         .font(ProvisionTypography.sectionSerif)
                         .foregroundStyle(ProvisionTheme.textPrimary)
                         .multilineTextAlignment(.leading)
-                    Text("\(recipe.cuisine) · \(regionText)")
+                    Text(cuisineRegionLine(recipe.cuisine, regions: recipe.ph_regions, missingLabel: "region not specified"))
                         .font(.subheadline)
                         .foregroundStyle(ProvisionTheme.textSecondary)
                 }
@@ -643,10 +649,6 @@ private struct HouseholdRecipeCard: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var regionText: String {
-        let regions = recipe.ph_regions.filter { $0 != "region_unknown" }
-        return regions.isEmpty ? "region not specified" : regions.joined(separator: ", ")
-    }
 }
 
 #if DEBUG

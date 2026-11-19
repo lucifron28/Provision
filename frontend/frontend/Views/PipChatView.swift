@@ -321,7 +321,7 @@ public struct PipChatView: View {
 
     @ViewBuilder
     private func messageBubble(_ message: PipChatDisplayMessage) -> some View {
-        HStack(alignment: .bottom, spacing: 8) {
+        HStack(alignment: .top, spacing: 8) {
             if message.role == .assistant {
                 Image("pip_happy")
                     .resizable()

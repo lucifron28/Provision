@@ -330,6 +330,8 @@ final class CookWithPipUITests: XCTestCase {
         let searchedRecipe = app.buttons["recipe-card-303"]
         XCTAssertTrue(searchedRecipe.waitForExistence(timeout: 10))
         XCTAssertTrue(searchedRecipe.label.contains("Ginisang Kangkong"))
+        XCTAssertFalse(searchedRecipe.label.contains("Filipino · Filipino"),
+                       "Recipe cards should not repeat the same cuisine and region")
         XCTAssertTrue(searchedRecipe.isHittable,
                       "The filtered household recipe is visible in the Cook with Pip search state")
         XCTAssertFalse(app.keyboards.firstMatch.isHittable,
@@ -392,6 +394,13 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(element("recipe-detail-title", in: app).waitForExistence(timeout: 10))
         XCTAssertEqual(element("recipe-safety-status", in: app).label, "Review required")
         XCTAssertEqual(element("recipe-availability-status", in: app).label, "Unknown")
+        XCTAssertFalse(app.staticTexts["Filipino · Filipino"].exists,
+                       "Recipe details should not repeat the same cuisine and region")
+        let toyoAvailability = element("recipe-ingredient-availability-summary-1", in: app)
+        XCTAssertTrue(toyoAvailability.waitForExistence(timeout: 5))
+        XCTAssertTrue(toyoAvailability.label.contains("Have 300 mL"))
+        XCTAssertTrue(toyoAvailability.label.contains("Need 15 mL"),
+                      "Ginisang Kangkong uses the household toyo line at its recipe quantity")
         capture("Recipe_Detail", app: app)
         let instructions = element("recipe-instructions", in: app)
         let recipeScroll = app.scrollViews["recipe-detail-scroll"]
@@ -411,6 +420,31 @@ final class CookWithPipUITests: XCTestCase {
                        "The screenshot must show an actual instruction from the selected recipe")
         assertReachable(firstInstruction, in: app)
         capture("Recipe_Detail_Instructions", app: app)
+
+        let shoppingPreviewLink = element("recipe-shopping-preview-link", in: app)
+        scrollTargetIntoView(shoppingPreviewLink, inside: recipeScroll,
+                             progressAnchor: firstInstruction, in: app)
+        XCTAssertTrue(shoppingPreviewLink.isHittable)
+        shoppingPreviewLink.tap()
+        let shoppingSafetyStatus = element("recipe-shopping-safety-status", in: app)
+        XCTAssertTrue(shoppingSafetyStatus.waitForExistence(timeout: 10))
+        XCTAssertEqual(shoppingSafetyStatus.label, "Review required")
+        let shoppingForm = scrollContainer("recipe-shopping-review-form", in: app)
+        let toyoShoppingLine = element("recipe-shopping-name-903", in: app)
+        scrollTargetIntoView(toyoShoppingLine, inside: shoppingForm, in: app)
+        XCTAssertEqual(toyoShoppingLine.label, "toyo",
+                       "The shopping preview keeps the recipe's household ingredient name")
+        let toyoQuantityDetails = element("recipe-shopping-quantity-details-903", in: app)
+        scrollTargetIntoView(toyoQuantityDetails, inside: shoppingForm,
+                             progressAnchor: toyoShoppingLine, in: app)
+        toyoQuantityDetails.tap()
+        let toyoRequiredQuantity = element("recipe-shopping-quantity-required-903", in: app)
+        XCTAssertTrue(toyoRequiredQuantity.waitForExistence(timeout: 5))
+        XCTAssertTrue(toyoRequiredQuantity.label.contains("15 mL"))
+        let confirmShopping = element("recipe-shopping-confirm", in: app)
+        XCTAssertTrue(confirmShopping.waitForExistence(timeout: 5))
+        XCTAssertFalse(confirmShopping.isEnabled,
+                       "The review-required recipe remains ineligible until the required review is acknowledged")
     }
 
     func testCookWithPipLoadingEmptyAndOfflineRecovery() {
@@ -965,6 +999,7 @@ final class CookWithPipUITests: XCTestCase {
         let manualOption = app.buttons["inventory-add-new-option"]
         XCTAssertTrue(manualOption.waitForExistence(timeout: 5))
         manualOption.tap()
+        XCTAssertTrue(app.staticTexts["Add New Grocery"].waitForExistence(timeout: 5))
 
         let productName = element("inventory-add-product-name", in: app)
         XCTAssertTrue(
@@ -1160,7 +1195,7 @@ final class CookWithPipUITests: XCTestCase {
                              targetDescription: "recipe-shopping-unlinked-9920", in: app)
         XCTAssertTrue(unlinked.waitForExistence(timeout: 10))
         assertReachable(unlinked, in: app)
-        XCTAssertTrue(unlinked.label.contains("manual market note"))
+        XCTAssertTrue(unlinked.label.contains("Gardenia Classic White Bread"))
         capture("Shopping_Unlinked_Manual_Items", app: app)
     }
 
@@ -1224,6 +1259,13 @@ final class CookWithPipUITests: XCTestCase {
         openShoppingPreview(reviewApp)
         let reviewSafetyStatus = element("recipe-shopping-safety-status", in: reviewApp)
         XCTAssertEqual(reviewSafetyStatus.label, "Review required")
+        let reviewGuidance = element("recipe-shopping-safety-guidance", in: reviewApp)
+        XCTAssertTrue(reviewGuidance.waitForExistence(timeout: 5))
+        XCTAssertTrue(reviewGuidance.label.contains("ingredient match"))
+        XCTAssertTrue(reviewGuidance.label.contains("package allergen label"))
+        let reviewLineReadiness = element("recipe-shopping-line-readiness-0", in: reviewApp)
+        XCTAssertTrue(reviewLineReadiness.waitForExistence(timeout: 5))
+        XCTAssertTrue(reviewLineReadiness.label.contains("Line ready"))
         let reviewConfirm = reviewApp.navigationBars.buttons["recipe-shopping-confirm"]
         XCTAssertFalse(reviewConfirm.isEnabled)
         capture("Shopping_Preview_Review_Required", app: reviewApp)
@@ -1253,6 +1295,13 @@ final class CookWithPipUITests: XCTestCase {
         openShoppingPreview(blockedApp)
         let blockedSafetyStatus = element("recipe-shopping-safety-status", in: blockedApp)
         XCTAssertEqual(blockedSafetyStatus.label, "Blocked")
+        let blockedGuidance = element("recipe-shopping-safety-guidance", in: blockedApp)
+        XCTAssertTrue(blockedGuidance.waitForExistence(timeout: 5))
+        XCTAssertTrue(blockedGuidance.label.contains("food-safety conflict"))
+        XCTAssertTrue(blockedGuidance.label.contains("before you can confirm"))
+        let blockedLineReadiness = element("recipe-shopping-line-readiness-0", in: blockedApp)
+        XCTAssertTrue(blockedLineReadiness.waitForExistence(timeout: 5))
+        XCTAssertTrue(blockedLineReadiness.label.contains("Line ready"))
         XCTAssertFalse(blockedApp.buttons["recipe-shopping-confirm"].isEnabled)
         capture("Shopping_Preview_Blocked", app: blockedApp)
         let blockedActionSummary = element("recipe-shopping-action-summary-901", in: blockedApp)
