@@ -303,6 +303,8 @@ public struct RecipeShoppingReviewView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(isCovered || (line.status == "ready" && preview.safety.decision == "eligible")
                             ? ProvisionTheme.provisionGreen : ProvisionTheme.amberWarning)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(readinessLabel)
                         .accessibilityIdentifier("recipe-shopping-line-readiness-\(entry.offset)")
                     quantitySummary(line, safetyDecision: preview.safety.decision)
                     if let id = line.ingredient_id,
