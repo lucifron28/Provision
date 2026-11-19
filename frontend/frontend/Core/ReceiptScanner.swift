@@ -76,6 +76,17 @@ public struct ReceiptLineItem: Identifiable, Hashable, Sendable {
     }
 }
 
+struct ReceiptOCRTextObservation: Sendable {
+    let text: String
+    let minX: Double
+    let minY: Double
+    let maxX: Double
+    let maxY: Double
+
+    var height: Double { maxY - minY }
+    var midY: Double { (minY + maxY) / 2 }
+}
+
 // MARK: - Vision OCR Text Recognition Service
 
 public final class ReceiptOCRService: Sendable {
@@ -95,10 +106,18 @@ public final class ReceiptOCRService: Sendable {
                     return
                 }
                 
-                let lines: [String] = observations.compactMap { observation in
-                    observation.topCandidates(1).first?.string
+                let textObservations: [ReceiptOCRTextObservation] = observations.compactMap { observation in
+                    guard let text = observation.topCandidates(1).first?.string else { return nil }
+                    let box = observation.boundingBox
+                    return ReceiptOCRTextObservation(
+                        text: text,
+                        minX: Double(box.minX),
+                        minY: Double(box.minY),
+                        maxX: Double(box.maxX),
+                        maxY: Double(box.maxY)
+                    )
                 }
-                continuation.resume(returning: lines)
+                continuation.resume(returning: Self.assembleOCRRows(textObservations))
             }
             
             request.recognitionLevel = .accurate
@@ -125,6 +144,49 @@ public final class ReceiptOCRService: Sendable {
                 }
             }
         }
+    }
+
+    static func assembleOCRRows(_ observations: [ReceiptOCRTextObservation]) -> [String] {
+        var rows: [[ReceiptOCRTextObservation]] = []
+        let ordered = observations
+            .filter {
+                !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    && $0.height.isFinite && $0.height > 0
+                    && $0.minX.isFinite && $0.maxX.isFinite
+                    && $0.minY.isFinite && $0.maxY.isFinite
+            }
+            .sorted { $0.midY > $1.midY }
+
+        for observation in ordered {
+            let matchingRow = rows.indices.compactMap { index -> (index: Int, overlap: Double)? in
+                let rowMinY = rows[index].map(\.minY).min() ?? observation.minY
+                let rowMaxY = rows[index].map(\.maxY).max() ?? observation.maxY
+                let overlap = min(observation.maxY, rowMaxY) - max(observation.minY, rowMinY)
+                let shorterHeight = min(observation.height, rowMaxY - rowMinY)
+                guard shorterHeight > 0 else { return nil }
+                let overlapRatio = overlap / shorterHeight
+                return overlapRatio >= 0.5 ? (index, overlapRatio) : nil
+            }
+            .max { $0.overlap < $1.overlap }
+
+            if let matchingRow {
+                rows[matchingRow.index].append(observation)
+            } else {
+                rows.append([observation])
+            }
+        }
+
+        return rows
+            .sorted { lhs, rhs in
+                let lhsMidY = lhs.map(\.midY).reduce(0, +) / Double(lhs.count)
+                let rhsMidY = rhs.map(\.midY).reduce(0, +) / Double(rhs.count)
+                return lhsMidY > rhsMidY
+            }
+            .map { row in
+                row.sorted { $0.minX < $1.minX }
+                    .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .joined(separator: " ")
+            }
     }
     
     /// Parses extracted receipt lines into line items with candidate prices

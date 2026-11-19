@@ -225,6 +225,24 @@ public struct ScanViewModelProductionTests {
         try assertEquals(tuna?.quantity, 2, "A 2-can line remains a count quantity despite its 180 g package size")
         try assertEquals(tuna?.unitPrice, 40.5, "The tuna price remains per can")
         try assertEquals(tuna?.lineTotal, 81, "Two tuna cans preserve the ₱81 receipt line total")
+
+        let splitColumnRows = ReceiptOCRService.assembleOCRRows([
+            ReceiptOCRTextObservation(text: "KANGKONG FRESH 500G", minX: 0.10, minY: 0.75, maxX: 0.55, maxY: 0.77),
+            ReceiptOCRTextObservation(text: "35.00", minX: 0.70, minY: 0.751, maxX: 0.80, maxY: 0.771),
+            ReceiptOCRTextObservation(text: "SUBTOTAL:", minX: 0.10, minY: 0.25, maxX: 0.34, maxY: 0.27),
+            ReceiptOCRTextObservation(text: "632.00", minX: 0.70, minY: 0.251, maxX: 0.81, maxY: 0.271),
+            ReceiptOCRTextObservation(text: "TOTAL PHP:", minX: 0.10, minY: 0.20, maxX: 0.36, maxY: 0.22),
+            ReceiptOCRTextObservation(text: "632.00", minX: 0.70, minY: 0.201, maxX: 0.81, maxY: 0.221),
+            ReceiptOCRTextObservation(text: "CASH:", minX: 0.10, minY: 0.15, maxX: 0.25, maxY: 0.17),
+            ReceiptOCRTextObservation(text: "700.00", minX: 0.70, minY: 0.151, maxX: 0.81, maxY: 0.171),
+            ReceiptOCRTextObservation(text: "CHANGE:", minX: 0.10, minY: 0.10, maxX: 0.29, maxY: 0.12),
+            ReceiptOCRTextObservation(text: "68.00", minX: 0.70, minY: 0.101, maxX: 0.80, maxY: 0.121)
+        ])
+        let splitColumnReceipt = service.parseReceiptLines(splitColumnRows, catalog: [])
+        try assertEquals(splitColumnReceipt.count, 1, "Same-row price columns combine while subtotal and payment rows stay excluded")
+        try assertEquals(splitColumnReceipt[0].quantity, 0.5, "The split-column receipt keeps the 500 g package quantity")
+        try assertEquals(splitColumnReceipt[0].unitPrice, 70, "The split-column line total normalizes to a per-kilogram price")
+        try assertEquals(splitColumnReceipt[0].lineTotal, 35, "Grouping a price column preserves the printed line total")
     }
 
     public static func testGeneratedBarcodesStayInternal() throws {
