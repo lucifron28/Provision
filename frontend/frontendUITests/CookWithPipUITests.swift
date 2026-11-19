@@ -2148,13 +2148,21 @@ extension CookWithPipUITests {
 
         let importReceipt = app.buttons["receipt-import-photo-picker"]
         XCTAssertTrue(importReceipt.waitForExistence(timeout: 10))
+        guard importReceipt.isEnabled else {
+            XCTFail("Receipt photo import is disabled while receipt processing or intake recovery is active")
+            return
+        }
         importReceipt.tap()
         let photosPicker = XCUIApplication(bundleIdentifier: "com.apple.mobileslideshow.photo-picker")
         let photoCell = photosPicker.cells.firstMatch
-        XCTAssertTrue(
-            photoCell.waitForExistence(timeout: 20),
-            "The iOS photo-picker service did not show the receipt imported into Simulator Photos"
-        )
+        guard photoCell.waitForExistence(timeout: 20) else {
+            let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            screenshot.name = "real-receipt-photo-picker-not-presented"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+            XCTFail("The iOS photo picker did not expose a selectable receipt; the current screen is attached")
+            return
+        }
         photoCell.tap()
         let addPhoto = photosPicker.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Add")).firstMatch
         if addPhoto.waitForExistence(timeout: 3) && addPhoto.isHittable {

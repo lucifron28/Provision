@@ -268,6 +268,17 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      - name: Export real demo UI evidence
+        if: always() && inputs.account_mode == 'real-demo-account'
+        run: |
+          if [[ -d artifacts/staging-real-demo.xcresult ]]; then
+            xcrun xcresulttool export attachments \
+              --path artifacts/staging-real-demo.xcresult \
+              --output-path artifacts/real-demo-ui-evidence
+          else
+            echo "The real demo XCUITest did not produce an xcresult bundle." >&2
+          fi
+
       - name: Upload real demo receipt verification results
         if: always() && inputs.account_mode == 'real-demo-account'
         uses: actions/upload-artifact@v4
@@ -275,6 +286,7 @@ jobs:
           name: provision-real-demo-receipt-ocr-${{ inputs.expected_render_commit }}
           path: |
             artifacts/staging-real-demo.xcresult
+            artifacts/real-demo-ui-evidence
             artifacts/receipt-parser-unit.xcresult
             artifacts/test-durations-staging.json
             artifacts/xcodebuild-build.log
