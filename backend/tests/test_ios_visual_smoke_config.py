@@ -121,7 +121,15 @@ def test_gallery_covers_gallery_methods_and_keeps_full_result_bundles():
         if "func test" in line
     }
     live_only_methods = {"testStagingLivePipChatResponseIsDisplayed"}
-    gallery_methods = methods - live_only_methods
+    real_demo_only_methods = {
+        "testRealDemoAccountSessionAndBarcodeLookup",
+        "testRealDemoAccountReceiptOCRIntake",
+    }
+    staging_only_methods = live_only_methods | real_demo_only_methods
+    staging_workflow = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "staging-e2e.yml"
+    ).read_text(encoding="utf-8")
+    gallery_methods = methods - staging_only_methods
 
     assert "workflow_dispatch:" in workflow
     assert "schedule:" in workflow
@@ -134,8 +142,9 @@ def test_gallery_covers_gallery_methods_and_keeps_full_result_bundles():
     assert len(gallery_methods) == 32
     assert live_only_methods <= methods
     assert all(f'"{method}"' in workflow for method in gallery_methods)
-    assert all(f'"{method}"' not in workflow for method in live_only_methods)
+    assert all(f'"{method}"' not in workflow for method in staging_only_methods)
     assert all(method in live_workflow for method in live_only_methods)
+    assert all(method in staging_workflow for method in real_demo_only_methods)
     assert "build-for-testing" in workflow
     assert "test-without-building" in workflow
     assert "max-parallel: 4" in workflow
