@@ -441,7 +441,7 @@ final class CookWithPipUITests: XCTestCase {
         let toyoRequiredQuantity = element("recipe-shopping-quantity-required-903", in: app)
         XCTAssertTrue(toyoRequiredQuantity.waitForExistence(timeout: 5))
         XCTAssertTrue(toyoRequiredQuantity.label.contains("15 mL"))
-        let confirmShopping = element("recipe-shopping-confirm", in: app)
+        let confirmShopping = app.navigationBars.buttons["recipe-shopping-confirm"]
         XCTAssertTrue(confirmShopping.waitForExistence(timeout: 5))
         XCTAssertFalse(confirmShopping.isEnabled,
                        "The review-required recipe remains ineligible until the required review is acknowledged")
@@ -1263,15 +1263,19 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(reviewGuidance.waitForExistence(timeout: 5))
         XCTAssertTrue(reviewGuidance.label.contains("ingredient match"))
         XCTAssertTrue(reviewGuidance.label.contains("package allergen label"))
-        let reviewLineReadiness = element("recipe-shopping-line-readiness-0", in: reviewApp)
-        XCTAssertTrue(reviewLineReadiness.waitForExistence(timeout: 5))
-        XCTAssertTrue(reviewLineReadiness.label.contains("Line ready"))
         let reviewConfirm = reviewApp.navigationBars.buttons["recipe-shopping-confirm"]
         XCTAssertFalse(reviewConfirm.isEnabled)
         capture("Shopping_Preview_Review_Required", app: reviewApp)
+        let reviewForm = scrollContainer("recipe-shopping-review-form", in: reviewApp)
+        let reviewLineReadiness = element("recipe-shopping-line-readiness-0", in: reviewApp)
+        scrollTargetIntoView(reviewLineReadiness, inside: reviewForm,
+                             progressAnchor: reviewSafetyStatus,
+                             targetDescription: "line readiness for the review-required preview", in: reviewApp)
+        XCTAssertTrue(reviewLineReadiness.isHittable)
+        XCTAssertTrue(reviewLineReadiness.label.contains("Line ready"))
         let reviewActionSummary = element("recipe-shopping-action-summary-901", in: reviewApp)
         scrollTargetIntoView(reviewActionSummary,
-                             inside: scrollContainer("recipe-shopping-review-form", in: reviewApp),
+                             inside: reviewForm,
                              progressAnchor: reviewSafetyStatus,
                              targetDescription: "review-required shopping action summary",
                              in: reviewApp)
@@ -1299,14 +1303,19 @@ final class CookWithPipUITests: XCTestCase {
         XCTAssertTrue(blockedGuidance.waitForExistence(timeout: 5))
         XCTAssertTrue(blockedGuidance.label.contains("food-safety conflict"))
         XCTAssertTrue(blockedGuidance.label.contains("before you can confirm"))
-        let blockedLineReadiness = element("recipe-shopping-line-readiness-0", in: blockedApp)
-        XCTAssertTrue(blockedLineReadiness.waitForExistence(timeout: 5))
-        XCTAssertTrue(blockedLineReadiness.label.contains("Line ready"))
-        XCTAssertFalse(blockedApp.buttons["recipe-shopping-confirm"].isEnabled)
+        let blockedConfirm = blockedApp.navigationBars.buttons["recipe-shopping-confirm"]
+        XCTAssertFalse(blockedConfirm.isEnabled)
         capture("Shopping_Preview_Blocked", app: blockedApp)
+        let blockedForm = scrollContainer("recipe-shopping-review-form", in: blockedApp)
+        let blockedLineReadiness = element("recipe-shopping-line-readiness-0", in: blockedApp)
+        scrollTargetIntoView(blockedLineReadiness, inside: blockedForm,
+                             progressAnchor: blockedSafetyStatus,
+                             targetDescription: "line readiness for the blocked preview", in: blockedApp)
+        XCTAssertTrue(blockedLineReadiness.isHittable)
+        XCTAssertTrue(blockedLineReadiness.label.contains("Line ready"))
         let blockedActionSummary = element("recipe-shopping-action-summary-901", in: blockedApp)
         scrollTargetIntoView(blockedActionSummary,
-                             inside: scrollContainer("recipe-shopping-review-form", in: blockedApp),
+                             inside: blockedForm,
                              progressAnchor: blockedSafetyStatus,
                              targetDescription: "blocked shopping action summary",
                              in: blockedApp)
