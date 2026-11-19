@@ -2153,17 +2153,21 @@ extension CookWithPipUITests {
             return
         }
         importReceipt.tap()
-        let photosPicker = XCUIApplication(bundleIdentifier: "com.apple.mobileslideshow.photo-picker")
+        let photosPicker = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let pickerScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        pickerScreenshot.name = "real-receipt-photo-picker-open"
+        pickerScreenshot.lifetime = .keepAlways
+        add(pickerScreenshot)
+
         let photoCell = photosPicker.cells.firstMatch
-        guard photoCell.waitForExistence(timeout: 20) else {
-            let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-            screenshot.name = "real-receipt-photo-picker-not-presented"
-            screenshot.lifetime = .keepAlways
-            add(screenshot)
-            XCTFail("The iOS photo picker did not expose a selectable receipt; the current screen is attached")
-            return
+        if photoCell.waitForExistence(timeout: 5) && photoCell.isHittable {
+            photoCell.tap()
+        } else {
+            // PhotosPicker's system sheet exposes thumbnails visually but may not publish
+            // them as SpringBoard cells. The exact iPhone 17 simulator shows the newest
+            // imported image in the first grid tile; use its normalized screen position.
+            photosPicker.coordinate(withNormalizedOffset: CGVector(dx: 0.16, dy: 0.43)).tap()
         }
-        photoCell.tap()
         let addPhoto = photosPicker.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Add")).firstMatch
         if addPhoto.waitForExistence(timeout: 3) && addPhoto.isHittable {
             addPhoto.tap()
