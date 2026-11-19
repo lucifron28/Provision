@@ -148,7 +148,7 @@ jobs:
             -only-testing:frontendUITests/CookWithPipUITests/testStagingPipChatContextAndShoppingPreviewRoutes \
             -only-testing:frontendUITests/CookWithPipUITests/testCookWithPipLoadingEmptyAndOfflineRecovery \
             -only-testing:frontendUITests/CookWithPipUITests/testShoppingOfflineRetryAndStalePreviewRecovery \
-            -only-testing:frontendUITests/CookWithPipUITests/testRealDemoAccountLoginAndInventoryRelaunch \
+            -only-testing:frontendUITests/CookWithPipUITests/testRealDemoAccountSessionAndBarcodeLookup \
             -derivedDataPath artifacts/DerivedData \
             -parallel-testing-enabled NO \
             -showBuildTimingSummary \
@@ -172,7 +172,7 @@ jobs:
             -project frontend/frontend.xcodeproj \
             -scheme frontend \
             -destination "platform=iOS Simulator,id=${SIMULATOR_UDID}" \
-            -only-testing:frontendUITests/CookWithPipUITests/testRealDemoAccountLoginAndInventoryRelaunch \
+            -only-testing:frontendUITests/CookWithPipUITests/testRealDemoAccountSessionAndBarcodeLookup \
             -derivedDataPath artifacts/DerivedData \
             -resultBundlePath artifacts/staging-real-demo.xcresult \
             -parallel-testing-enabled NO \

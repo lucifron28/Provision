@@ -2003,7 +2003,7 @@ final class CookWithPipUITests: XCTestCase {
     }
 }
 extension CookWithPipUITests {
-    func testRealDemoAccountLoginAndInventoryRelaunch() throws {
+    func testRealDemoAccountSessionAndBarcodeLookup() throws {
         let environment = ProcessInfo.processInfo.environment
         guard environment["PROVISION_REAL_DEMO_ACCOUNT_TEST"] == "true",
               let baseURL = environment["PROVISION_API_BASE_URL"],
@@ -2056,6 +2056,31 @@ extension CookWithPipUITests {
                       "The real demo household inventory did not load after relaunch")
         XCTAssertTrue(firstProduct.isHittable,
                       "A real demo household product should be visible in Inventory")
+
+        let addMenu = app.buttons["inventory-add-menu"]
+        XCTAssertTrue(addMenu.waitForExistence(timeout: 10))
+        addMenu.tap()
+        let scanOption = app.buttons["inventory-add-scan-option"]
+        XCTAssertTrue(scanOption.waitForExistence(timeout: 10))
+        scanOption.tap()
+
+        let enterBarcode = element("scan-enter-barcode", in: app)
+        XCTAssertTrue(enterBarcode.waitForExistence(timeout: 10))
+        enterBarcode.tap()
+        let barcodeField = element("manual-intake-barcode", in: app)
+        XCTAssertTrue(barcodeField.waitForExistence(timeout: 10))
+        barcodeField.tap()
+        barcodeField.typeText("4800016644818")
+
+        let lookupBarcode = element("manual-intake-barcode-lookup", in: app)
+        XCTAssertTrue(lookupBarcode.isEnabled,
+                      "Manual barcode entry should allow a lookup against the staging catalog")
+        lookupBarcode.tap()
+        let lookedUpTuna = element("intake-preview-item-4800016644818", in: app)
+        XCTAssertTrue(lookedUpTuna.waitForExistence(timeout: 20),
+                      "The staging catalog did not resolve the real household's Century Tuna barcode")
+        XCTAssertTrue(lookedUpTuna.label.localizedCaseInsensitiveContains("Century Tuna"),
+                      "The barcode lookup should show the matching grocery, got: \(lookedUpTuna.label)")
     }
 
     func testStagingLivePipChatResponseIsDisplayed() throws {
