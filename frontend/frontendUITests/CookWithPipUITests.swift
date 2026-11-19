@@ -2248,7 +2248,12 @@ extension CookWithPipUITests {
                     XCTAssertTrue(row.label.localizedCaseInsensitiveContains(catalogSearchText),
                                   "Vision's confident match for \(item.sourceName) should resolve to \(catalogSearchText), got: \(row.label)")
                 }
-            } else if item.catalogAction == "register", let productName = item.productName {
+            // A resolved receipt product has no catalog selector. Keep its
+            // existing link and let the required detail confirmation below
+            // verify that the item is eligible before intake.
+            } else if item.catalogAction == "register",
+                      hasCatalogSelector,
+                      let productName = item.productName {
                 var usedExistingCatalogProduct = false
                 if hasCatalogSelector {
                     scrollTargetIntoView(catalogSelector, inside: detailScroll, in: app)
