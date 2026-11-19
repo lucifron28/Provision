@@ -2132,7 +2132,7 @@ extension CookWithPipUITests {
             signedInTabLabel: "Inventory",
             failureMessage: "The real demo account did not reach Inventory for receipt intake"
         ) else { return }
-        dismissSavePasswordPromptIfPresent(app, readyElement: inventoryTab)
+        dismissSavePasswordPromptIfPresent(app: app, readyElement: inventoryTab)
         assertStagingDashboardLoaded(app, phase: "The real demo household dashboard loaded before receipt intake")
         inventoryTab.tap()
 
