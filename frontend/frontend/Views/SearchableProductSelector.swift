@@ -14,6 +14,7 @@ public struct SearchableProductSelector: View {
     @State private var internalShowingSheet: Bool = false
     @State public var searchQuery: String = ""
     @State public var selectedCategory: String? = nil
+    @FocusState private var isSearchFieldFocused: Bool
 
     private var sheetBinding: Binding<Bool> {
         Binding(
@@ -218,6 +219,7 @@ public struct SearchableProductSelector: View {
                     TextField("Search catalog by name, brand, barcode...", text: $searchQuery)
                         .font(.system(size: 14))
                         .foregroundStyle(ProvisionTheme.textPrimary)
+                        .focused($isSearchFieldFocused)
                         .accessibilityIdentifier("catalog-product-search")
                         .tint(ProvisionTheme.provisionGreen)
 
@@ -230,6 +232,7 @@ public struct SearchableProductSelector: View {
                                 .foregroundStyle(ProvisionTheme.textTertiary)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier("catalog-product-search-clear")
                     }
                 }
                 .padding(.horizontal, 12)
@@ -338,6 +341,14 @@ public struct SearchableProductSelector: View {
                     }
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(ProvisionTheme.provisionGreen)
+                }
+
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        isSearchFieldFocused = false
+                    }
+                    .accessibilityIdentifier("catalog-product-search-keyboard-done")
                 }
             }
         }

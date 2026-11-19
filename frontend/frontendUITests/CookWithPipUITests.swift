@@ -2257,6 +2257,10 @@ extension CookWithPipUITests {
                     XCTAssertTrue(catalogSearch.waitForExistence(timeout: 10))
                     catalogSearch.tap()
                     catalogSearch.typeText(productName)
+                    let catalogKeyboardDone = app.buttons["catalog-product-search-keyboard-done"]
+                    XCTAssertTrue(catalogKeyboardDone.waitForExistence(timeout: 5),
+                                  "The catalog search should expose a keyboard dismissal action")
+                    catalogKeyboardDone.tap()
                     let exactProduct = app.buttons.matching(
                         NSPredicate(
                             format: "identifier BEGINSWITH %@ AND label CONTAINS[c] %@",
@@ -2281,6 +2285,10 @@ extension CookWithPipUITests {
                     if let brand = item.brand {
                         replaceText(element("intake-register-product-brand", in: app), with: brand)
                     }
+                    let registrationKeyboardDone = app.buttons["intake-register-keyboard-done"]
+                    XCTAssertTrue(registrationKeyboardDone.waitForExistence(timeout: 5),
+                                  "The receipt product form should expose a keyboard dismissal action")
+                    registrationKeyboardDone.tap()
                     if let category = item.category {
                         chooseReceiptPickerValue("intake-register-product-category", value: category, scroll: detailScroll, app: app)
                     }
@@ -2327,7 +2335,7 @@ extension CookWithPipUITests {
             done.tap()
 
             let rowSearchTerm = item.productName ?? item.catalogSearch ?? item.searchTerms[0]
-            replaceText(search, with: rowSearchTerm)
+            setReceiptWorkspaceSearch(search, to: rowSearchTerm, app: app)
             let reviewedRow = app.buttons.matching(
                 NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS[c] %@", "intake-workspace-item-", rowSearchTerm)
             ).firstMatch
@@ -2375,7 +2383,7 @@ extension CookWithPipUITests {
             NSPredicate(format: "identifier BEGINSWITH %@", "intake-workspace-item-")
         )
         for term in item.searchTerms {
-            replaceText(search, with: term)
+            setReceiptWorkspaceSearch(search, to: term, app: app)
             let row = rowCollection.matching(
                 NSPredicate(format: "label CONTAINS[c] %@", term)
             ).firstMatch
@@ -2384,8 +2392,29 @@ extension CookWithPipUITests {
                 return row
             }
         }
-        XCTFail("Vision did not produce a review row for \(item.sourceName). Search terms: \(item.searchTerms). Rows: \(rowCollection.allElementsBoundByIndex.map(\.label))")
+        XCTFail("Vision did not produce a review row for \(item.sourceName). Search terms: \(item.searchTerms). Current search: \(String(describing: search.value)). Rows: \(rowCollection.allElementsBoundByIndex.map(\.label))")
         throw NSError(domain: "ProvisionReceiptOCR", code: 1, userInfo: [NSLocalizedDescriptionKey: "Receipt row missing for \(item.sourceName)"])
+    }
+
+    private func setReceiptWorkspaceSearch(_ search: XCUIElement, to term: String, app: XCUIApplication) {
+        let clearButton = app.buttons["intake-workspace-search-clear"]
+        if clearButton.exists {
+            clearButton.tap()
+        }
+
+        search.tap()
+        search.typeText(term)
+        let expectedValue = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", term),
+            object: search
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [expectedValue], timeout: 5), .completed,
+                       "Receipt workspace search should contain the requested item name")
+
+        let keyboardDone = app.buttons["intake-workspace-search-keyboard-done"]
+        XCTAssertTrue(keyboardDone.waitForExistence(timeout: 5),
+                      "The intake workspace search should expose a keyboard dismissal action")
+        keyboardDone.tap()
     }
 
     private func formatReceiptQuantity(_ amount: Double) -> String {

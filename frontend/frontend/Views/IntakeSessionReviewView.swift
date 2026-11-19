@@ -10,6 +10,7 @@ public struct IntakeSessionReviewView: View {
     @State private var searchQuery: String = ""
     @State private var selectedFilter: IntakeReviewFilter = .all
     @State private var reviewingItem: ScannedIntakeItem? = nil
+    @FocusState private var isSearchFieldFocused: Bool
 
     public enum IntakeReviewFilter: String, CaseIterable, Identifiable {
         case all = "All"
@@ -157,6 +158,14 @@ public struct IntakeSessionReviewView: View {
                         .disabled(viewModel.isIntakeMutationLocked)
                     }
                 }
+
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        isSearchFieldFocused = false
+                    }
+                    .accessibilityIdentifier("intake-workspace-search-keyboard-done")
+                }
             }
             .sheet(item: $reviewingItem) { item in
                 IntakeItemReviewSheet(itemId: item.id, viewModel: viewModel)
@@ -175,6 +184,7 @@ public struct IntakeSessionReviewView: View {
             TextField("Search items by name, brand, or barcode...", text: $searchQuery)
                 .font(.system(size: 13))
                 .foregroundStyle(ProvisionTheme.textPrimary)
+                .focused($isSearchFieldFocused)
                 .accessibilityIdentifier("intake-workspace-search")
 
             if !searchQuery.isEmpty {
@@ -186,6 +196,7 @@ public struct IntakeSessionReviewView: View {
                         .foregroundStyle(ProvisionTheme.textTertiary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("intake-workspace-search-clear")
             }
         }
         .padding(.horizontal, 12)

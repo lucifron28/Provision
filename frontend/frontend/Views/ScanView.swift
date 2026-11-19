@@ -1206,6 +1206,7 @@ public struct IntakeItemReviewSheet: View {
     @State private var newProductUnit: String = "pcs"
     @State private var isRegistering: Bool = false
     @State private var showingInlineRegistration: Bool = false
+    @FocusState private var isInlineRegistrationTextFieldFocused: Bool
     @State private var pendingStorageLocationID: Int?
     @State private var pendingStorageLocationName = ""
     @State private var showingLocationOverwriteConfirmation = false
@@ -1325,6 +1326,14 @@ public struct IntakeItemReviewSheet: View {
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(ProvisionTheme.provisionGreen)
                 .accessibilityIdentifier("intake-review-done")
+                }
+
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        isInlineRegistrationTextFieldFocused = false
+                    }
+                    .accessibilityIdentifier("intake-register-keyboard-done")
                 }
             }
             .sheet(isPresented: $showingOCRScanner) {
@@ -1510,9 +1519,11 @@ public struct IntakeItemReviewSheet: View {
                 VStack(spacing: 10) {
                     TextField("Product Name (Required)", text: $newProductName)
                         .provisionInputField()
+                        .focused($isInlineRegistrationTextFieldFocused)
                         .accessibilityIdentifier("intake-register-product-name")
                     TextField("Brand (Optional)", text: $newProductBrand)
                         .provisionInputField()
+                        .focused($isInlineRegistrationTextFieldFocused)
                         .accessibilityIdentifier("intake-register-product-brand")
                     Picker("Category", selection: $newProductCategory) {
                         ForEach(["Canned Goods", "Dairy & Chilled", "Snacks & Bakery", "Beverages", "Grains & Staples", "Fresh Produce", "Condiments & Sauces", "Frozen & Meats"], id: \.self) { cat in
