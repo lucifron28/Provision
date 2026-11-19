@@ -2158,6 +2158,13 @@ extension CookWithPipUITests {
         pickerScreenshot.lifetime = .keepAlways
         add(pickerScreenshot)
 
+        // iOS shows a limited-library information banner on the first picker open.
+        // Dismiss it so it cannot intercept the imported receipt thumbnail.
+        let privateAccessClose = app.buttons["Close"]
+        if privateAccessClose.waitForExistence(timeout: 2), privateAccessClose.isHittable {
+            privateAccessClose.tap()
+        }
+
         let photoThumbnail = app.images.matching(
             NSPredicate(
                 format: "identifier == %@ AND label BEGINSWITH[c] %@",
@@ -2168,12 +2175,34 @@ extension CookWithPipUITests {
             XCTFail("The system photo picker did not expose its imported photo thumbnail")
             return
         }
-        // The remote PhotosPicker image reports isHittable=false in XCUITest even though
-        // it is visibly selectable, so tap the center of the matched accessibility frame.
-        photoThumbnail.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+
+        let photoGrid = app.otherElements["PXGGridLayout-Group"]
+        guard photoGrid.waitForExistence(timeout: 5), photoGrid.frame.width > 0, photoGrid.frame.height > 0 else {
+            XCTFail("The Photos picker exposed a thumbnail without a usable grid container")
+            return
+        }
+        // The thumbnail belongs to a remote Photos view. Anchor the tap to the grid
+        // container and use the matched thumbnail's center within that container.
+        let thumbnailFrame = photoThumbnail.frame
+        let thumbnailCenterInGrid = CGVector(
+            dx: (thumbnailFrame.midX - photoGrid.frame.minX) / photoGrid.frame.width,
+            dy: (thumbnailFrame.midY - photoGrid.frame.minY) / photoGrid.frame.height
+        )
+        photoGrid.coordinate(withNormalizedOffset: thumbnailCenterInGrid).tap()
+
+        let selectionScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        selectionScreenshot.name = "real-receipt-photo-picker-after-thumbnail-tap"
+        selectionScreenshot.lifetime = .keepAlways
+        add(selectionScreenshot)
+
         let addPhoto = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Add")).firstMatch
         if addPhoto.waitForExistence(timeout: 3) && addPhoto.isHittable {
             addPhoto.tap()
+        }
+        let pickerCancel = app.buttons.matching(NSPredicate(format: "label == %@", "Cancel")).firstMatch
+        guard pickerCancel.waitForNonExistence(timeout: 5) else {
+            XCTFail("The Photos picker stayed open after tapping the imported receipt thumbnail")
+            return
         }
 
         let totalLabel = element("intake-summary-total", in: app)
