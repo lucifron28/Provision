@@ -384,6 +384,7 @@ private struct RecipeDetailContents: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(ProvisionTheme.textPrimary)
                     .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("recipe-ingredient-availability-overview")
                 ForEach(requiredIngredients, id: \.self) { index in
                     VStack(alignment: .leading, spacing: 2) {
                         Text(recipe.ingredients[index].display_name)
@@ -399,7 +400,6 @@ private struct RecipeDetailContents: View {
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .provisionCard(backgroundColor: ProvisionTheme.surfaceSecondary)
-            .accessibilityIdentifier("recipe-ingredient-availability-overview")
         }
     }
 
