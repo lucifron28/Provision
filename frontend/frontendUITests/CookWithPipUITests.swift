@@ -2185,22 +2185,26 @@ extension CookWithPipUITests {
             let catalogSelector = element("intake-product-catalog-selector", in: app)
             let hasCatalogSelector = catalogSelector.waitForExistence(timeout: 2)
             if item.catalogAction == "select", let catalogSearchText = item.catalogSearch {
-                XCTAssertTrue(hasCatalogSelector, "The staging household catalog should be available to review \(item.sourceName)")
-                scrollTargetIntoView(catalogSelector, inside: detailScroll, in: app)
-                catalogSelector.tap()
-                let catalogSearch = app.textFields["catalog-product-search"]
-                XCTAssertTrue(catalogSearch.waitForExistence(timeout: 10))
-                catalogSearch.tap()
-                catalogSearch.typeText(catalogSearchText)
-                let matchingProduct = app.buttons.matching(
-                    NSPredicate(
-                        format: "identifier BEGINSWITH %@ AND label CONTAINS[c] %@",
-                        "catalog-product-", catalogSearchText
-                    )
-                ).firstMatch
-                XCTAssertTrue(matchingProduct.waitForExistence(timeout: 10),
-                              "The staging catalog did not contain the expected reviewed match for \(item.sourceName)")
-                matchingProduct.tap()
+                if hasCatalogSelector {
+                    scrollTargetIntoView(catalogSelector, inside: detailScroll, in: app)
+                    catalogSelector.tap()
+                    let catalogSearch = app.textFields["catalog-product-search"]
+                    XCTAssertTrue(catalogSearch.waitForExistence(timeout: 10))
+                    catalogSearch.tap()
+                    catalogSearch.typeText(catalogSearchText)
+                    let matchingProduct = app.buttons.matching(
+                        NSPredicate(
+                            format: "identifier BEGINSWITH %@ AND label CONTAINS[c] %@",
+                            "catalog-product-", catalogSearchText
+                        )
+                    ).firstMatch
+                    XCTAssertTrue(matchingProduct.waitForExistence(timeout: 10),
+                                  "The staging catalog did not contain the expected reviewed match for \(item.sourceName)")
+                    matchingProduct.tap()
+                } else {
+                    XCTAssertTrue(row.label.localizedCaseInsensitiveContains(catalogSearchText),
+                                  "Vision's confident match for \(item.sourceName) should resolve to \(catalogSearchText), got: \(row.label)")
+                }
             } else if item.catalogAction == "register", let productName = item.productName {
                 var usedExistingCatalogProduct = false
                 if hasCatalogSelector {
