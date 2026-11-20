@@ -19,6 +19,21 @@ public struct ScannedIntakeItem: Identifiable, Hashable, Codable, Sendable {
     public var isConfirmed: Bool
     public var conflictingReceiptQuantity: Double? = nil
 
+    public var displayableBarcode: String? {
+        Self.retailBarcode(from: barcode)
+    }
+
+    public static func retailBarcode(from value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = trimmed.uppercased()
+        guard !trimmed.isEmpty,
+              !normalized.hasPrefix("RCPT-"),
+              !normalized.hasPrefix("MANUAL-"),
+              UUID(uuidString: trimmed) == nil else { return nil }
+        return trimmed
+    }
+
     public enum IntakeStatus: String, Codable, Sendable {
         case autoLogged = "Auto-logged"
         case recognized = "Recognized"
@@ -266,11 +281,15 @@ public class ScanViewModel: ObservableObject {
     }
 
     public func loadLocations() async {
-        do {
-            let locations = try await client.fetchLocations(expectedScope: scope)
-            self.availableLocations = locations
-        } catch {
-            self.errorMessage = "Failed to load locations: \(error.localizedDescription)"
+        if isPreview {
+            self.availableLocations = PreviewData.locations
+        } else {
+            do {
+                let locations = try await client.fetchLocations(expectedScope: scope)
+                self.availableLocations = locations
+            } catch {
+                self.errorMessage = "Failed to load locations: \(error.localizedDescription)"
+            }
         }
         await loadCatalog()
     }
@@ -379,6 +398,39 @@ public class ScanViewModel: ObservableObject {
         Task {
             await resolveScannedBarcode(barcode, generation: gen)
         }
+    }
+
+    @discardableResult
+    public func lookupManuallyEnteredBarcode(_ barcode: String) -> Bool {
+        guard !isIntakeMutationLocked else { return false }
+        let trimmed = barcode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        // Keep the camera stopped while the sheet is still on screen. Its dismissal
+        // releases this suspension through ScanView's modal lifecycle handler.
+        let releasedManualEntrySuspension = activeSuspensions.remove(.manualEntrySheet) != nil
+        guard !isSuspended else {
+            restoreManualEntrySuspensionIfNeeded(releasedManualEntrySuspension)
+            return false
+        }
+        if !scannerState.isArmed {
+            guard canRearm, rearmScanner() else {
+                restoreManualEntrySuspensionIfNeeded(releasedManualEntrySuspension)
+                return false
+            }
+        }
+        onBarcodeScanned(trimmed, generation: currentScanGeneration)
+        let accepted = !scannerState.isArmed
+        if !accepted {
+            restoreManualEntrySuspensionIfNeeded(releasedManualEntrySuspension)
+        }
+        return accepted
+    }
+
+    private func restoreManualEntrySuspensionIfNeeded(_ wasReleased: Bool) {
+        guard wasReleased else { return }
+        activeSuspensions.insert(.manualEntrySheet)
+        scannerManager.lockAcceptance()
+        scannerManager.stopScanning()
     }
 
     public func simulateBarcodeDetection(_ barcode: String, generation: Int? = nil) {
@@ -558,7 +610,7 @@ public class ScanViewModel: ObservableObject {
         let create = ProductCreate(
             name: name,
             brand: brand?.isEmpty == true ? nil : brand,
-            barcode: barcode,
+            barcode: ScannedIntakeItem.retailBarcode(from: barcode),
             category: category?.isEmpty == true ? nil : category,
             package_size: packageSize,
             unit: unit
@@ -571,7 +623,7 @@ public class ScanViewModel: ObservableObject {
                     id: Int.random(in: 1000...9999),
                     name: name,
                     brand: brand,
-                    barcode: barcode,
+                    barcode: ScannedIntakeItem.retailBarcode(from: barcode),
                     category: category,
                     package_size: packageSize,
                     unit: unit
@@ -705,7 +757,8 @@ public class ScanViewModel: ObservableObject {
     public func updateItemQuantity(id: UUID, quantity: Double) {
         guard !isIntakeMutationLocked else { return }
         guard let idx = scannedItems.firstIndex(where: { $0.id == id }) else { return }
-        scannedItems[idx].quantity = max(1.0, quantity)
+        guard let normalized = validatedQuantity(quantity, unit: scannedItems[idx].unit) else { return }
+        scannedItems[idx].quantity = normalized
         invalidateConfirmation(at: idx)
     }
 
@@ -714,6 +767,24 @@ public class ScanViewModel: ObservableObject {
         guard let idx = scannedItems.firstIndex(where: { $0.id == id }) else { return }
         scannedItems[idx].storageLocationId = locationId
         invalidateConfirmation(at: idx)
+    }
+
+    public func applyStorageLocationToAllItems(_ locationId: Int, from sourceItemID: UUID) {
+        guard !isIntakeMutationLocked,
+              availableLocations.contains(where: { $0.id == locationId }),
+              scannedItems.contains(where: { $0.id == sourceItemID }) else { return }
+        for index in scannedItems.indices where scannedItems[index].storageLocationId != locationId {
+            scannedItems[index].storageLocationId = locationId
+            invalidateConfirmation(at: index)
+        }
+    }
+
+    private func validatedQuantity(_ quantity: Double, unit: String) -> Double? {
+        guard quantity.isFinite, quantity > 0 else { return nil }
+        if ProductUnits.isCount(unit) {
+            return max(1, quantity.rounded())
+        }
+        return quantity
     }
 
     public func updateItemExpirationDate(id: UUID, date: Date?) {
@@ -751,6 +822,9 @@ public class ScanViewModel: ObservableObject {
             errorMessage = "No text could be recognized from receipt image. Please ensure the receipt is well-lit and legible."
             return
         }
+        if let detectedStoreName = ReceiptOCRService.shared.detectStoreName(in: lines) {
+            storeName = detectedStoreName
+        }
         await matchReceiptLines(lines)
     }
 
@@ -786,7 +860,7 @@ public class ScanViewModel: ObservableObject {
         integrateReceiptItems(parsedItems)
     }
 
-    public func simulateReceiptScan(receiptName: String = "SM Supermarket Megamall (Receipt #0994)") {
+    public func simulateReceiptScan() {
         guard !isIntakeMutationLocked else { return }
         self.storeName = "SM Supermarket Megamall"
         let sampleLines = [
@@ -796,7 +870,7 @@ public class ScanViewModel: ObservableObject {
             "SAN MIGUEL PALE PILSEN 330ML    52.00",
             "GARDENIA CLASSIC WHITE BREAD    82.00",
             "DATU PUTI VINEGAR BOTTLE 1L     48.00",
-            "TOTAL AMOUNT                  314.50"
+            "TOTAL AMOUNT                  355.00"
         ]
 
         let catalog = isPreview ? PreviewData.products : []
@@ -833,13 +907,14 @@ public class ScanViewModel: ObservableObject {
     public func resolveQuantityConflict(id: UUID, keepQuantity: Double) {
         guard !isIntakeMutationLocked else { return }
         guard let idx = scannedItems.firstIndex(where: { $0.id == id }) else { return }
-        scannedItems[idx].quantity = max(1.0, keepQuantity)
+        guard let normalized = validatedQuantity(keepQuantity, unit: scannedItems[idx].unit) else { return }
+        scannedItems[idx].quantity = normalized
         scannedItems[idx].conflictingReceiptQuantity = nil
         if scannedItems[idx].productId != nil {
             scannedItems[idx].status = .recognized
         }
         invalidateConfirmation(at: idx)
-        showToast("Set quantity to \(Int(keepQuantity)) \(scannedItems[idx].unit)")
+        showToast("Set quantity to \(ProductUnits.formatAmount(normalized)) \(scannedItems[idx].unit)")
     }
 
     private func deterministicReceiptBarcode(name: String) -> String {
@@ -859,12 +934,13 @@ public class ScanViewModel: ObservableObject {
 
         for item in parsedItems {
             let isRecognized = (item.confidence == .exact || item.confidence == .high) && item.matchedProduct != nil
+            let resolvedProduct = isRecognized ? item.matchedProduct : nil
             let status: ScannedIntakeItem.IntakeStatus = isRecognized ? .recognized : .needsReview
             // Medium: Generate deterministic identifier for unmatched items to prevent duplicates on re-import
-            let candidateBarcode = item.matchedProduct?.barcode ?? deterministicReceiptBarcode(name: item.parsedName)
+            let candidateBarcode = resolvedProduct?.barcode ?? deterministicReceiptBarcode(name: item.parsedName)
 
             // Identify existing items using reliable product identifiers
-            if let pid = item.matchedProduct?.id, let idx = scannedItems.firstIndex(where: { $0.productId == pid }) {
+            if let pid = resolvedProduct?.id, let idx = scannedItems.firstIndex(where: { $0.productId == pid }) {
                 reconcileExistingItem(at: idx, with: item)
                 mergedCount += 1
             } else if let idx = scannedItems.firstIndex(where: { $0.barcode == candidateBarcode }) {
@@ -872,14 +948,14 @@ public class ScanViewModel: ObservableObject {
                 mergedCount += 1
             } else {
                 let intakeItem = ScannedIntakeItem(
-                    name: item.matchedProduct?.name ?? item.parsedName,
-                    brand: item.matchedProduct?.brand,
+                    name: resolvedProduct?.name ?? item.parsedName,
+                    brand: resolvedProduct?.brand,
                     barcode: candidateBarcode,
                     quantity: item.quantity,
-                    unit: item.matchedProduct?.unit ?? "pcs",
+                    unit: resolvedProduct?.unit ?? item.unit ?? "pcs",
                     expirationDate: nil,
                     status: status,
-                    productId: item.matchedProduct?.id,
+                    productId: resolvedProduct?.id,
                     storageLocationId: nil,
                     unitPrice: item.unitPrice,
                     isConfirmed: false
@@ -912,39 +988,42 @@ public class ScanViewModel: ObservableObject {
         let calendar = Calendar.current
         self.scannedItems = [
             ScannedIntakeItem(
-                name: "Organic Whole Milk",
-                brand: "Trader Joe's",
-                barcode: "00123456",
-                quantity: 1,
-                unit: "1L",
-                expirationDate: calendar.date(byAdding: .day, value: 5, to: Date()),
-                status: .autoLogged,
-                productId: 1,
-                storageLocationId: 1,
-                isConfirmed: true
-            ),
-            ScannedIntakeItem(
-                name: "Greek Yogurt Tub",
-                brand: "Fage",
-                barcode: "00789012",
-                quantity: 2,
-                unit: "pack",
-                expirationDate: calendar.date(byAdding: .day, value: 12, to: Date()),
-                status: .autoLogged,
-                productId: 2,
-                storageLocationId: 1,
-                isConfirmed: true
-            ),
-            ScannedIntakeItem(
-                name: "Century Tuna Flakes",
-                brand: "Century",
-                barcode: "4800016644810",
+                name: "Century Tuna Flakes in Oil",
+                brand: "Century Tuna",
+                barcode: "4800016644818",
                 quantity: 4,
                 unit: "cans",
                 expirationDate: calendar.date(byAdding: .year, value: 2, to: Date()),
+                status: .autoLogged,
+                productId: 1,
+                storageLocationId: 1,
+                unitPrice: 40.50,
+                isConfirmed: true
+            ),
+            ScannedIntakeItem(
+                name: "Magnolia Fresh Milk",
+                brand: "Magnolia",
+                barcode: "4800110041117",
+                quantity: 1,
+                unit: "L",
+                expirationDate: calendar.date(byAdding: .day, value: 5, to: Date()),
+                status: .autoLogged,
+                productId: 5,
+                storageLocationId: 4,
+                unitPrice: 108,
+                isConfirmed: true
+            ),
+            ScannedIntakeItem(
+                name: "Bounty Fresh Farm Eggs",
+                brand: "Bounty Fresh",
+                barcode: "4800999000042",
+                quantity: 12,
+                unit: "pcs",
+                expirationDate: calendar.date(byAdding: .day, value: 14, to: Date()),
                 status: .recognized,
-                productId: 3,
-                storageLocationId: 2,
+                productId: 8,
+                storageLocationId: 5,
+                unitPrice: 12.50,
                 isConfirmed: true
             )
         ]

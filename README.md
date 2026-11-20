@@ -337,8 +337,17 @@ planning, cooking, leftovers, user adaptations and large-household shopping.
 [Draft PR #1](https://github.com/lucifron28/Provision/pull/1) tracks checks on the
 current published head, including the existing iOS scanner suite.
 
-Live DeepSeek and web calls remain disabled. Household-entered recipes carry no
-asserted publisher provenance. Chef Pip hints in the iOS app remain heuristic,
-and the new backend workflows still require SwiftUI integration on Mac.
+Pip Chat Phases 1–3 add consent-gated chat from Cook with Pip, Recipe Detail,
+and Product Detail. Chat uses household-scoped backend context, validated recipe
+cards, and the existing shopping-preview flow; it cannot write shopping or
+inventory data. See the [Pip Chat implementation guide](docs/cook-with-pip/PIP_CHAT.md)
+and [PR #11](https://github.com/lucifron28/Provision/pull/11) for current
+implementation and verification status.
+
+Routine CI and staging use deterministic mocks; live DeepSeek calls remain
+server-configured and consent-gated, and broad web search is not part of Pip
+Chat. Household-entered recipes carry no asserted publisher provenance. The
+existing Home Chef Pip hints remain heuristic. Native meal planning, guided
+cooking, and leftover screens remain on the roadmap.
 See the [agent guide](AGENTS.md), [technical specification](docs/cook-with-pip/TECHNICAL_SPEC.md),
 and [recipe source policy](docs/cook-with-pip/RECIPE_SOURCE_POLICY.md).

@@ -132,6 +132,26 @@ def _reference(db, household_id, recipe_id, *, lock=False):
     return db.scalar(statement.execution_options(populate_existing=True))
 
 
+def recipe_model_content_allowed(db, household_id, recipe):
+    """Return true only when the recipe owner or source policy permits full model context."""
+    if recipe.content.get("content_permission") != _OWNED_PERMISSION:
+        return False
+    if not recipe_origin_context(db, household_id, recipe.id):
+        return False
+    reference = _reference(db, household_id, recipe.id)
+    if reference is None:
+        return recipe.content.get("adapted_from_recipe_id") is None
+    if not reference.is_active:
+        return False
+    source, allowed, _ = reference_policy(
+        db, reference.canonical_url, reference.broader_web_permission, reference.source_id
+    )
+    if source is None or not allowed or not source_approved(source):
+        return False
+    policy = SourcePolicy.model_validate(source.policy)
+    return policy.access_mode == "licensed_full" and "full_text" in policy.extraction_methods
+
+
 def reference_read(db, reference):
     source, allowed, label = reference_policy(db, reference.canonical_url, reference.broader_web_permission, reference.source_id)
     return SourceReferenceRead(recipe_id=reference.recipe_id, revision=reference.revision, is_active=reference.is_active,

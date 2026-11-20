@@ -1,5 +1,7 @@
-import VisionKit
+import PhotosUI
 import SwiftUI
+import UIKit
+import VisionKit
 
 public struct ScanView: View {
     @ObservedObject var viewModel: ScanViewModel
@@ -21,6 +23,8 @@ public struct ScanView: View {
     @State private var selectedCatalogProductId: Int? = nil
     @State private var reviewingItem: ScannedIntakeItem? = nil
     @State private var showingReviewAllSheet: Bool = false
+    @State private var selectedReceiptPhoto: PhotosPickerItem?
+    @State private var isImportingReceipt = false
     public init(viewModel: ScanViewModel) {
         self.viewModel = viewModel
     }
@@ -35,18 +39,34 @@ public struct ScanView: View {
                         Text("Receipt Intake").tag(1)
                     }
                     .pickerStyle(.segmented)
+                    .accessibilityIdentifier("scan-mode-picker")
 
                     // Viewfinder Box
                     viewfinderCard
+
+                    if scanMode == 0 {
+                        Button {
+                            showingAddManualSheet = true
+                        } label: {
+                            Label("Enter Barcode", systemImage: "keyboard")
+                                .font(.system(size: 14, weight: .semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(ProvisionTheme.surface)
+                                .foregroundStyle(ProvisionTheme.provisionGreen)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .stroke(ProvisionTheme.border, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("scan-enter-barcode")
+                        .disabled(viewModel.isIntakeMutationLocked)
+                    }
 
                     // Detected Barcode Display & Single-Scan Controls
                     if scanMode == 0 {
                         detectedBarcodeCard
                         rearmControlsCard
-                    }
-                    // Quick Simulation Bar (Available in simulator or preview testing)
-                    if !viewModel.scannerManager.isCameraAvailable || viewModel.isPreview {
-                        simulationBarcodeButtons
                     }
                     // Scanned Intake Items Review
                     intakeReviewSection
@@ -78,6 +98,12 @@ public struct ScanView: View {
                     viewModel.suspendScanning(for: .receiptMode)
                 } else {
                     viewModel.resumeScanning(releasing: .receiptMode)
+                }
+            }
+            .onChange(of: selectedReceiptPhoto) { _, photo in
+                guard let photo else { return }
+                Task {
+                    await importReceiptPhoto(photo)
                 }
             }
             .onChange(of: scenePhase) { _, newPhase in
@@ -240,6 +266,27 @@ public struct ScanView: View {
                                 }
                             }
                             #endif
+                            PhotosPicker(selection: $selectedReceiptPhoto, matching: .images) {
+                                HStack(spacing: 5) {
+                                    if isImportingReceipt {
+                                        ProgressView()
+                                            .controlSize(.mini)
+                                    } else {
+                                        Image(systemName: "photo")
+                                    }
+                                    Text(isImportingReceipt ? "Reading…" : "Import Receipt")
+                                }
+                                .font(.system(size: 11, weight: .semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 7)
+                                .background(ProvisionTheme.provisionGreenLight)
+                                .foregroundStyle(ProvisionTheme.provisionGreen)
+                                .clipShape(Capsule())
+                            }
+                            .disabled(isImportingReceipt || viewModel.isProcessingReceipt || viewModel.isIntakeMutationLocked)
+                            .accessibilityIdentifier("receipt-import-photo-picker")
+                            .accessibilityHint("Choose a receipt photo to read its items for review.")
+                            .buttonStyle(.plain)
                             if !viewModel.lastCapturedReceiptLines.isEmpty {
                                 Button {
                                     Task {
@@ -258,25 +305,6 @@ public struct ScanView: View {
                                     .clipShape(Capsule())
                                 }
                             }
-                            #if DEBUG
-                            if viewModel.isPreview {
-                                Button {
-                                    viewModel.simulateReceiptScan()
-                                } label: {
-                                    HStack(spacing: 5) {
-                                        Image(systemName: "doc.badge.plus")
-                                        Text("Sample Receipt (#0994)")
-                                    }
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 7)
-                                    .background(ProvisionTheme.surface)
-                                    .foregroundStyle(ProvisionTheme.textPrimary)
-                                    .clipShape(Capsule())
-                                    .overlay(Capsule().stroke(ProvisionTheme.border, lineWidth: 1))
-                                }
-                            }
-                            #endif
                         }
                     }
                 }
@@ -328,43 +356,30 @@ public struct ScanView: View {
             }
         }
     }
+    private func importReceiptPhoto(_ item: PhotosPickerItem) async {
+        guard !isImportingReceipt, !viewModel.isProcessingReceipt, !viewModel.isIntakeMutationLocked else { return }
+        isImportingReceipt = true
+        viewModel.errorMessage = nil
+        defer {
+            isImportingReceipt = false
+            selectedReceiptPhoto = nil
+        }
 
-    private var simulationBarcodeButtons: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("QUICK SCAN SIMULATION")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(ProvisionTheme.textTertiary)
-                .tracking(0.6)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    simButton(title: "Whole Milk", brand: "Dairy", barcode: "00123456", days: 7)
-                    simButton(title: "Century Tuna", brand: "Century", barcode: "4800016644810", days: 730)
-                    simButton(title: "Greek Yogurt", brand: "Fage", barcode: "00789012", days: 14)
-                    simButton(title: "Jasmine Rice", brand: "Royal", barcode: "00345678", days: 365)
-                }
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self) else {
+                viewModel.errorMessage = "Could not load the selected photo. Choose another receipt image."
+                return
             }
+            guard let image = UIImage(data: data) else {
+                viewModel.errorMessage = "The selected file is not a readable image. Choose a receipt photo."
+                return
+            }
+            await viewModel.processScannedReceipt(images: [image])
+        } catch {
+            viewModel.errorMessage = "Could not import that photo. Choose another receipt image."
         }
     }
 
-    private func simButton(title: String, brand: String, barcode: String, days: Int) -> some View {
-        Button {
-            viewModel.onBarcodeScanned(barcode, generation: viewModel.currentScanGeneration)
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "barcode.viewfinder")
-                    .font(.system(size: 12))
-                Text(title)
-                    .font(.system(size: 12, weight: .semibold))
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(ProvisionTheme.surface)
-            .foregroundStyle(ProvisionTheme.textPrimary)
-            .clipShape(Capsule())
-            .overlay(Capsule().stroke(ProvisionTheme.border, lineWidth: 1))
-        }
-    }
 
     private var detectedBarcodeCard: some View {
         HStack(spacing: 12) {
@@ -598,6 +613,7 @@ public struct ScanView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibleTouchTarget()
+                    .accessibilityIdentifier("intake-review-workspace-open")
                 }
             }
         }
@@ -654,6 +670,7 @@ public struct ScanView: View {
                     Text("Total: \(totalCount)")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(ProvisionTheme.textSecondary)
+                        .accessibilityIdentifier("intake-summary-total")
 
                     Text("•")
                         .font(.system(size: 10))
@@ -734,7 +751,11 @@ public struct ScanView: View {
     }
 
     private func compactIntakeRow(for item: ScannedIntakeItem) -> some View {
-        Button {
+        let locationName = item.storageLocationId.flatMap { locationID in
+            viewModel.availableLocations.first(where: { $0.id == locationID })?.name
+        } ?? "No location selected"
+
+        return Button {
             reviewingItem = item
         } label: {
             let state = viewModel.validationState(for: item)
@@ -824,7 +845,8 @@ public struct ScanView: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(item.name), \(formattedQuantity(item.quantity)) \(item.unit), \(item.storageLocationId != nil ? "location selected" : "no location selected"), status: \(viewModel.validationState(for: item).rawValue)")
+        .accessibilityIdentifier("intake-preview-item-\(item.barcode)")
+        .accessibilityLabel("\(item.name), \(formattedQuantity(item.quantity)) \(item.unit), location: \(locationName), status: \(viewModel.validationState(for: item).rawValue)")
         .accessibilityHint("Double tap to inspect and edit item details")
     }
 
@@ -1007,6 +1029,7 @@ public struct ScanView: View {
                 )
             }
             .disabled(viewModel.isCommitting || viewModel.pendingCommitRecoveryError != nil || (!viewModel.hasPendingCommitRecovery && !allConfirmed))
+            .accessibilityIdentifier("intake-commit-session")
 
             if viewModel.hasPendingCommitRecovery {
                 Button("Check Status / Cancel Previous Draft") {
@@ -1032,23 +1055,36 @@ public struct ScanView: View {
     }
 
     private func formattedQuantity(_ qty: Double) -> String {
-        if qty.truncatingRemainder(dividingBy: 1) == 0 {
-            return "\(Int(qty))"
-        } else {
-            return String(format: "%.1f", qty)
-        }
+        ProductUnits.formatAmount(qty)
     }
 
     private var manualEntrySheet: some View {
         NavigationStack {
             Form {
+                Section("Look Up a Product") {
+                    TextField("Barcode / EAN", text: $manualBarcode)
+                        .keyboardType(.numberPad)
+                        .textInputAutocapitalization(.never)
+                        .accessibilityIdentifier("manual-intake-barcode")
+                    Button {
+                        if viewModel.lookupManuallyEnteredBarcode(manualBarcode) {
+                            showingAddManualSheet = false
+                            manualBarcode = ""
+                        }
+                    } label: {
+                        Label("Look Up Barcode", systemImage: "magnifyingglass")
+                    }
+                    .disabled(manualBarcode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                              || viewModel.isIntakeMutationLocked)
+                    .accessibilityIdentifier("manual-intake-barcode-lookup")
+                }
+
                 Section("Product Information") {
                     TextField("Product Name", text: $manualName)
                     TextField("Brand (Optional)", text: $manualBrand)
-                    TextField("Barcode / SKU", text: $manualBarcode)
                 }
             }
-            .navigationTitle("Manual Intake Entry")
+            .navigationTitle("Find or Add Grocery")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -1058,7 +1094,7 @@ public struct ScanView: View {
                     Button("Add") {
                         if !manualName.isEmpty {
                             viewModel.addItem(
-                                barcode: manualBarcode.isEmpty ? UUID().uuidString.prefix(8).description : manualBarcode,
+                                barcode: manualBarcode.isEmpty ? "MANUAL-\(UUID().uuidString)" : manualBarcode,
                                 name: manualName,
                                 brand: manualBrand.isEmpty ? nil : manualBrand
                             )
@@ -1170,6 +1206,10 @@ public struct IntakeItemReviewSheet: View {
     @State private var newProductUnit: String = "pcs"
     @State private var isRegistering: Bool = false
     @State private var showingInlineRegistration: Bool = false
+    @FocusState private var isInlineRegistrationTextFieldFocused: Bool
+    @State private var pendingStorageLocationID: Int?
+    @State private var pendingStorageLocationName = ""
+    @State private var showingLocationOverwriteConfirmation = false
 
     private var item: ScannedIntakeItem? {
         viewModel.scannedItems.first(where: { $0.id == itemId })
@@ -1209,6 +1249,21 @@ public struct IntakeItemReviewSheet: View {
                                 // 2. Storage Location Picker
                                 locationRow(for: targetItem)
 
+                                if let locationID = targetItem.storageLocationId,
+                                   let location = viewModel.availableLocations.first(where: { $0.id == locationID }) {
+                                    Button {
+                                        pendingStorageLocationID = location.id
+                                        pendingStorageLocationName = location.name
+                                        showingLocationOverwriteConfirmation = true
+                                    } label: {
+                                        Label("Apply \(location.name) to all items", systemImage: "square.on.square")
+                                            .font(.system(size: 13, weight: .semibold))
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                    .disabled(viewModel.scannedItems.count < 2 || viewModel.isIntakeMutationLocked)
+                                    .accessibilityIdentifier("intake-apply-location-to-all")
+                                }
+
                                 Divider()
 
                                 // 3. Expiration Date Picker & Scanner Trigger
@@ -1244,6 +1299,7 @@ public struct IntakeItemReviewSheet: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 16)
                     }
+                    .accessibilityIdentifier("intake-item-review-scroll")
                     .background(ProvisionTheme.background.ignoresSafeArea())
                 } else {
                     VStack(spacing: 12) {
@@ -1269,6 +1325,15 @@ public struct IntakeItemReviewSheet: View {
                     }
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(ProvisionTheme.provisionGreen)
+                .accessibilityIdentifier("intake-review-done")
+                }
+
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        isInlineRegistrationTextFieldFocused = false
+                    }
+                    .accessibilityIdentifier("intake-register-keyboard-done")
                 }
             }
             .sheet(isPresented: $showingOCRScanner) {
@@ -1292,6 +1357,19 @@ public struct IntakeItemReviewSheet: View {
                     newProductUnit = target.unit
                 }
             }
+            .confirmationDialog(
+                "Apply \(pendingStorageLocationName) to all items?",
+                isPresented: $showingLocationOverwriteConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Apply to all items") {
+                    guard let locationID = pendingStorageLocationID else { return }
+                    viewModel.applyStorageLocationToAllItems(locationID, from: itemId)
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This replaces any different locations. Items that change will need confirmation again.")
+            }
         }
     }
 
@@ -1302,9 +1380,19 @@ public struct IntakeItemReviewSheet: View {
                     .font(ProvisionTypography.titleSerif)
                     .foregroundStyle(ProvisionTheme.textPrimary)
 
-                Text("\(targetItem.brand ?? "Pantry") • Barcode: \(targetItem.barcode)")
-                    .font(ProvisionTypography.caption)
-                    .foregroundStyle(ProvisionTheme.textSecondary)
+                if let barcode = targetItem.displayableBarcode {
+                    Text("\(targetItem.brand ?? "Pantry") • Barcode: \(barcode)")
+                        .font(ProvisionTypography.caption)
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                } else if let brand = targetItem.brand, !brand.isEmpty {
+                    Text(brand)
+                        .font(ProvisionTypography.caption)
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                } else {
+                    Text("Household pantry item")
+                        .font(ProvisionTypography.caption)
+                        .foregroundStyle(ProvisionTheme.textSecondary)
+                }
             }
 
             Spacer()
@@ -1421,6 +1509,7 @@ public struct IntakeItemReviewSheet: View {
                         viewModel.resolveItemWithCatalogProduct(itemId: targetItem.id, product: prod)
                         selectedCatalogProductId = nil
                     }
+                    .accessibilityIdentifier("intake-product-catalog-selector")
                 }
             }
 
@@ -1430,18 +1519,24 @@ public struct IntakeItemReviewSheet: View {
                 VStack(spacing: 10) {
                     TextField("Product Name (Required)", text: $newProductName)
                         .provisionInputField()
+                        .focused($isInlineRegistrationTextFieldFocused)
+                        .accessibilityIdentifier("intake-register-product-name")
                     TextField("Brand (Optional)", text: $newProductBrand)
                         .provisionInputField()
+                        .focused($isInlineRegistrationTextFieldFocused)
+                        .accessibilityIdentifier("intake-register-product-brand")
                     Picker("Category", selection: $newProductCategory) {
                         ForEach(["Canned Goods", "Dairy & Chilled", "Snacks & Bakery", "Beverages", "Grains & Staples", "Fresh Produce", "Condiments & Sauces", "Frozen & Meats"], id: \.self) { cat in
                             Text(cat).tag(cat)
                         }
                     }
+                    .accessibilityIdentifier("intake-register-product-category")
                     Picker("Unit", selection: $newProductUnit) {
                         ForEach(ProductUnits.allUnits, id: \.self) { u in
                             Text(u).tag(u)
                         }
                     }
+                    .accessibilityIdentifier("intake-register-product-unit")
 
                     Button {
                         isRegistering = true
@@ -1476,6 +1571,7 @@ public struct IntakeItemReviewSheet: View {
                         }
                     }
                     .disabled(newProductName.trimmingCharacters(in: .whitespaces).isEmpty || isRegistering)
+                    .accessibilityIdentifier("intake-register-product-submit")
                 }
                 .padding(.top, 8)
             } label: {
@@ -1485,6 +1581,8 @@ public struct IntakeItemReviewSheet: View {
                         .font(.system(size: 13, weight: .semibold))
                 }
                 .foregroundStyle(ProvisionTheme.provisionGreen)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("intake-register-product-disclosure")
             }
         }
         .padding(12)
@@ -1502,17 +1600,39 @@ public struct IntakeItemReviewSheet: View {
                 .font(ProvisionTypography.subheadline)
                 .foregroundStyle(ProvisionTheme.textSecondary)
             Spacer()
-            HStack(spacing: 12) {
-                Text("\(formattedQuantity(targetItem.quantity)) \(targetItem.unit)")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(ProvisionTheme.textPrimary)
-
-                Stepper("") {
-                    viewModel.incrementQuantity(for: targetItem)
-                } onDecrement: {
-                    viewModel.decrementQuantity(for: targetItem)
+            if ProductUnits.isMeasured(targetItem.unit) {
+                HStack(spacing: 8) {
+                    TextField(
+                        "0",
+                        value: Binding(
+                            get: { targetItem.quantity },
+                            set: { viewModel.updateItemQuantity(id: targetItem.id, quantity: $0) }
+                        ),
+                        format: .number.precision(.fractionLength(0...3))
+                    )
+                    .keyboardType(.decimalPad)
+                    .multilineTextAlignment(.trailing)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 92)
+                    .accessibilityLabel("Quantity in \(targetItem.unit)")
+                    .accessibilityIdentifier("intake-measured-quantity-\(targetItem.id.uuidString)")
+                    Text(targetItem.unit)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(ProvisionTheme.textPrimary)
                 }
-                .labelsHidden()
+            } else {
+                HStack(spacing: 12) {
+                    Text("\(formattedQuantity(targetItem.quantity)) \(targetItem.unit)")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(ProvisionTheme.textPrimary)
+
+                    Stepper("") {
+                        viewModel.incrementQuantity(for: targetItem)
+                    } onDecrement: {
+                        viewModel.decrementQuantity(for: targetItem)
+                    }
+                    .labelsHidden()
+                }
             }
         }
     }
@@ -1558,6 +1678,7 @@ public struct IntakeItemReviewSheet: View {
                 .foregroundStyle(targetItem.storageLocationId == nil ? ProvisionTheme.amberWarning : ProvisionTheme.textPrimary)
                 .clipShape(Capsule())
             }
+            .accessibilityIdentifier("intake-review-location-picker")
         }
     }
 
@@ -1638,6 +1759,7 @@ public struct IntakeItemReviewSheet: View {
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
                         .frame(width: 80)
+                        .accessibilityIdentifier("intake-item-price")
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(ProvisionTheme.surfaceSecondary)
@@ -1659,6 +1781,7 @@ public struct IntakeItemReviewSheet: View {
                     Text(String(format: "Total: ₱%.2f", p * targetItem.quantity))
                         .font(ProvisionTypography.caption)
                         .foregroundStyle(ProvisionTheme.provisionGreen)
+                                .accessibilityIdentifier("intake-item-line-total")
                 }
             }
         }
@@ -1696,6 +1819,7 @@ public struct IntakeItemReviewSheet: View {
                     .foregroundStyle(viewModel.isItemEligibleForConfirmation(targetItem) ? ProvisionTheme.onAccent : ProvisionTheme.textTertiary)
                 }
                 .disabled(viewModel.isIntakeMutationLocked)
+                .accessibilityIdentifier("intake-confirm-details")
 
                 if !viewModel.isItemEligibleForConfirmation(targetItem) {
                     HStack(spacing: 4) {
@@ -1734,11 +1858,7 @@ public struct IntakeItemReviewSheet: View {
     }
 
     private func formattedQuantity(_ qty: Double) -> String {
-        if qty.truncatingRemainder(dividingBy: 1) == 0 {
-            return "\(Int(qty))"
-        } else {
-            return String(format: "%.1f", qty)
-        }
+        ProductUnits.formatAmount(qty)
     }
 }
 

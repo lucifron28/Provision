@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: Literal["development", "test", "production"] = "development"
     DEPLOYMENT_ENVIRONMENT: Literal["development", "staging", "production"] = "development"
     STAGING_TEST_FIXTURES_ENABLED: bool = False
+    STAGING_TEST_CHAT_MOCK_ENABLED: bool = False
     STAGING_TEST_FIXTURE_TOKEN: SecretStr | None = None
     DATABASE_URL: str = Field(default=LOCAL_DATABASE_URL, repr=False)
     MIGRATION_DATABASE_URL: SecretStr | None = None
@@ -128,6 +129,10 @@ class Settings(BaseSettings):
                 raise ValueError("Staging test fixtures may only be enabled in a staging deployment")
             if self.STAGING_TEST_FIXTURE_TOKEN is None or not self.STAGING_TEST_FIXTURE_TOKEN.get_secret_value().strip():
                 raise ValueError("STAGING_TEST_FIXTURE_TOKEN is required when staging fixtures are enabled")
+        if self.STAGING_TEST_CHAT_MOCK_ENABLED and (
+            self.DEPLOYMENT_ENVIRONMENT != "staging" or not self.STAGING_TEST_FIXTURES_ENABLED
+        ):
+            raise ValueError("The staging Pip Chat mock requires enabled staging test fixtures")
         if self.ENVIRONMENT == "production":
             if self.DATABASE_URL == LOCAL_DATABASE_URL:
                 raise ValueError("DATABASE_URL must be explicitly configured for production")

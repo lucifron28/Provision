@@ -12,20 +12,21 @@ nonisolated private enum CookServiceBehavior: Sendable, Equatable {
 }
 
 private actor CookWithPipServiceSpy: CookWithPipService {
-    private let fixture = CookWithPipUITestService()
+    private let fixture: CookWithPipUITestService
     private let behavior: CookServiceBehavior
     private var recommendationRequests: [(RecipeRecommendationRequest, HouseholdScope)] = []
-    private var recipePageRequests: [(String?, Int, Int, HouseholdScope)] = []
+    private var recipePageRequests: [(String?, Int?, Int, Int, HouseholdScope)] = []
     private var evaluationRequests: [(Int, RecipeEvaluationRequest, HouseholdScope)] = []
     private var sourceReferenceRequests = 0
 
-    init(behavior: CookServiceBehavior = .fixture) {
+    init(behavior: CookServiceBehavior = .fixture, fixtureScenario: String = "default") {
         self.behavior = behavior
+        fixture = CookWithPipUITestService(scenario: fixtureScenario)
     }
 
-    func fetchRecipePage(query: String?, limit: Int, offset: Int,
+    func fetchRecipePage(query: String?, inventoryBatchID: Int?, limit: Int, offset: Int,
                          scope: HouseholdScope) async throws -> [HouseholdRecipe] {
-        recipePageRequests.append((query, limit, offset, scope))
+        recipePageRequests.append((query, inventoryBatchID, limit, offset, scope))
         if behavior == .offline {
             try await Task.sleep(for: .milliseconds(40))
             throw URLError(.notConnectedToInternet)
@@ -35,11 +36,13 @@ private actor CookWithPipServiceSpy: CookWithPipService {
         }
         if behavior == .empty { return [] }
         if behavior == .paged, offset == 0 {
-            let first = try await fixture.fetchRecipePage(query: nil, limit: 1, offset: 0, scope: scope)
+            let first = try await fixture.fetchRecipePage(query: nil, inventoryBatchID: nil,
+                                                          limit: 1, offset: 0, scope: scope)
             return Array(repeating: first[0], count: limit)
         }
         if behavior == .paged { return [] }
-        return try await fixture.fetchRecipePage(query: query, limit: limit, offset: offset, scope: scope)
+        return try await fixture.fetchRecipePage(query: query, inventoryBatchID: inventoryBatchID,
+                                                 limit: limit, offset: offset, scope: scope)
     }
 
     func fetchRecipe(id: Int, scope: HouseholdScope) async throws -> HouseholdRecipe {
@@ -90,7 +93,7 @@ private actor CookWithPipServiceSpy: CookWithPipService {
         recommendationRequests
     }
 
-    func recordedRecipePageRequests() -> [(String?, Int, Int, HouseholdScope)] {
+    func recordedRecipePageRequests() -> [(String?, Int?, Int, Int, HouseholdScope)] {
         recipePageRequests
     }
 
@@ -108,14 +111,25 @@ final class CookWithPipViewModelTests: XCTestCase {
         let viewModel = CookWithPipViewModel(scope: scope, service: service)
 
         await viewModel.load(reset: true)
-        XCTAssertEqual(viewModel.recommendations.first?.recipe.title, "Test Recipe: Sinigang na Baboy")
+        XCTAssertEqual(viewModel.recommendations.first?.recipe.title, "Sinigang na Baboy")
         await viewModel.select(.almostThere)
-        XCTAssertEqual(viewModel.recommendations.first?.recipe.title, "Test Recipe: Laing")
+        XCTAssertEqual(viewModel.recommendations.first?.recipe.title, "Chicken Adobo")
 
         let requests = await service.recordedRecommendationRequests()
         XCTAssertEqual(requests.map { $0.0.mode }, ["cook_now", "almost_there"])
         XCTAssertTrue(requests.allSatisfy { $0.1 == scope })
         XCTAssertTrue(requests.allSatisfy { $0.0.candidate_limit == 100 })
+    }
+
+    func testReviewCandidatesRemainVisibleAlongsideEmptyCookNowResults() async throws {
+        let service = CookWithPipServiceSpy(fixtureScenario: "recipes-needs-review")
+        let viewModel = CookWithPipViewModel(scope: scope, service: service)
+
+        await viewModel.load(reset: true)
+
+        XCTAssertTrue(viewModel.recommendations.isEmpty)
+        XCTAssertEqual(viewModel.needsReviewCandidates.map(\.title), ["Ginisang Kangkong"])
+        XCTAssertTrue(viewModel.hasExcludedCandidates)
     }
 
     func testMyRecipesSearchAndPagination() async throws {
@@ -129,12 +143,25 @@ final class CookWithPipViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.recipes.count, 20)
         XCTAssertFalse(viewModel.hasMore)
 
-        viewModel.searchQuery = "  Laing  "
+        viewModel.searchQuery = "  Chicken Adobo  "
         await viewModel.load(reset: true)
         let pages = await service.recordedRecipePageRequests()
-        XCTAssertEqual(pages.map { $0.0 }, [nil, nil, "Laing"])
-        XCTAssertEqual(pages.map { $0.2 }, [0, 20, 0])
-        XCTAssertTrue(pages.allSatisfy { $0.3 == scope })
+        XCTAssertEqual(pages.map { $0.0 }, [nil, nil, "Chicken Adobo"])
+        XCTAssertEqual(pages.map { $0.3 }, [0, 20, 0])
+        XCTAssertTrue(pages.allSatisfy { $0.4 == scope })
+    }
+
+    func testExpiringBatchStartsMyRecipesWithTheBatchFilter() async throws {
+        let service = CookWithPipServiceSpy()
+        let viewModel = CookWithPipViewModel(scope: scope, service: service, initialMode: .myRecipes,
+                                             inventoryBatchID: 912, ingredientFilterLabel: "Kangkong")
+
+        await viewModel.load(reset: true)
+
+        XCTAssertEqual(viewModel.mode, .myRecipes)
+        XCTAssertEqual(viewModel.ingredientFilterLabel, "Kangkong")
+        let requests = await service.recordedRecipePageRequests()
+        XCTAssertEqual(requests.first?.1, 912)
     }
 
     func testRecommendationPaginationUsesBackendCandidateWindow() async throws {
@@ -223,6 +250,24 @@ final class CookWithPipViewModelTests: XCTestCase {
         XCTAssertEqual(RecipeStatusPresentation.availability("missing").title, "Missing")
         XCTAssertEqual(RecipeStatusPresentation.availability("unknown").title, "Unknown")
     }
+    func testFoodPreferencesDecodeBackendDecimalStringsAndJSONNumbers() throws {
+        let backendStringJSON = #"{"preferred_cuisines":["Filipino"],"preferred_regions":[],"dislikes":[],"diet_patterns":[],"ingredient_exclusions":[],"heat_tolerance":"no_preference","equipment":["stovetop"],"max_cook_minutes":45,"meal_budget_php":"250.75","preferred_language":"en","servings":"2.5000"}"#
+        let stringPreferences = try JSONDecoder().decode(
+            FoodPreferences.self,
+            from: Data(backendStringJSON.utf8)
+        )
+        XCTAssertEqual(stringPreferences.servings, Decimal(string: "2.5000"))
+        XCTAssertEqual(stringPreferences.meal_budget_php, Decimal(string: "250.75"))
+
+        let backendNumberJSON = #"{"preferred_cuisines":["Filipino"],"preferred_regions":[],"dislikes":[],"diet_patterns":[],"ingredient_exclusions":[],"heat_tolerance":"no_preference","equipment":[],"max_cook_minutes":null,"meal_budget_php":null,"preferred_language":"en","servings":3.25}"#
+        let numberPreferences = try JSONDecoder().decode(
+            FoodPreferences.self,
+            from: Data(backendNumberJSON.utf8)
+        )
+        XCTAssertEqual(numberPreferences.servings, Decimal(string: "3.25"))
+        XCTAssertNil(numberPreferences.meal_budget_php)
+    }
+
 }
 
 private final class CookWithPipRequestProtocol: URLProtocol {
@@ -278,13 +323,15 @@ extension CookWithPipViewModelTests {
         }
         XCTAssertNil(CookWithPipRequestProtocol.capturedRequest())
 
-        _ = try await client.fetchRecipePage(query: "Laing & rice", limit: 20, offset: 40, scope: scope)
+        _ = try await client.fetchRecipePage(query: "Chicken Adobo & rice", inventoryBatchID: 912,
+                                             limit: 20, offset: 40, scope: scope)
         let request = try XCTUnwrap(CookWithPipRequestProtocol.capturedRequest())
         XCTAssertEqual(request.value(forHTTPHeaderField: "X-Household-ID"), String(scope.householdID))
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer synthetic-token")
         let queryItems = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
         XCTAssertEqual(queryItems.first(where: { $0.name == "limit" })?.value, "20")
         XCTAssertEqual(queryItems.first(where: { $0.name == "offset" })?.value, "40")
-        XCTAssertEqual(queryItems.first(where: { $0.name == "query" })?.value, "Laing & rice")
+        XCTAssertEqual(queryItems.first(where: { $0.name == "query" })?.value, "Chicken Adobo & rice")
+        XCTAssertEqual(queryItems.first(where: { $0.name == "inventory_batch_id" })?.value, "912")
     }
 }

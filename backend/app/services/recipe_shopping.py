@@ -640,6 +640,23 @@ def _preview_context(
     if recipe.revision != request.expected_recipe_revision or not recipe.is_active:
         raise HTTPException(status_code=409, detail="RECIPE_REVISION_CONFLICT")
     record = read_recipe(db, recipe)
+    for selection in request.substitutions:
+        if selection.requirement_index >= len(record.ingredients):
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "SUBSTITUTION_NOT_AVAILABLE", "requirement_index": selection.requirement_index},
+            )
+        original = record.ingredients[selection.requirement_index]
+        selected = selection.replacement.model_copy(update={"required": original.required})
+        allowed = (
+            option.model_copy(update={"required": original.required})
+            for option in original.substitution_options
+        )
+        if not any(option == selected for option in allowed):
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "SUBSTITUTION_NOT_AVAILABLE", "requirement_index": selection.requirement_index},
+            )
     evaluation = evaluate_recipe(
         db,
         household_id,
@@ -649,6 +666,7 @@ def _preview_context(
             servings=request.servings,
             diner_user_ids=request.diner_user_ids,
             include_optional=request.include_optional,
+            substitutions=request.substitutions,
         ),
     )
     household = db.get(Household, household_id)
@@ -724,6 +742,7 @@ def preview_recipe_shopping(
             recipe_revision=recipe.revision,
             servings=request.servings,
             include_optional=request.include_optional,
+            substitutions=request.substitutions,
             shopping_revision=household.shopping_revision,
             inventory_revision=household.inventory_revision,
             included_requirement_indexes=evaluation.included_requirement_indexes,

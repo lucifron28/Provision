@@ -1,6 +1,6 @@
 from decimal import Decimal
 from typing import Optional, TYPE_CHECKING
-from sqlalchemy import CheckConstraint, ForeignKey, ForeignKeyConstraint, Integer, String, Numeric, Boolean, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, ForeignKey, ForeignKeyConstraint, Integer, String, Numeric, Boolean, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
 
@@ -11,6 +11,10 @@ if TYPE_CHECKING:
 class ShoppingListItem(Base, TimestampMixin):
     __tablename__ = "shopping_list_items"
     __table_args__ = (
+        CheckConstraint(
+            "reconciliation_status IN ('pending', 'added_to_pantry', 'excluded')",
+            name="ck_shopping_items_reconciliation_status",
+        ),
         UniqueConstraint("household_id", "id", name="uq_shopping_items_household_id"),
         ForeignKeyConstraint(
             ["household_id", "product_id"],
@@ -64,6 +68,9 @@ class ShoppingListItem(Base, TimestampMixin):
     quantity: Mapped[Decimal] = mapped_column(Numeric(14, 6), default=Decimal("1"), nullable=False)
     unit: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     is_bought: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    reconciliation_status: Mapped[str] = mapped_column(
+        String(24), default="pending", server_default=text("'pending'"), nullable=False
+    )
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     product: Mapped[Optional["Product"]] = relationship(

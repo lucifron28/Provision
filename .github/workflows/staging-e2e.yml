@@ -7,9 +7,19 @@ on:
         description: Full commit SHA currently deployed to the Render staging service
         required: true
         type: string
+      account_mode:
+        description: Use the synthetic fixture account or the real demo account
+        required: true
+        type: choice
+        options:
+          - synthetic-fixture
+          - real-demo-account
+        default: synthetic-fixture
 
 permissions:
+  actions: read
   contents: read
+  pull-requests: read
 
 concurrency:
   group: provision-staging-e2e
@@ -46,10 +56,37 @@ jobs:
             echo "Checked out $actual, expected $expected." >&2
             exit 1
           }
-          git merge-base --is-ancestor "$actual" refs/remotes/origin/main || {
-            echo "The staging workflow only accepts commits reachable from approved main." >&2
-            exit 1
-          }
+
+      - name: Verify the requested SHA is the current open PR #11 head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          expected = os.environ["PROVISION_EXPECTED_RENDER_COMMIT"].lower()
+          request = urllib.request.Request(
+              f"https://api.github.com/repos/{repository}/pulls/11",
+              headers={
+                  "Accept": "application/vnd.github+json",
+                  "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              },
+          )
+          with urllib.request.urlopen(request, timeout=20) as response:
+              pull_request = json.load(response)
+          if (
+              pull_request.get("state") != "open"
+              or pull_request.get("base", {}).get("ref") != "main"
+              or pull_request.get("head", {}).get("ref") != "feat/pip-chat-foundation"
+              or pull_request.get("head", {}).get("sha", "").lower() != expected
+          ):
+              raise SystemExit("Expected SHA must be the current open feat/pip-chat-foundation head of PR #11.")
+          print("Requested commit matches the current open PR #11 head.")
+          PY
 
       - name: Set up Python and uv
         uses: actions/setup-python@v5
@@ -69,36 +106,145 @@ jobs:
         working-directory: backend
         run: uv run --no-sync python -m scripts.staging_e2e_smoke preflight
 
+      - name: Validate real demo account secrets
+        if: ${{ inputs.account_mode == 'real-demo-account' }}
+        env:
+          DEMO_ACCOUNT_EMAIL: ${{ secrets.PROVISION_DEMO_ACCOUNT_EMAIL }}
+          DEMO_ACCOUNT_PASSWORD: ${{ secrets.PROVISION_DEMO_ACCOUNT_PASSWORD }}
+        run: |
+          test -n "$DEMO_ACCOUNT_EMAIL" || { echo "The staging environment is missing PROVISION_DEMO_ACCOUNT_EMAIL." >&2; exit 1; }
+          test -n "$DEMO_ACCOUNT_PASSWORD" || { echo "The staging environment is missing PROVISION_DEMO_ACCOUNT_PASSWORD." >&2; exit 1; }
+          echo "Real demo account smoke is configured. Credentials are not printed."
+
       - name: Create a unique synthetic household for this run
         id: staging-fixture
+        if: ${{ inputs.account_mode == 'synthetic-fixture' }}
         working-directory: backend
         env:
           PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
         run: uv run --no-sync python -m scripts.staging_e2e_smoke prepare
 
       - name: Verify authenticated persistence and household isolation
+        if: ${{ inputs.account_mode == 'synthetic-fixture' }}
         working-directory: backend
         env:
           PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
         run: uv run --no-sync python -m scripts.staging_e2e_smoke api-smoke
 
-      - name: Run staging login, offline recovery, and Keychain relaunch tests on iPhone 17
-        id: ios-staging
+      - name: Show Xcode and simulator runtimes
+        run: xcodebuild -version && xcrun simctl list devices available
+      - name: Prepare the exact iPhone 17 simulator
+        run: bash .github/scripts/prepare_ios_simulator.sh
+
+      - name: Import the attached receipt into Simulator Photos
+        if: ${{ inputs.account_mode == 'real-demo-account' }}
+        run: xcrun simctl addmedia "$SIMULATOR_UDID" frontend/frontendUITests/Resources/Provision_Receipt_OCR_Demo.jpg
+
+      - name: Build staging iPhone UI test products
         run: |
+          set -o pipefail
           mkdir -p artifacts
-          xcodebuild test \
+          xcodebuild build-for-testing \
             -project frontend/frontend.xcodeproj \
             -scheme frontend \
-            -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+            -destination "platform=iOS Simulator,id=${SIMULATOR_UDID}" \
             -only-testing:frontendUITests/CookWithPipUITests/testStagingLoginAndRelaunch \
+            -only-testing:frontendUITests/CookWithPipUITests/testStagingPipChatContextAndShoppingPreviewRoutes \
             -only-testing:frontendUITests/CookWithPipUITests/testCookWithPipLoadingEmptyAndOfflineRecovery \
             -only-testing:frontendUITests/CookWithPipUITests/testShoppingOfflineRetryAndStalePreviewRecovery \
-            -resultBundlePath artifacts/staging-e2e.xcresult \
+            -only-testing:frontendUITests/CookWithPipUITests/testRealDemoAccountSessionAndBarcodeLookup \
+            -only-testing:frontendUITests/CookWithPipUITests/testRealDemoAccountReceiptOCRIntake \
+            -only-testing:frontendTests/ScannerRecoveryTests/testProductionScannerBehaviorSuite \
+            -derivedDataPath artifacts/DerivedData \
+            -parallel-testing-enabled NO \
+            -showBuildTimingSummary \
             CODE_SIGNING_ALLOWED=YES \
-            CODE_SIGN_IDENTITY=-
+            CODE_SIGN_IDENTITY=- 2>&1 | tee artifacts/xcodebuild-build.log
+      - name: Recheck Render and Neon readiness before simulator login
+        working-directory: backend
+        run: uv run --no-sync python -m scripts.staging_e2e_smoke preflight
+      - name: Run the real demo account login and inventory relaunch check on iPhone 17
+        if: ${{ inputs.account_mode == 'real-demo-account' }}
+        env:
+          TEST_RUNNER_PROVISION_API_BASE_URL: ${{ env.PROVISION_API_BASE_URL }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_EMAIL: ${{ secrets.PROVISION_DEMO_ACCOUNT_EMAIL }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_PASSWORD: ${{ secrets.PROVISION_DEMO_ACCOUNT_PASSWORD }}
+          TEST_RUNNER_PROVISION_REAL_DEMO_ACCOUNT_TEST: "true"
+          TEST_RUNNER_PROVISION_SKIP_UI_SCREENSHOTS: "1"
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          xcodebuild test-without-building \
+            -project frontend/frontend.xcodeproj \
+            -scheme frontend \
+            -destination "platform=iOS Simulator,id=${SIMULATOR_UDID}" \
+            -only-testing:frontendUITests/CookWithPipUITests/testRealDemoAccountSessionAndBarcodeLookup \
+            -only-testing:frontendUITests/CookWithPipUITests/testRealDemoAccountReceiptOCRIntake \
+            -derivedDataPath artifacts/DerivedData \
+            -resultBundlePath artifacts/staging-real-demo.xcresult \
+            -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- 2>&1 | tee artifacts/xcodebuild.log
+      - name: Run focused production receipt parser regression
+        if: ${{ inputs.account_mode == 'real-demo-account' }}
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          xcodebuild test-without-building \
+            -project frontend/frontend.xcodeproj \
+            -scheme frontend \
+            -destination "platform=iOS Simulator,id=${SIMULATOR_UDID}" \
+            -only-testing:frontendTests/ScannerRecoveryTests/testProductionScannerBehaviorSuite \
+            -derivedDataPath artifacts/DerivedData \
+            -resultBundlePath artifacts/receipt-parser-unit.xcresult \
+            -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- 2>&1 | tee artifacts/xcodebuild-receipt-unit.log
+      - name: Run staging login, offline recovery, and Keychain relaunch tests on iPhone 17
+        id: ios-staging
+        if: ${{ inputs.account_mode == 'synthetic-fixture' }}
+        env:
+          # xcodebuild only forwards custom variables to XCTest runner processes
+          # when they use the TEST_RUNNER_ prefix. The tests then read the
+          # unprefixed names from ProcessInfo and pass credentials to the app
+          # launch environment explicitly.
+          TEST_RUNNER_PROVISION_API_BASE_URL: ${{ env.PROVISION_API_BASE_URL }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_EMAIL: ${{ env.PROVISION_STAGING_TEST_EMAIL }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_PASSWORD: ${{ env.PROVISION_STAGING_TEST_PASSWORD }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_HOUSEHOLD_ID: ${{ env.PROVISION_STAGING_TEST_HOUSEHOLD_ID }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_EMAIL_2: ${{ env.PROVISION_STAGING_TEST_EMAIL_2 }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_PASSWORD_2: ${{ env.PROVISION_STAGING_TEST_PASSWORD_2 }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_HOUSEHOLD_ID_2: ${{ env.PROVISION_STAGING_TEST_HOUSEHOLD_ID_2 }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_PRODUCT_ID: ${{ env.PROVISION_STAGING_TEST_PRODUCT_ID }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_RECIPE_ID: ${{ env.PROVISION_STAGING_TEST_RECIPE_ID }}
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          xcodebuild test-without-building \
+            -project frontend/frontend.xcodeproj \
+            -scheme frontend \
+            -destination "platform=iOS Simulator,id=${SIMULATOR_UDID}" \
+            -only-testing:frontendUITests/CookWithPipUITests/testStagingLoginAndRelaunch \
+            -only-testing:frontendUITests/CookWithPipUITests/testStagingPipChatContextAndShoppingPreviewRoutes \
+            -only-testing:frontendUITests/CookWithPipUITests/testCookWithPipLoadingEmptyAndOfflineRecovery \
+            -only-testing:frontendUITests/CookWithPipUITests/testShoppingOfflineRetryAndStalePreviewRecovery \
+            -derivedDataPath artifacts/DerivedData \
+            -resultBundlePath artifacts/staging-e2e.xcresult \
+            -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- 2>&1 | tee artifacts/xcodebuild.log
+
+      - name: Report staging XCTest durations
+        if: always()
+        run: >-
+          python .github/scripts/report_xcode_test_durations.py
+          --input-log artifacts/xcodebuild.log
+          --json-output artifacts/test-durations-staging.json
+          --summary "$GITHUB_STEP_SUMMARY"
+          --allow-empty
 
       - name: Export staging simulator screenshots
-        if: always()
+        if: always() && inputs.account_mode == 'synthetic-fixture'
         run: |
           if [ -d artifacts/staging-e2e.xcresult ]; then
             mkdir -p artifacts/staging-screenshots
@@ -110,15 +256,44 @@ jobs:
           fi
 
       - name: Upload staging simulator screenshots and xcresult
-        if: always()
+        if: always() && inputs.account_mode == 'synthetic-fixture'
         uses: actions/upload-artifact@v4
         with:
           name: provision-staging-e2e-${{ inputs.expected_render_commit }}
           path: |
             artifacts/staging-screenshots
             artifacts/staging-e2e.xcresult
+            artifacts/test-durations-staging.json
+            artifacts/xcodebuild.log
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Export real demo UI evidence
+        if: always() && inputs.account_mode == 'real-demo-account'
+        run: |
+          if [[ -d artifacts/staging-real-demo.xcresult ]]; then
+            xcrun xcresulttool export attachments \
+              --path artifacts/staging-real-demo.xcresult \
+              --output-path artifacts/real-demo-ui-evidence
+          else
+            echo "The real demo XCUITest did not produce an xcresult bundle." >&2
+          fi
+
+      - name: Upload real demo receipt verification results
+        if: always() && inputs.account_mode == 'real-demo-account'
+        uses: actions/upload-artifact@v4
+        with:
+          name: provision-real-demo-receipt-ocr-${{ inputs.expected_render_commit }}
+          path: |
+            artifacts/staging-real-demo.xcresult
+            artifacts/real-demo-ui-evidence
+            artifacts/receipt-parser-unit.xcresult
+            artifacts/test-durations-staging.json
+            artifacts/xcodebuild-build.log
+            artifacts/xcodebuild.log
+            artifacts/xcodebuild-receipt-unit.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Remove the run-owned synthetic households
         if: always() && steps.staging-fixture.outcome != 'skipped'
@@ -126,3 +301,18 @@ jobs:
         env:
           PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
         run: uv run --no-sync python -m scripts.staging_e2e_smoke cleanup
+
+      - name: Report staging phase timings and runner allocation
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100" \
+            > artifacts/workflow-jobs.json
+          python .github/scripts/report_github_action_timings.py \
+            --jobs artifacts/workflow-jobs.json \
+            --summary "$GITHUB_STEP_SUMMARY"

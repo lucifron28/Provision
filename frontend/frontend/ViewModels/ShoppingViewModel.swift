@@ -10,12 +10,56 @@ public enum ShoppingFilter: String, CaseIterable, Identifiable {
     public var id: String { rawValue }
 }
 
+public enum PurchasedGroceriesChoice: String, CaseIterable, Identifiable, Sendable {
+    case unresolved
+    case addToPantry
+    case exclude
+
+    public var id: String { rawValue }
+}
+
+public struct PurchasedGroceriesDraft {
+    public var choice: PurchasedGroceriesChoice = .unresolved
+    public var productSelection = ""
+    public var newProductName = ""
+    public var newProductUnit = ""
+    public var quantity = ""
+    public var storageLocationID: Int?
+    public var hasExpirationDate = false
+    public var expirationDate = Date()
+
+    public init(item: ShoppingItem, products: [Product]) {
+        newProductName = item.name
+        if let linkedID = item.product_id, products.contains(where: { $0.id == linkedID }) {
+            productSelection = String(linkedID)
+        }
+    }
+}
+
+public protocol PendingPurchasedGroceriesStore {
+    func readPendingPurchasedGroceries(scope: HouseholdScope) -> PendingPurchasedGroceriesReadResult
+    @discardableResult func savePendingPurchasedGroceries(
+        _ record: PendingPurchasedGroceriesRecord,
+        scope: HouseholdScope
+    ) -> Bool
+    @discardableResult func deletePendingPurchasedGroceries(scope: HouseholdScope) -> Bool
+}
+
+extension KeychainStore: PendingPurchasedGroceriesStore {}
+
 @MainActor
 public class ShoppingViewModel: ObservableObject {
     @Published public var items: [ShoppingItem] = []
     @Published public var filter: ShoppingFilter = .pending
     @Published public var newItemName: String = ""
     @Published public var newItemQuantity: Double = 1.0
+    @Published public var products: [Product] = []
+    @Published public var locations: [StorageLocation] = []
+    @Published public var purchasedGroceriesDrafts: [Int: PurchasedGroceriesDraft] = [:]
+    @Published public private(set) var pendingPurchasedGroceriesRecord: PendingPurchasedGroceriesRecord?
+    @Published public private(set) var pendingPurchasedGroceriesState: PendingPurchasedGroceriesReadResult = .missing
+    @Published public var isPreparingPurchasedReview = false
+    @Published public var isReconcilingPurchasedGroceries = false
 
     @Published public var isLoading: Bool = false
     @Published public var isGenerating: Bool = false
@@ -35,12 +79,15 @@ public class ShoppingViewModel: ObservableObject {
     }
 
     private let client: APIClient
-    private let scope: HouseholdScope?
+    private let purchasedGroceriesStore: any PendingPurchasedGroceriesStore
+    public let scope: HouseholdScope?
     public var isPreview: Bool
-    public init(client: APIClient = .shared, isPreview: Bool = false, scope: HouseholdScope? = nil) {
+    public init(client: APIClient = .shared, isPreview: Bool = false, scope: HouseholdScope? = nil,
+                purchasedGroceriesStore: (any PendingPurchasedGroceriesStore)? = nil) {
         self.client = client
         self.scope = scope
         self.isPreview = isPreview
+        self.purchasedGroceriesStore = purchasedGroceriesStore ?? KeychainStore.shared
     }
 
     public var filteredItems: [ShoppingItem] {
@@ -60,6 +107,18 @@ public class ShoppingViewModel: ObservableObject {
 
     public var purchasedCount: Int {
         items.filter { $0.is_bought }.count
+    }
+
+    public var purchasedItemsNeedingReview: [ShoppingItem] {
+        items.filter { $0.is_bought && $0.reconciliationStatus == "pending" }
+    }
+
+    public var reviewedPurchasedCount: Int {
+        items.filter { $0.is_bought && $0.reconciliationStatus != "pending" }.count
+    }
+
+    public var canReviewPurchasedItems: Bool {
+        !purchasedItemsNeedingReview.isEmpty && pendingPurchasedGroceriesState == .missing
     }
 
     public func loadItems() async {
@@ -173,17 +232,151 @@ public class ShoppingViewModel: ObservableObject {
 
     public func clearCompleted() async {
         if isPreview {
-            items.removeAll { $0.is_bought }
-            showToast("Completed items cleared")
+            items.removeAll { $0.is_bought && $0.reconciliationStatus != "pending" }
+            showToast("Reviewed purchases cleared")
             return
         }
         do {
             try await client.clearCompletedShoppingItems(expectedScope: scope)
-            self.items.removeAll { $0.is_bought }
-            showToast("Completed items cleared")
+            showToast("Reviewed purchases cleared")
+            await refreshFromServer()
         } catch {
             self.errorMessage = "Failed to clear completed items: \(error.localizedDescription)"
         }
+    }
+
+    public func loadPendingPurchasedGroceries() {
+        guard let scope else {
+            pendingPurchasedGroceriesRecord = nil
+            pendingPurchasedGroceriesState = .missing
+            return
+        }
+        pendingPurchasedGroceriesState = purchasedGroceriesStore.readPendingPurchasedGroceries(scope: scope)
+        if case .record(let record) = pendingPurchasedGroceriesState {
+            pendingPurchasedGroceriesRecord = record
+        } else {
+            pendingPurchasedGroceriesRecord = nil
+        }
+    }
+
+    public func preparePurchasedReview() async {
+        guard !isPreview else {
+            loadPendingPurchasedGroceries()
+            prepareDraftsForPendingPurchases()
+            return
+        }
+        guard let scope else {
+            errorMessage = "Choose a household before reviewing purchased groceries."
+            return
+        }
+        isPreparingPurchasedReview = true
+        errorMessage = nil
+        do {
+            async let serverItems = client.fetchShoppingListFromServer(scope: scope)
+            async let householdProducts = client.fetchProducts(expectedScope: scope)
+            async let householdLocations = client.fetchLocations(expectedScope: scope)
+            let (freshItems, knownProducts, knownLocations) = try await (serverItems, householdProducts, householdLocations)
+            items = freshItems
+            products = knownProducts
+            locations = knownLocations
+            loadPendingPurchasedGroceries()
+            prepareDraftsForPendingPurchases()
+        } catch {
+            errorMessage = "Unable to refresh purchased groceries: \(error.localizedDescription)"
+        }
+        isPreparingPurchasedReview = false
+    }
+
+    public func prepareDraftsForPendingPurchases() {
+        for item in purchasedItemsNeedingReview where purchasedGroceriesDrafts[item.id] == nil {
+            purchasedGroceriesDrafts[item.id] = PurchasedGroceriesDraft(item: item, products: products)
+        }
+        purchasedGroceriesDrafts = purchasedGroceriesDrafts.filter { id, _ in
+            purchasedItemsNeedingReview.contains(where: { $0.id == id })
+        }
+    }
+
+    public func submitPurchasedGroceries(_ request: ReconcilePurchasedItemsRequest) async {
+        guard !isReconcilingPurchasedGroceries else { return }
+        if isPreview {
+            for resolution in request.items {
+                guard let index = items.firstIndex(where: { $0.id == resolution.shopping_item_id }) else { continue }
+                items[index].reconciliation_status = resolution.action == "add" ? "added_to_pantry" : "excluded"
+            }
+            purchasedGroceriesDrafts.removeAll()
+            showToast("Purchase review saved")
+            return
+        }
+        guard let scope else {
+            errorMessage = "Choose a household before adding purchases to the pantry."
+            return
+        }
+        loadPendingPurchasedGroceries()
+        guard pendingPurchasedGroceriesState == .missing else {
+            errorMessage = "Finish the saved pantry update before confirming a new purchase review."
+            return
+        }
+        let record = PendingPurchasedGroceriesRecord(scopeStorageKey: scope.storageKey, request: request)
+        guard purchasedGroceriesStore.savePendingPurchasedGroceries(record, scope: scope) else {
+            loadPendingPurchasedGroceries()
+            errorMessage = "The exact purchase review could not be saved securely. No pantry changes were sent."
+            return
+        }
+        pendingPurchasedGroceriesRecord = record
+        pendingPurchasedGroceriesState = .record(record)
+        await sendPendingPurchasedGroceries(record, scope: scope)
+    }
+
+    public func retryPendingPurchasedGroceries() async {
+        guard let scope,
+              case .record(let record) = purchasedGroceriesStore.readPendingPurchasedGroceries(scope: scope),
+              record.scopeStorageKey == scope.storageKey else {
+            loadPendingPurchasedGroceries()
+            return
+        }
+        pendingPurchasedGroceriesRecord = record
+        pendingPurchasedGroceriesState = .record(record)
+        await sendPendingPurchasedGroceries(record, scope: scope)
+    }
+
+    private func sendPendingPurchasedGroceries(_ record: PendingPurchasedGroceriesRecord,
+                                               scope: HouseholdScope) async {
+        guard record.scopeStorageKey == scope.storageKey else {
+            errorMessage = "The saved pantry update belongs to a different household."
+            return
+        }
+        isReconcilingPurchasedGroceries = true
+        errorMessage = nil
+        do {
+            _ = try await client.reconcilePurchasedGroceries(record.request, scope: scope)
+            guard purchasedGroceriesStore.deletePendingPurchasedGroceries(scope: scope) else {
+                loadPendingPurchasedGroceries()
+                errorMessage = "The pantry update was accepted. Retry the saved request to verify its result."
+                isReconcilingPurchasedGroceries = false
+                await refreshFromServer()
+                return
+            }
+            pendingPurchasedGroceriesRecord = nil
+            pendingPurchasedGroceriesState = .missing
+            purchasedGroceriesDrafts.removeAll()
+            showToast("Purchased groceries added to pantry review")
+            await refreshFromServer()
+        } catch let error as APIError {
+            if case .http(let status, _, _) = error, [404, 409, 422].contains(status) {
+                _ = purchasedGroceriesStore.deletePendingPurchasedGroceries(scope: scope)
+                pendingPurchasedGroceriesRecord = nil
+                pendingPurchasedGroceriesState = .missing
+                errorMessage = "The purchase review was rejected because household data changed. Refresh and review it again."
+                await refreshFromServer()
+            } else {
+                loadPendingPurchasedGroceries()
+                errorMessage = "The pantry update result is unknown. Retry the saved request before starting another review."
+            }
+        } catch {
+            loadPendingPurchasedGroceries()
+            errorMessage = "The pantry update result is unknown. Retry the saved request before starting another review."
+        }
+        isReconcilingPurchasedGroceries = false
     }
 
     public func autoGenerateSuggestions() async {

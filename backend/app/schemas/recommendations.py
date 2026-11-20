@@ -44,6 +44,14 @@ class RecipeRecommendation(StrictSchema):
     source_reference: SourceReferenceRead | None = None
 
 
+class ExcludedRecipeCandidate(StrictSchema):
+    recipe_id: int
+    title: str
+    status: Literal["blocked", "review_required", "unknown_quantities"]
+    reasons: list[str]
+    unknown_ingredients: list[str] = Field(default_factory=list)
+
+
 class RecommendationRead(StrictSchema):
     items: list[RecipeRecommendation]
     candidates_evaluated: int
@@ -51,4 +59,5 @@ class RecommendationRead(StrictSchema):
     excluded_blocked: int
     excluded_review_required: int
     excluded_unknown_quantities: int
+    excluded_candidates: list[ExcludedRecipeCandidate] = Field(default_factory=list, max_length=200)
     provider_enabled: Literal[False] = False

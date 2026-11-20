@@ -10,6 +10,7 @@ public struct IntakeSessionReviewView: View {
     @State private var searchQuery: String = ""
     @State private var selectedFilter: IntakeReviewFilter = .all
     @State private var reviewingItem: ScannedIntakeItem? = nil
+    @FocusState private var isSearchFieldFocused: Bool
 
     public enum IntakeReviewFilter: String, CaseIterable, Identifiable {
         case all = "All"
@@ -139,6 +140,7 @@ public struct IntakeSessionReviewView: View {
                     }
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(ProvisionTheme.provisionGreen)
+                    .accessibilityIdentifier("intake-workspace-done")
                 }
 
                 ToolbarItem(placement: .primaryAction) {
@@ -155,6 +157,14 @@ public struct IntakeSessionReviewView: View {
                         }
                         .disabled(viewModel.isIntakeMutationLocked)
                     }
+                }
+
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        isSearchFieldFocused = false
+                    }
+                    .accessibilityIdentifier("intake-workspace-search-keyboard-done")
                 }
             }
             .sheet(item: $reviewingItem) { item in
@@ -174,6 +184,8 @@ public struct IntakeSessionReviewView: View {
             TextField("Search items by name, brand, or barcode...", text: $searchQuery)
                 .font(.system(size: 13))
                 .foregroundStyle(ProvisionTheme.textPrimary)
+                .focused($isSearchFieldFocused)
+                .accessibilityIdentifier("intake-workspace-search")
 
             if !searchQuery.isEmpty {
                 Button {
@@ -184,6 +196,7 @@ public struct IntakeSessionReviewView: View {
                         .foregroundStyle(ProvisionTheme.textTertiary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("intake-workspace-search-clear")
             }
         }
         .padding(.horizontal, 12)
@@ -253,7 +266,11 @@ public struct IntakeSessionReviewView: View {
     // MARK: - Item Row
 
     private func workspaceItemRow(for item: ScannedIntakeItem) -> some View {
-        Button {
+        let locationName = item.storageLocationId.flatMap { locationID in
+            viewModel.availableLocations.first(where: { $0.id == locationID })?.name
+        } ?? "No location selected"
+
+        return Button {
             reviewingItem = item
         } label: {
             let state = viewModel.validationState(for: item)
@@ -351,8 +368,9 @@ public struct IntakeSessionReviewView: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(item.name), \(formattedQuantity(item.quantity)) \(item.unit), \(item.storageLocationId != nil ? "location selected" : "no location selected"), status: \(viewModel.validationState(for: item).rawValue)")
+        .accessibilityLabel("\(item.name), \(formattedQuantity(item.quantity)) \(item.unit), location: \(locationName), status: \(viewModel.validationState(for: item).rawValue)")
         .accessibilityHint("Double tap to inspect and edit item details")
+        .accessibilityIdentifier("intake-workspace-item-\(item.barcode)")
     }
 
     @ViewBuilder
@@ -556,10 +574,6 @@ public struct IntakeSessionReviewView: View {
     }
 
     private func formattedQuantity(_ qty: Double) -> String {
-        if qty.truncatingRemainder(dividingBy: 1) == 0 {
-            return "\(Int(qty))"
-        } else {
-            return String(format: "%.1f", qty)
-        }
+        ProductUnits.formatAmount(qty)
     }
 }

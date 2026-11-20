@@ -1,8 +1,8 @@
 # Cook with Pip — Product Roadmap and Execution Checklist
 
-Status: **Cook with Pip iOS milestones 1–3 merged into main; physical-device and fully connected simulator acceptance remain deferred** | Last reviewed: 2026-11-10 | Evidence: [merged PR #4](https://github.com/lucifron28/Provision/pull/4), merge `d4d5105`, validated feature head `465a3a8`
+Status: **Pip Chat Phases 1–3 and the current Cook with Pip workflow improvements are on open PR #11; physical-device acceptance remains deferred** | Last reviewed: 2026-11-18 | Evidence: [PR #11](https://github.com/lucifron28/Provision/pull/11); use its current head and check runs for revision-specific verification.
 
-## Current verified delivery (2026-11-10)
+## Current verified delivery (2026-11-18)
 
 - Native Cook Now, Almost There, My Recipes, Recipe Detail, preferences, allergies, label review, substitutions, and explicit recipe-shopping preview/confirmation are implemented.
 - [Final push CI](https://github.com/lucifron28/Provision/actions/runs/42696338465) and [PR CI](https://github.com/lucifron28/Provision/actions/runs/42696352926) passed at `465a3a8`: **938 backend passed / 12 skipped; 38 iOS unit tests and 12 XCUITests passed**; no Swift concurrency warnings found in the iOS build log.

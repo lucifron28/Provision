@@ -1,5 +1,5 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.api.v1.dependencies import get_current_household_id, get_current_household_id_for_write
 from app.models.batch import InventoryBatch
 from app.models.event import InventoryEvent, EventType
+from app.models.user import User
 from app.schemas.event import (
     ConsumeRequest,
     ConsumeResponse,
@@ -16,18 +17,43 @@ from app.schemas.event import (
 )
 from app.schemas.batch import InventoryBatchRead
 from app.services.inventory import InventoryService
+from app.schemas.manual_inventory_intake import (
+    ManualInventoryIntakeRead,
+    ManualInventoryIntakeRequest,
+)
+from app.services.manual_inventory_intake import create_manual_inventory_intake
+from app.api.v1.endpoints.auth import get_current_user
 
 router = APIRouter()
+
+
+@router.post(
+    "/manual-intake",
+    response_model=ManualInventoryIntakeRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_manual_intake(
+    request: ManualInventoryIntakeRequest,
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    household_id: int = Depends(get_current_household_id_for_write),
+    db: Session = Depends(get_db),
+):
+    result = create_manual_inventory_intake(db, household_id, current_user.id, request)
+    if result.replayed:
+        response.status_code = status.HTTP_200_OK
+    return result
 
 
 @router.post("/consume", response_model=ConsumeResponse)
 def consume_product(
     req: ConsumeRequest,
+    current_user: User = Depends(get_current_user),
     household_id: int = Depends(get_current_household_id_for_write),
     db: Session = Depends(get_db),
 ):
     try:
-        return InventoryService.consume_product_fefo(db, household_id, req)
+        return InventoryService.consume_product_fefo(db, household_id, req, actor_id=current_user.id)
     except ValueError as e:
         detail = str(e)
         status_code = status.HTTP_404_NOT_FOUND if "not found" in detail.lower() else status.HTTP_400_BAD_REQUEST
@@ -38,11 +64,12 @@ def consume_product(
 def discard_batch(
     batch_id: int,
     req: DiscardRequest,
+    current_user: User = Depends(get_current_user),
     household_id: int = Depends(get_current_household_id_for_write),
     db: Session = Depends(get_db),
 ):
     try:
-        return InventoryService.discard_batch(db, household_id, batch_id, req)
+        return InventoryService.discard_batch(db, household_id, batch_id, req, actor_id=current_user.id)
     except ValueError as e:
         detail = str(e)
         status_code = status.HTTP_404_NOT_FOUND if "not found" in detail.lower() else status.HTTP_400_BAD_REQUEST
@@ -53,11 +80,12 @@ def discard_batch(
 def adjust_batch(
     batch_id: int,
     req: AdjustmentRequest,
+    current_user: User = Depends(get_current_user),
     household_id: int = Depends(get_current_household_id_for_write),
     db: Session = Depends(get_db),
 ):
     try:
-        return InventoryService.adjust_batch(db, household_id, batch_id, req)
+        return InventoryService.adjust_batch(db, household_id, batch_id, req, actor_id=current_user.id)
     except ValueError as e:
         detail = str(e)
         status_code = status.HTTP_404_NOT_FOUND if "not found" in detail.lower() else status.HTTP_400_BAD_REQUEST

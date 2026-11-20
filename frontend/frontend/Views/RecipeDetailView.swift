@@ -4,6 +4,7 @@ public struct RecipeDetailView: View {
     @StateObject private var viewModel: RecipeDetailViewModel
     private let scope: HouseholdScope
     private let service: any CookWithPipService
+    private let chatService: any PipChatService
     private let workflowService: any CookWithPipWorkflowService
     private let pendingStore: any PendingRecipeShoppingStore
     private let onShoppingConfirmed: () async -> Void
@@ -11,12 +12,14 @@ public struct RecipeDetailView: View {
     @State private var showingSubstitutionEditor = false
 
     public init(recipeID: Int, scope: HouseholdScope, service: any CookWithPipService = APIClient.shared,
+                chatService: any PipChatService = APIClient.shared,
                 workflowService: any CookWithPipWorkflowService = APIClient.shared,
                 pendingStore: any PendingRecipeShoppingStore = KeychainStore.shared,
                 onShoppingConfirmed: @escaping () async -> Void = {},
                 onNavigateToShopping: @escaping () -> Void = {}) {
         self.scope = scope
         self.service = service
+        self.chatService = chatService
         self.workflowService = workflowService
         self.pendingStore = pendingStore
         self.onShoppingConfirmed = onShoppingConfirmed
@@ -58,11 +61,15 @@ public struct RecipeDetailView: View {
                         scope: scope,
                         evaluation: evaluation,
                         appliedSubstitutions: viewModel.appliedSubstitutions,
+                        appliedServings: viewModel.appliedServings,
+                        appliedIncludeOptional: viewModel.appliedIncludeOptional,
                         sourceReference: viewModel.sourceReference,
                         sourceReferenceErrorMessage: viewModel.sourceReferenceErrorMessage,
                         isSourceOffline: viewModel.isSourceOffline,
                         isLoadingSourceReference: viewModel.isLoadingSourceReference,
                         retrySourceReference: { Task { await viewModel.retrySourceReference() } },
+                        recipeService: service,
+                        chatService: chatService,
                         workflowService: workflowService,
                         pendingStore: pendingStore,
                         onCustomizeSubstitutions: { showingSubstitutionEditor = true },
@@ -89,8 +96,9 @@ public struct RecipeDetailView: View {
         }
         .sheet(isPresented: $showingSubstitutionEditor) {
             if let recipe = viewModel.recipe {
-                RecipeSubstitutionEditorView(recipe: recipe, scope: scope, service: service) { evaluation, substitutions in
-                    viewModel.applyEvaluation(evaluation, substitutions: substitutions)
+                RecipeSubstitutionEditorView(recipe: recipe, scope: scope, service: service) { evaluation, substitutions, servings, includeOptional in
+                    viewModel.applyEvaluation(evaluation, substitutions: substitutions,
+                                              servings: servings, includeOptional: includeOptional)
                     showingSubstitutionEditor = false
                 }
             }
@@ -106,11 +114,15 @@ private struct RecipeDetailContents: View {
     let scope: HouseholdScope
     let evaluation: RecipeEvaluation
     let appliedSubstitutions: [Int: IngredientRequirement]
+    let appliedServings: ExactQuantity?
+    let appliedIncludeOptional: Bool
     let sourceReference: RecipeSourceReference?
     let sourceReferenceErrorMessage: String?
     let isSourceOffline: Bool
     let isLoadingSourceReference: Bool
     let retrySourceReference: () -> Void
+    let recipeService: any CookWithPipService
+    let chatService: any PipChatService
     let workflowService: any CookWithPipWorkflowService
     let pendingStore: any PendingRecipeShoppingStore
     let onCustomizeSubstitutions: () -> Void
@@ -148,6 +160,7 @@ private struct RecipeDetailContents: View {
         VStack(alignment: .leading, spacing: 18) {
             titleSection
             evaluationSection
+            ingredientAvailabilityOverview
             workflowActions
             if dynamicTypeSize.isAccessibilitySize {
                 summarySection
@@ -183,6 +196,24 @@ private struct RecipeDetailContents: View {
                 .accessibilityIdentifier("recipe-review-substitutions")
             }
             NavigationLink {
+                PipChatView(
+                    scope: scope,
+                    context: PipChatContext(kind: .recipe, id: recipe.id),
+                    contextTitle: recipe.title,
+                    chatService: chatService,
+                    recipeService: recipeService,
+                    workflowService: workflowService,
+                    pendingStore: pendingStore,
+                    onShoppingConfirmed: onShoppingConfirmed,
+                    onNavigateToShopping: onNavigateToShopping
+                )
+                .id("pip-chat-\(scope.storageKey)-recipe-\(recipe.id)")
+            } label: {
+                Label("Ask Pip about this recipe", systemImage: "bubble.left.and.bubble.right")
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            }
+            .accessibilityIdentifier("recipe-ask-pip-link")
+            NavigationLink {
                 CookWithPipPreferencesView(scope: scope, service: workflowService,
                                            onProfileUpdated: refreshEvaluation)
             } label: {
@@ -201,11 +232,13 @@ private struct RecipeDetailContents: View {
             NavigationLink {
                 RecipeShoppingReviewView(recipe: recipe, scope: scope, service: workflowService,
                                          pendingStore: pendingStore,
+                                         substitutions: appliedSubstitutionSelections,
+                                         initialServings: appliedServings,
+                                         includeOptional: appliedIncludeOptional,
                                          onShoppingConfirmed: onShoppingConfirmed,
-                                         onNavigateToShopping: onNavigateToShopping,
-                                         hasAppliedSubstitutions: !appliedSubstitutions.isEmpty)
+                                         onNavigateToShopping: onNavigateToShopping)
             } label: {
-                Label("Preview shopping list changes", systemImage: "cart.badge.plus")
+                Label("Review shopping list", systemImage: "cart.badge.plus")
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             }
             .accessibilityIdentifier("recipe-shopping-preview-link")
@@ -234,7 +267,7 @@ private struct RecipeDetailContents: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             if !dynamicTypeSize.isAccessibilitySize {
-                Text("\(recipe.cuisine) · \(regionText)")
+                Text(cuisineRegionLabel)
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(ProvisionTheme.textSecondary)
             }
@@ -273,7 +306,7 @@ private struct RecipeDetailContents: View {
     private var metadataSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             if dynamicTypeSize.isAccessibilitySize {
-                Text("\(recipe.cuisine) · \(regionText)")
+                Text(cuisineRegionLabel)
                     .font(.body.weight(.medium))
                     .foregroundStyle(ProvisionTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -310,7 +343,7 @@ private struct RecipeDetailContents: View {
                 .foregroundStyle(ProvisionTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("recipe-safety-notice")
-            Text("Evaluation uses all active household members unless the server request names diners.")
+            Text("Food-safety checks include all active household members unless you select specific diners.")
                 .font(.footnote)
                 .foregroundStyle(ProvisionTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -320,6 +353,7 @@ private struct RecipeDetailContents: View {
                         Label(ReasonText.display(item.element), systemImage: "info.circle")
                             .font(.footnote)
                             .foregroundStyle(ProvisionTheme.textSecondary)
+                            .accessibilityIdentifier("recipe-safety-reason-\(item.offset)")
                     }
                 }
             }
@@ -339,6 +373,55 @@ private struct RecipeDetailContents: View {
                 StatusPill(presentation: .availability(evaluation.result.availability.overall_status))
                     .accessibilityIdentifier("recipe-availability-status")
             }
+        }
+    }
+
+    @ViewBuilder
+    private var ingredientAvailabilityOverview: some View {
+        if !requiredIngredients.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Ingredient check")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("recipe-ingredient-availability-overview")
+                ForEach(requiredIngredients, id: \.self) { index in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(recipe.ingredients[index].display_name)
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(ProvisionTheme.textPrimary)
+                        ingredientAvailabilitySummary(index)
+                            .font(.footnote.weight(.semibold))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("recipe-ingredient-availability-summary-\(index)")
+                    }
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .provisionCard(backgroundColor: ProvisionTheme.surfaceSecondary)
+        }
+    }
+
+    @ViewBuilder
+    private func ingredientAvailabilitySummary(_ index: Int) -> some View {
+        if let line = availabilityByRecipeIndex[index] {
+            let unit = line.unit ?? recipe.ingredients[index].unit
+            let needed = line.required_amount.map { "Need \(QuantityText.string($0)) \(unit)" }
+            if line.status == "unknown" || !line.unknown_reasons.isEmpty {
+                Text(["Needs review", needed].compactMap { $0 }.joined(separator: " · "))
+                    .foregroundStyle(ProvisionTheme.amberWarning)
+            } else {
+                let have = line.available_amount.map { "Have \(QuantityText.string($0)) \(unit)" }
+                let missing = line.shortfall.flatMap {
+                    $0.value > 0 ? "Missing \(QuantityText.string($0)) \(unit)" : nil
+                }
+                Text([have, needed, missing].compactMap { $0 }.joined(separator: " · "))
+                    .foregroundStyle(line.status == "full" ? ProvisionTheme.provisionGreen : ProvisionTheme.amberWarning)
+            }
+        } else {
+            Text("Needs review · Pantry amount is unavailable")
+                .foregroundStyle(ProvisionTheme.amberWarning)
         }
     }
 
@@ -434,11 +517,26 @@ private struct RecipeDetailContents: View {
         }
     }
 
+    private var appliedSubstitutionSelections: [RecipeSubstitution] {
+        appliedSubstitutions.keys.sorted().compactMap { index in
+            guard let replacement = appliedSubstitutions[index] else { return nil }
+            return RecipeSubstitution(requirementIndex: index, replacement: replacement)
+        }
+    }
+
     private var instructionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Instructions")
-                .font(ProvisionTypography.sectionSerif)
-                .foregroundStyle(ProvisionTheme.textPrimary)
+            HStack(spacing: 8) {
+                Image("pip_cooking")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 36, height: 36)
+                    .accessibilityHidden(true)
+                Text("Instructions")
+                    .font(ProvisionTypography.sectionSerif)
+                    .foregroundStyle(ProvisionTheme.textPrimary)
+                    .accessibilityIdentifier("recipe-instructions")
+            }
             ForEach(Array(recipe.instructions.enumerated()), id: \.offset) { step in
                 HStack(alignment: .top, spacing: 12) {
                     Text("\(step.offset + 1)")
@@ -452,6 +550,7 @@ private struct RecipeDetailContents: View {
                         .font(.body)
                         .foregroundStyle(ProvisionTheme.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("recipe-instruction-step-\(step.offset + 1)")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -459,12 +558,14 @@ private struct RecipeDetailContents: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .provisionCard()
-        .accessibilityIdentifier("recipe-instructions")
     }
 
-    private var regionText: String {
+    private var cuisineRegionLabel: String {
         let regions = recipe.ph_regions.filter { $0 != "region_unknown" }
-        return regions.isEmpty ? "Region not specified" : regions.joined(separator: ", ")
+        guard !regions.isEmpty else { return "\(recipe.cuisine) · Region not specified" }
+        let distinctRegions = regions.filter { $0.localizedCaseInsensitiveCompare(recipe.cuisine) != .orderedSame }
+        guard !distinctRegions.isEmpty else { return recipe.cuisine }
+        return "\(recipe.cuisine) · \(distinctRegions.joined(separator: ", "))"
     }
 
     private func metadataLabel(_ title: String, symbol: String) -> some View {
@@ -500,9 +601,11 @@ private struct RecipeIngredientRow: View {
                 Text("Pantry availability")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(ProvisionTheme.textSecondary)
+                    .accessibilityIdentifier("recipe-ingredient-availability-heading-\(index)")
                 if let availability {
                     StatusPill(presentation: .availability(availability.status))
-                    availabilityQuantities(availability)
+                        .accessibilityIdentifier("recipe-ingredient-availability-\(index)")
+                    availabilityQuantities(availability, index: index)
                     if !availability.unknown_reasons.isEmpty {
                         reasonList(availability.unknown_reasons, title: "Quantity uncertainty")
                     }
@@ -535,18 +638,21 @@ private struct RecipeIngredientRow: View {
     }
 
     @ViewBuilder
-    private func availabilityQuantities(_ line: IngredientAvailabilitySnapshot) -> some View {
+    private func availabilityQuantities(_ line: IngredientAvailabilitySnapshot, index: Int) -> some View {
         let unit = line.unit ?? substitution?.unit ?? ingredient.unit
         VStack(alignment: .leading, spacing: 3) {
             if let required = line.required_amount {
-                Text("Needed: \(QuantityText.string(required)) \(unit)")
+                Text("Need: \(QuantityText.string(required)) \(unit)")
+                    .accessibilityIdentifier("recipe-ingredient-needed-\(index)")
             }
             if let available = line.available_amount {
-                Text("Counted on hand: \(QuantityText.string(available)) \(unit)")
+                Text("Have: \(QuantityText.string(available)) \(unit)")
+                    .accessibilityIdentifier("recipe-ingredient-on-hand-\(index)")
             }
             if let shortfall = line.shortfall, shortfall.value > 0 {
-                Text("Short: \(QuantityText.string(shortfall)) \(unit)")
+                Text("Missing: \(QuantityText.string(shortfall)) \(unit)")
                     .foregroundStyle(ProvisionTheme.amberWarning)
+                    .accessibilityIdentifier("recipe-ingredient-short-\(index)")
             }
         }
         .font(.footnote)

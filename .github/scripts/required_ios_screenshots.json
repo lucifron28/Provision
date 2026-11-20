@@ -1,6 +1,15 @@
 {
   "requiredScreenshots": [
     "Home_Cook_with_Pip",
+    "Inventory_Quick_Add_Minimal",
+    "Inventory_Partial_Discard_Recorded",
+    "Pip_Chat_Empty",
+    "Pip_Chat_Conversation",
+    "Pip_Chat_Shopping_Preview_Action",
+    "Pip_Chat_Recipe_Context",
+    "Pip_Chat_Product_Context",
+    "Pip_Chat_Consent_Controls",
+    "Pip_Chat_Dark_Large_Text",
     "Cook_with_Pip",
     "Cook_Now",
     "Almost_There",
@@ -33,6 +42,7 @@
     "Recipe_Substitution_Options",
     "Recipe_Detail_Substitution_Applied",
     "Shopping_Preview_Ready",
+    "Shopping_Purchased_Pantry_Review",
     "Shopping_Preview_Dark_Mode",
     "Shopping_Preview_Large_Text",
     "Shopping_Preview_Review_Required",
@@ -48,5 +58,41 @@
     "Shopping_Stale_Preview_Refresh",
     "Shopping_Preview_Expired",
     "Source_Error_Retry"
-  ]
+  ],
+  "supplementalScreenshots": [
+    "Inventory_Receipt_Intake_Entry",
+    "My_Recipes_Search_Scrolled",
+    "Recipe_Detail_Large_Text_Summary_Filipino",
+    "Shopping_Preview_Applied_Substitution",
+    "Shopping_Preview_Revision_Details_Large_Text",
+    "Staging_Authenticated_Home",
+    "Staging_Logged_Out",
+    "Staging_Relaunch_Recovery",
+    "Staging_Relogin_Relaunch_Recovery",
+    "Cook_with_Pip_Needs_Review"
+  ],
+  "scenarioDescriptions": {
+        "Inventory_Quick_Add_Minimal": "Minimal manual Quick Add with only a product identity, explicit unit, and quantity entered; advanced fields remain collapsed.",
+    "Inventory_Partial_Discard_Recorded": "An explicit partial disposal is recorded with a reason and the updated remaining batch quantity is visible.",
+    "Shopping_Purchased_Pantry_Review": "A purchased grocery is added using an explicit actual amount while another is excluded from pantry inventory.",
+    "Inventory_Receipt_Intake_Entry": "Inventory add menu navigates to the existing receipt intake scanner.",
+    "Cook_with_Pip": "Cook with Pip household recipe search with the Bicol Express result visible.",
+    "Cook_Now": "Cook Now mode is selected and its matching recipe is visible.",
+    "Recipe_Detail_Instructions": "The selected recipe detail shows its first readable instruction step.",
+    "Pip_Chat_Conversation": "A synthetic chat reply and validated household recipe card are visible.",
+    "Pip_Chat_Shopping_Preview_Action": "A synthetic chat shopping action is visible before opening the existing review flow.",
+    "Pip_Chat_Recipe_Context": "Pip Chat identifies the household recipe that opened the conversation.",
+    "Pip_Chat_Product_Context": "Pip Chat identifies the household product that opened the conversation.",
+    "Pip_Chat_Consent_Controls": "Chat consent is enabled separately from allergy sharing, which is shown enabled in the synthetic fixture.",
+    "Pip_Chat_Dark_Large_Text": "Pip Chat consent controls remain readable in dark mode at accessibility text size.",
+    "My_Recipes_Search_Scrolled": "Filtered household recipes remain visible after dismissing the search keyboard.",
+    "Recipe_Detail_Large_Text_Summary_Filipino": "A long Filipino recipe summary remains readable at accessibility text size.",
+    "Shopping_Preview_Applied_Substitution": "The shopping preview shows the selected calamansi substitution, with the associated food-safety and pantry-availability review.",
+    "Shopping_Preview_Revision_Details_Large_Text": "Expanded shopping and pantry revisions remain readable at accessibility text size.",
+    "Staging_Authenticated_Home": "The synthetic staging account reaches its authenticated household dashboard.",
+    "Staging_Logged_Out": "The staging account remains logged out after app relaunch.",
+    "Staging_Relaunch_Recovery": "The authenticated synthetic staging session restores its loaded pantry after relaunch.",
+    "Staging_Relogin_Relaunch_Recovery": "After a new synthetic staging login and relaunch, the fixture product is visible in Inventory.",
+    "Cook_with_Pip_Needs_Review": "A synthetic household recipe with a review-required result shows the package-label action and opens its safety details."
+  }
 }

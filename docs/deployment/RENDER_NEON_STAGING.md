@@ -1,15 +1,15 @@
 # Render and Neon staging guide
 
-This guide prepares a separate Provision staging service. It does not deploy production or reuse production data. An isolated Neon Free project has been created and validated. A Render Blueprint exists, but the Provision service has not been created: the current plan proposes one Free Docker service and is waiting for review and explicit approval before it is applied.
+This guide covers Provision's separate synthetic-data staging service. It does not deploy production or reuse production data. The existing Render service `provision-staging-04dt` uses the isolated Neon Free project in Singapore.
 
 ## Architecture
 
 - Render runs the FastAPI backend from the root `Dockerfile`.
 - Neon provides an isolated PostgreSQL 18 staging project in Singapore.
 - The iOS app keeps its normal local API default. Debug and UI-test launches can opt into a validated Render HTTPS URL.
-- GitHub Actions keeps routine PostgreSQL 18 and iOS tests local. The PR visual smoke captures 12 representative screens; a separate manual workflow retains the full screenshot gallery and `.xcresult`. Other manual workflows check staging and, after explicit confirmation, make one DeepSeek request.
+- GitHub Actions keeps routine PostgreSQL 18 and iOS tests local. The PR visual smoke captures 12 representative screens; the manual gallery declares 58 scenarios and retains the full gallery and `.xcresult`. Other manual workflows check staging and, after explicit confirmation, make one DeepSeek request.
 
-The Blueprint in `render.yaml` names the service `provision-staging`, uses the free web plan, selects Singapore, disables auto deploys, and checks `/ready`. The service follows the Blueprint's Git branch so it builds from the branch that contains the root `Dockerfile`. The Blueprint currently points to the deployment PR branch. After that PR is merged, switch the Blueprint source branch to `main` and review the resulting plan before applying it. The plan has no database resource declaration, so applying it will not create or alter a Neon database. Render free services have limits and can spin down while idle. Keep this service for synthetic staging only. [Render free plan limits](https://render.com/docs/free)
+The service is configured to auto-deploy commits from `feat/pip-chat-foundation`; `render.yaml` records `autoDeployTrigger: commit`. After PR #11 is merged, switch the service's linked branch to `main` if staging should follow main. Keep the service on the Free plan and for synthetic staging only. Render free services have limits and can spin down while idle. [Render free plan limits](https://render.com/docs/free)
 
 ## Build and run the container locally
 
@@ -35,7 +35,7 @@ The backend uses bounded SQLAlchemy pools, stale-connection checks, and disables
 
 ## Migration validation and future changes
 
-The initial migration was applied to the isolated Neon database and `alembic check` passed at revision `9c31f410ab82`, the current Alembic head. A pooled application-role `SELECT 1` and a synthetic transaction insert/update/delete also passed. The database contains the migration-created schema and quarantine household, with no user accounts or imported household data.
+The isolated Neon database is migrated through Alembic revision `72a1c9e45f08` (the repository head verified on 2026-11-18); `alembic check` reported no new operations. A pooled application-role `SELECT 1` and a synthetic transaction insert/update/delete also passed. The database contains the migration-created schema and quarantine household, with no imported household data.
 
 Render's pre-deploy command is unavailable on the free web plan, so this setup uses one guarded migration run from a trusted Windows workstation before deploying each schema change. The migration guard requires the direct Neon endpoint to match the application endpoint and database, TLS, a database name containing `staging`, and an explicit confirmation value. Online PostgreSQL migrations also take a session advisory lock and wait up to ten minutes for another migration to finish. [Render pre-deploy command availability](https://render.com/docs/deploys)
 
@@ -62,11 +62,7 @@ Use this guarded sequence for future schema changes only after checking the proj
 
 ## Configure Render staging
 
-The Render Blueprint already exists with auto-sync disabled. Its plan proposes one Docker web service on the Free plan in Singapore, with auto deploy off and `/ready` as its health check. Review the [Render Blueprint](https://dashboard.render.com/blueprint/exs-dbqqubd6e07s738163ng) and its latest sync plan before applying it. Applying the plan creates the web service; no Neon resource is part of that plan. Do not upgrade a plan.
-
-When the plan is approved:
-
-1. Supply the pooled and direct Neon URLs requested by Render. The Blueprint asks Render to generate the JWT and fixture-token secrets. Verify these environment variables in the service dashboard:
+The existing service is `provision-staging-04dt` and auto-deploys from `feat/pip-chat-foundation`. It has `/ready` as its health check. The service is linked to the existing Neon staging database; do not create another service or database. Verify these environment variables in the service dashboard:
 
    - `ENVIRONMENT=production`
    - `DEPLOYMENT_ENVIRONMENT=staging`
@@ -75,12 +71,12 @@ When the plan is approved:
    - `JWT_SECRET_KEY` generated by Render and unique to staging
    - `STAGING_TEST_FIXTURE_TOKEN` generated by Render and kept separate from the JWT secret
    - `DEEPSEEK_ENABLED=false`
-   - `STAGING_TEST_FIXTURES_ENABLED=false` until the ordinary staging checks are ready
+   - `STAGING_TEST_FIXTURES_ENABLED=true` while the synthetic E2E verification is active; disable it after cleanup
+   - `STAGING_TEST_CHAT_MOCK_ENABLED=true` while the synthetic Pip Chat E2E is active; disable it after cleanup
 
-   The Neon URLs use `sync: false`, so Render prompts for them during initial setup. Render's `generateValue: true` creates a random secret when `JWT_SECRET_KEY` and `STAGING_TEST_FIXTURE_TOKEN` do not exist. Copy the generated fixture token from Render into the GitHub `staging` environment secret only when you configure the manual staging workflow. [Render Blueprint secret variables](https://render.com/docs/blueprint-spec)
-2. Deploy the intended commit manually from the Render Deploys page. The Blueprint leaves auto deploys off. Render's **Deploy a specific commit** action accepts a commit SHA and disables automatic deploys for that service. [Deploy a specific commit](https://render.com/docs/deploys)
-3. Confirm `GET /health` returns `deployment: staging` and the expected `revision`. Confirm `GET /ready` returns `{"status":"ready"}`. `/ready` runs `SELECT 1` and returns no database diagnostics.
-4. After ordinary staging works, enable `STAGING_TEST_FIXTURES_ENABLED=true` only if you plan to run the staging E2E workflow. The endpoint still requires a run-owned synthetic account and the matching fixture token. It refuses to delete an account if its household has records or its scope has changed.
+   The Neon URLs and secret values stay in Render's Environment settings. Render's `generateValue: true` creates random secrets for `JWT_SECRET_KEY` and the fixture token when absent. Keep the fixture token in the GitHub `staging` environment secret. [Render Blueprint secret variables](https://render.com/docs/blueprint-spec)
+2. Pushes to `feat/pip-chat-foundation` trigger Render auto-deploy. Wait for `/health` to report `deployment: staging` and the exact pushed `revision`; confirm `/ready` returns `{"status":"ready"}`. `/ready` runs `SELECT 1` and returns no database diagnostics.
+3. Keep `STAGING_TEST_FIXTURES_ENABLED=true` and `STAGING_TEST_CHAT_MOCK_ENABLED=true` on Render through E2E cleanup, then set both to `false`. The chat mock is available only to exact-pattern synthetic test accounts, uses no network or DeepSeek budget, and is hidden from ordinary accounts. New fixture addresses include the GitHub run ID and attempt. Cleanup requires the fixture token, waits 30 minutes before considering an account stale, checks the exact synthetic email pattern and single-member household ownership, deletes only that household's graph, and skips changed scopes or references outside the household. Skipped synthetic user IDs are reported for inspection.
 
 Render reports the service's deployed commit as `RENDER_GIT_COMMIT`. The E2E workflow checks that value before creating a test account. [Render default environment variables](https://render.com/docs/environment-variables)
 
@@ -94,11 +90,11 @@ Create a GitHub Actions environment named `staging` and add:
 - Secret `PROVISION_STAGING_FIXTURE_TOKEN`, set to the fixture token generated by Render for the staging service.
 - Leave variable `PROVISION_LIVE_DEEPSEEK_ENABLED` unset or set to `false` until the separate live-AI checks are approved.
 
-GitHub only accepts `workflow_dispatch` for workflows present on the repository's default branch. Because this PR does not merge itself, these manual workflows become runnable after an approved merge to the default branch. A run must select a full commit SHA reachable from `main`; the job verifies that before exposing any staging secret, then checks Render is serving that same SHA. [GitHub manual workflow requirements](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)
+GitHub requires the `workflow_dispatch` definition to exist on the repository's default branch. Select the feature branch containing the current PR #11 head when dispatching; the staging workflow verifies that the requested SHA is the exact current open PR #11 head before it creates fixtures or receives the staging token. The preflight then checks Render serves that same SHA. [GitHub manual workflow requirements](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)
 
-The standard PR workflow does not contact Render or Neon. Run **Provision staging E2E** manually with the full commit SHA currently deployed to Render. Each account-creating, authenticated, and cleanup script first checks that the URL belongs to `*.onrender.com`, the health and readiness endpoints pass, and Render serves the requested commit. It then registers run-unique synthetic households through the normal API and checks household selection and isolation, product edits and label review, batch expiration and quantity, recipe detail and pantry availability, allergy review and blocking, provider-disabled recommendations, and explicit idempotent shopping confirmation. The workflow removes only the unique single-member synthetic households it created, including their household-scoped data, after checking that the accounts have no references outside those households. The iPhone 17 Simulator tests staging login, Keychain relaunch, logout, and login recovery, then runs deterministic offline and stale-shopping retry scenarios against the local UI-test fixtures. The workflow uploads the staging `.xcresult` and exported screenshots for 14 days.
+The standard PR workflow does not contact Render or Neon. Run **Provision staging E2E** with the exact current PR #11 head SHA; Render now auto-deploys pushes to that branch, so no manual commit deployment is needed. Each account-creating, authenticated, and cleanup script checks that the URL belongs to `*.onrender.com`, health and readiness pass, and Render serves the requested commit. It registers run-unique synthetic households through the normal API, verifies household isolation, product context, allergy decisions, backend-evaluated recipe cards, recipe and product contextual chat, the no-network staging mock, shopping-preview navigation without chat writes, and explicit idempotent confirmation. The iPhone 17 Simulator also signs in, opens contextual recipe chat and the existing shopping review, returns through Back navigation, then opens product chat and verifies its server-built inventory fact. It retains Keychain relaunch and the deterministic offline and stale-shopping retry checks. Run-owned records are removed in the same workflow; expired exact-pattern fixtures are swept through the scoped cleanup endpoint. The workflow uploads the staging `.xcresult` and exported screenshots for 14 days.
 
-The staging smoke uses the public API, checks that Cook with Pip keeps the provider disabled and that missing allergy information requires review, and does not reset a shared database. The repository has synthetic label-review data and reference screenshots, but no suitable receipt or product-label input photos; image/OCR processing is therefore not claimed as covered. A failed cleanup is reported as a failure and leaves records intact for inspection. Run only one staging workflow at a time.
+The staging smoke uses the public API, keeps the real DeepSeek provider disabled, checks that missing allergy information requires review, and does not reset a shared database. The repository has synthetic label-review data and reference screenshots, but no suitable receipt or product-label input photos; image/OCR processing is therefore not claimed as covered. A failed or out-of-scope cleanup is reported and leaves those records intact for inspection. Run only one staging workflow at a time.
 
 ## Run the optional live DeepSeek smoke
 
@@ -111,13 +107,13 @@ Keep DeepSeek disabled for all routine tests and initial staging validation. The
 5. Confirm the output reports one synthetic request, valid proposal schema and provenance, a deterministic safety result, and no inventory, recipe, or shopping writes. The workflow does not configure automatic retries.
 6. Turn `DEEPSEEK_ENABLED` off, set `PROVISION_LIVE_DEEPSEEK_ENABLED=false`, and remove or rotate the staging provider key after the check.
 
-This workflow is not a Pip Chat test. Pip Chat is not part of this deployment-preparation change.
+This optional live DeepSeek workflow checks one provider proposal. It is separate from the deterministic mocked Pip Chat integration tests; this goal did not make a live provider request.
 
 ## Inspect results and recover
 
 The 12 PR smoke screenshots appear in the routine workflow artifacts. The full screenshot set and `.xcresult` appear on **Cook with Pip full screenshot gallery** runs; staging artifacts appear on the manual staging run. Download them from the relevant GitHub Actions run page and open the `.xcresult` on a Mac with Xcode. Simulator runs do not verify physical camera, barcode scanner, or receipt-capture hardware.
 
-If a deploy fails, Render keeps the previous successful deploy running. With auto deploy disabled, inspect the failed build and service logs, correct configuration or deploy a known-good commit manually, and recheck `/health` and `/ready`. Do not run destructive migrations to recover. [Render deploy failure behavior](https://render.com/docs/deploys)
+If an auto-deploy fails, Render keeps the previous successful deploy running. Inspect the failed build and service logs, correct the source or configuration, and let the next branch push deploy it. Recheck `/health` and `/ready`. Do not run destructive migrations to recover. [Render deploy failure behavior](https://render.com/docs/deploys)
 
 ## Rotate credentials and protect shared Macs
 
@@ -129,4 +125,6 @@ If a deploy fails, Render keeps the previous successful deploy running. With aut
 
 ## Current verification boundary
 
-The Docker build and local container HTTP/readiness smoke have passed. Focused deployment, migration-guard, health, and cleanup tests have passed. Neon migration and connection compatibility have been verified on the isolated Free project. The Render plan is ready but not applied, so deployed API checks, the manual staging workflow, and the live provider call have not run. The GitHub `staging` environment still needs the Render URL and fixture token after the Render service is approved and configured.
+On 2026-11-18, Render auto-deployed `ddb7bc37c812a333e4e4466e40d031f69412e67f`; `/health` returned that revision and `/ready` returned `{"status":"ready"}`. These checks confirm the deployed revision and database readiness only. Staging E2E [44292438957](https://github.com/lucifron28/Provision/actions/runs/44292438957) then passed authenticated synthetic persistence, household isolation, iPhone login/recovery, Pip Chat context and shopping-preview navigation, and run-scoped fixture cleanup on that revision. It used the deterministic chat mock, not DeepSeek. Earlier staging workflow [44205671372](https://github.com/lucifron28/Provision/actions/runs/44205671372) ran on `7b716aab2229431d0bcbad70d8e4283f3796b11d`, with Neon at Alembic revision `72a1c9e45f08` at that time.
+
+The repository's `render.yaml` keeps `DEEPSEEK_ENABLED=false`. The Render connection used for this check did not expose environment values, so the presence of `DEEPSEEK_API_KEY` in the service could not be confirmed. No live provider request was made. Do not include database credentials, fixture tokens, or provider keys in screenshots, Xcode schemes, or shared Mac environments. Use the latest PR checks and staging workflow for later revisions, and keep fixture switches enabled only for the relevant workflow window.

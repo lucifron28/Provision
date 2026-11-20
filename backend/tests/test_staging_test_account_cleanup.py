@@ -1,9 +1,11 @@
+from datetime import datetime, timedelta, timezone
 import uuid
 
 from pydantic import SecretStr
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.core.config import settings
+from app.core.staging_fixtures import is_staging_test_account
 from app.core.security import create_access_token, hash_password
 from app.models.batch import InventoryBatch
 from app.models.deepseek_budget import HouseholdDeepSeekBudget
@@ -24,12 +26,20 @@ def _enable_staging_cleanup(monkeypatch):
     monkeypatch.setattr(settings, "STAGING_TEST_FIXTURE_TOKEN", SecretStr(FIXTURE_TOKEN))
 
 
-def _staging_test_user(db, email: str | None = None):
+def test_staging_fixture_identifiers_accept_legacy_and_run_owned_patterns():
+    assert is_staging_test_account(f"provision-e2e+{'a' * 32}@example.com")
+    assert is_staging_test_account(f"provision-e2e+43450000000-2-{'b' * 32}@example.com")
+    assert not is_staging_test_account(f"provision-e2e+43450000000-2-{'b' * 31}@example.com")
+    assert not is_staging_test_account("person@example.com")
+
+
+def _staging_test_user(db, email: str | None = None, *, age_minutes: int = 0):
     suffix = uuid.uuid4().hex
     user = User(
         email=email or f"provision-e2e+{suffix}@example.com",
         hashed_password=hash_password("synthetic-test-password"),
         is_active=True,
+        created_at=datetime.now(timezone.utc) - timedelta(minutes=age_minutes),
     )
     db.add(user)
     db.flush()
@@ -223,3 +233,81 @@ def test_staging_cleanup_refuses_user_references_in_another_household(
     assert db.get(Household, household.id) is not None
     assert db.get(Household, other_household.id) is not None
     assert db.get(ProcessingConsent, consent.id) is not None
+
+
+def test_token_only_stale_cleanup_removes_only_expired_exact_scope_fixtures(
+    unauthed_client, db, monkeypatch
+):
+    _enable_staging_cleanup(monkeypatch)
+    monkeypatch.setattr(settings, "STAGING_TEST_CHAT_MOCK_ENABLED", True)
+    stale_user, stale_household = _staging_test_user(db, age_minutes=60)
+    safe_stale_user, safe_stale_household = _staging_test_user(db, age_minutes=0)
+    recent_user, recent_household = _staging_test_user(db, age_minutes=2)
+    other_user, _ = _staging_test_user(db, email="household-member@example.com")
+    db.execute(
+        update(User)
+        .where(User.id == stale_user.id)
+        .values(created_at=datetime.now(timezone.utc) - timedelta(minutes=60))
+    )
+    db.execute(
+        update(User)
+        .where(User.id == recent_user.id)
+        .values(created_at=datetime.now(timezone.utc) - timedelta(minutes=2))
+    )
+    db.execute(
+        update(User)
+        .where(User.id == safe_stale_user.id)
+        .values(created_at=datetime.now(timezone.utc) - timedelta(minutes=60))
+    )
+    db.add(HouseholdMembership(
+        household_id=stale_household.id,
+        user_id=other_user.id,
+        role=HouseholdRole.MEMBER.value,
+        is_default=False,
+    ))
+    db.commit()
+    stale_id = stale_user.id
+    safe_stale_id = safe_stale_user.id
+    recent_id = recent_user.id
+    other_user_id = other_user.id
+    recent_household_id = recent_household.id
+    stale_household_id = stale_household.id
+    safe_stale_household_id = safe_stale_household.id
+
+    response = unauthed_client.post(
+        "/api/v1/auth/staging-test-accounts/cleanup-stale",
+        headers={"X-Staging-Test-Token": FIXTURE_TOKEN},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "deleted_count": 1,
+        "skipped_count": 1,
+        "skipped_user_ids": [stale_id],
+    }
+    assert db.get(User, safe_stale_id) is None
+    assert db.get(Household, safe_stale_household_id) is None
+    assert db.get(User, stale_id) is not None
+    assert db.get(Household, stale_household_id) is not None
+    assert db.get(User, recent_id) is not None
+    assert db.get(Household, recent_household_id) is not None
+    assert db.get(User, other_user_id) is not None
+
+
+def test_token_only_stale_cleanup_remains_hidden_and_rejects_wrong_token(
+    unauthed_client, db, monkeypatch
+):
+    stale_user, _ = _staging_test_user(db, age_minutes=60)
+    monkeypatch.setattr(settings, "DEPLOYMENT_ENVIRONMENT", "staging")
+    monkeypatch.setattr(settings, "STAGING_TEST_FIXTURES_ENABLED", False)
+    disabled = unauthed_client.post("/api/v1/auth/staging-test-accounts/cleanup-stale")
+    assert disabled.status_code == 404
+    assert db.get(User, stale_user.id) is not None
+
+    _enable_staging_cleanup(monkeypatch)
+    unauthorized = unauthed_client.post(
+        "/api/v1/auth/staging-test-accounts/cleanup-stale",
+        headers={"X-Staging-Test-Token": "wrong-token"},
+    )
+    assert unauthorized.status_code == 401
+    assert db.get(User, stale_user.id) is not None

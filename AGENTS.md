@@ -6,7 +6,7 @@ Before changing code, read `README.md` and these three documents in order:
 2. [Cook with Pip technical implementation specification](docs/cook-with-pip/TECHNICAL_SPEC.md)
 3. [Filipino-first recipe source governance and trust registry](docs/cook-with-pip/RECIPE_SOURCE_POLICY.md)
 
-**Current status:** Cook with Pip has backend implementations for household isolation, ingredient matching, food profiles and safety, recipes, source governance, shopping confirmation, and historical budget/waste reporting. See the roadmap for commit-specific test and CI evidence and the status of meal planning, cooking, and leftovers. SwiftUI integration remains pending on Mac. Existing Home Chef Pip hints are heuristic; live DeepSeek and web calls remain disabled. Mark milestones done only with code, tests, CI, and acceptance evidence.
+**Current status:** Cook with Pip has backend implementations for household isolation, ingredient matching, food profiles and safety, recipes, source governance, shopping confirmation, and historical budget/waste reporting. Pip Chat Phases 1–3 add consent-gated native chat, recipe/product context, validated recipe cards, and navigation into the existing shopping preview; see [the Pip Chat guide](docs/cook-with-pip/PIP_CHAT.md) and PR #11 for current verification. Broader native meal-planning, guided-cooking, and leftover screens remain pending on Mac. Existing Home Chef Pip hints remain heuristic. Routine CI and staging use deterministic mocks; live provider requests remain server-configured and consent-gated. Mark milestones done only with code, tests, CI, and acceptance evidence.
 
 ## System Overview
 

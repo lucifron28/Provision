@@ -487,6 +487,38 @@ public actor APIClient {
         return try await execute(request, expectedScope: scope)
     }
 
+    public func fetchPipChatConsent(scope: HouseholdScope) async throws -> PipChatConsent {
+        let url = baseURL.appendingPathComponent("privacy/pip-chat-consent")
+        return try await execute(URLRequest(url: url), expectedScope: scope)
+    }
+
+    public func updatePipChatConsent(_ update: PipChatConsentUpdate,
+                                     scope: HouseholdScope) async throws -> PipChatConsent {
+        let url = baseURL.appendingPathComponent("privacy/pip-chat-consent")
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(update)
+        return try await execute(request, expectedScope: scope)
+    }
+
+    public func revokePipChatConsent(scope: HouseholdScope) async throws -> PipChatConsent {
+        let url = baseURL.appendingPathComponent("privacy/pip-chat-consent")
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        return try await execute(request, expectedScope: scope)
+    }
+
+    public func sendPipChat(_ payload: PipChatRequest,
+                            scope: HouseholdScope) async throws -> PipChatResponse {
+        let url = baseURL.appendingPathComponent("pip/chat")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(payload)
+        return try await execute(request, expectedScope: scope)
+    }
+
     public func lookupIngredients(query: String?, limit: Int = 50, scope: HouseholdScope) async throws -> IngredientLookup {
         var components = URLComponents(url: baseURL.appendingPathComponent("ingredients/"), resolvingAgainstBaseURL: true)
         var items: [URLQueryItem] = [URLQueryItem(name: "limit", value: String(limit))]
@@ -624,7 +656,7 @@ public actor APIClient {
         return try await fetchAllPages(components, generation: sessionGeneration, expectedScope: scope, offsetName: "offset")
     }
 
-    public func fetchRecipePage(query: String?, limit: Int, offset: Int,
+    public func fetchRecipePage(query: String?, inventoryBatchID: Int?, limit: Int, offset: Int,
                                 scope: HouseholdScope) async throws -> [HouseholdRecipe] {
         guard scope == householdScope else { throw APIError.sessionChanged }
         var components = URLComponents(url: baseURL.appendingPathComponent("recipes/"), resolvingAgainstBaseURL: true)
@@ -632,6 +664,9 @@ public actor APIClient {
                           URLQueryItem(name: "offset", value: String(min(max(offset, 0), 100_000)))]
         if let query, !query.isEmpty {
             queryItems.append(URLQueryItem(name: "query", value: String(query.prefix(180))))
+        }
+        if let inventoryBatchID {
+            queryItems.append(URLQueryItem(name: "inventory_batch_id", value: String(inventoryBatchID)))
         }
         components?.queryItems = queryItems
         guard let url = components?.url else { throw APIError.invalidURL }
@@ -734,6 +769,16 @@ public actor APIClient {
         request.httpBody = try encoder.encode(batch)
         return try await execute(request, expectedScope: expectedScope)
     }
+
+    public func createManualInventoryIntake(_ intake: ManualInventoryIntakeRequest,
+                                            expectedScope: HouseholdScope) async throws -> ManualInventoryIntakeResponse {
+        let url = baseURL.appendingPathComponent("inventory/manual-intake")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(intake)
+        return try await execute(request, expectedScope: expectedScope)
+    }
     
     public func updateBatchMetadata(batchId: Int, updates: [String: Any], expectedScope: HouseholdScope? = nil) async throws -> InventoryBatch {
         let url = baseURL.appendingPathComponent("batches/\(batchId)")
@@ -746,35 +791,44 @@ public actor APIClient {
     
     // MARK: - Consume & Discard Operations
     
-    public func consumeProduct(productId: Int, quantity: Double, reason: String? = nil, notes: String? = nil, expectedScope: HouseholdScope? = nil) async throws -> ConsumeResponse {
+    public func consumeProduct(productId: Int, quantity: Double, reason: String? = nil, notes: String? = nil,
+                               idempotencyKey: String = UUID().uuidString,
+                               expectedScope: HouseholdScope? = nil) async throws -> ConsumeResponse {
         let url = baseURL.appendingPathComponent("inventory/consume")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        let body = ConsumeRequest(product_id: productId, quantity: quantity, reason: reason, notes: notes)
+        let body = ConsumeRequest(product_id: productId, quantity: quantity, reason: reason, notes: notes,
+                                  idempotency_key: idempotencyKey)
         request.httpBody = try encoder.encode(body)
         return try await execute(request, expectedScope: expectedScope)
     }
     
-    public func discardBatch(batchId: Int, reason: String? = nil, notes: String? = nil, expectedScope: HouseholdScope? = nil) async throws -> InventoryBatch {
+    public func discardBatch(batchId: Int, reason: String? = nil, notes: String? = nil, quantity: Double? = nil,
+                             expectedUpdatedAt: String? = nil, idempotencyKey: String = UUID().uuidString,
+                             expectedScope: HouseholdScope? = nil) async throws -> InventoryBatch {
         let url = baseURL.appendingPathComponent("inventory/batches/\(batchId)/discard")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        let body = DiscardRequest(reason: reason, notes: notes)
+        let body = DiscardRequest(reason: reason, notes: notes, quantity: quantity,
+                                  expected_updated_at: expectedUpdatedAt, idempotency_key: idempotencyKey)
         request.httpBody = try encoder.encode(body)
         return try await execute(request, expectedScope: expectedScope)
     }
     
-    public func adjustBatch(batchId: Int, newQuantity: Double, reason: String, notes: String? = nil, expectedScope: HouseholdScope? = nil) async throws -> InventoryBatch {
+    public func adjustBatch(batchId: Int, newQuantity: Double, reason: String, notes: String? = nil,
+                            expectedUpdatedAt: String? = nil, idempotencyKey: String = UUID().uuidString,
+                            expectedScope: HouseholdScope? = nil) async throws -> InventoryBatch {
         let url = baseURL.appendingPathComponent("inventory/batches/\(batchId)/adjust")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        let body = AdjustmentRequest(new_remaining_quantity: newQuantity, reason: reason, notes: notes)
+        let body = AdjustmentRequest(new_remaining_quantity: newQuantity, reason: reason, notes: notes,
+                                     expected_updated_at: expectedUpdatedAt, idempotency_key: idempotencyKey)
         request.httpBody = try encoder.encode(body)
         return try await execute(request, expectedScope: expectedScope)
     }
@@ -856,6 +910,20 @@ public actor APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
         try await executeVoid(request, expectedScope: expectedScope)
+    }
+
+    public func reconcilePurchasedGroceries(
+        _ payload: ReconcilePurchasedItemsRequest,
+        scope: HouseholdScope
+    ) async throws -> ReconcilePurchasedItemsResponse {
+        guard scope == householdScope else { throw APIError.sessionChanged }
+        let url = baseURL.appendingPathComponent("shopping-list/reconcile-purchased")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
+        request.httpBody = try encoder.encode(payload)
+        return try await execute(request, expectedScope: scope)
     }
     
     public func generateShoppingSuggestions(threshold: Double = 1.0, expectedScope: HouseholdScope? = nil) async throws -> [ShoppingItem] {

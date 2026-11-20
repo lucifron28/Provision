@@ -1,0 +1,20 @@
+{
+  "store": "Bayani Fresh Mart",
+  "location": "Quezon City, Philippines",
+  "receipt_date": "2026-11-19",
+  "currency": "PHP",
+  "item_count": 10,
+  "line_count": 9,
+  "total_php": 632.00,
+  "items": [
+    { "source_name": "Kangkong Fresh", "search_terms": ["kangkong"], "quantity": 0.5, "unit": "kg", "line_total_php": 35.00, "catalog_action": "select", "catalog_search": "Kangkong", "storage_location": "Refrigerator" },
+    { "source_name": "Pork Kasim", "search_terms": ["pork kasim", "pork shoulder"], "quantity": 0.5, "unit": "kg", "line_total_php": 195.00, "catalog_action": "select", "catalog_search": "Pork Shoulder", "storage_location": "Refrigerator" },
+    { "source_name": "Sampalok Fresh", "search_terms": ["sampalok"], "quantity": 0.1, "unit": "kg", "line_total_php": 30.00, "catalog_action": "register", "product_name": "Fresh Sampalok", "category": "Fresh Produce", "product_unit": "kg", "storage_location": "Refrigerator" },
+    { "source_name": "Kamatis Fresh", "search_terms": ["kamatis", "tomato"], "quantity": 0.25, "unit": "kg", "line_total_php": 28.00, "catalog_action": "select", "catalog_search": "Tomatoes", "storage_location": "Refrigerator" },
+    { "source_name": "Bawang Fresh", "search_terms": ["bawang", "garlic"], "quantity": 0.1, "unit": "kg", "line_total_php": 25.00, "catalog_action": "select", "catalog_search": "Garlic", "storage_location": "Refrigerator" },
+    { "source_name": "Gardenia White Bread", "search_terms": ["gardenia"], "quantity": 1, "unit": "pcs", "line_total_php": 82.00, "catalog_action": "register", "product_name": "Gardenia White Bread", "brand": "Gardenia", "category": "Snacks & Bakery", "product_unit": "pcs", "storage_location": "Pantry - Shelf A" },
+    { "source_name": "Century Tuna Flakes Oil 180G", "search_terms": ["century tuna"], "quantity": 2, "unit": "cans", "line_total_php": 81.00, "catalog_action": "select", "catalog_search": "Century Tuna Flakes in Oil", "storage_location": "Pantry - Shelf A" },
+    { "source_name": "Datu Puti Vinegar 1L", "search_terms": ["datu puti"], "quantity": 1, "unit": "L", "line_total_php": 48.00, "catalog_action": "register", "product_name": "Datu Puti Vinegar", "brand": "Datu Puti", "category": "Condiments & Sauces", "product_unit": "L", "storage_location": "Pantry - Shelf A" },
+    { "source_name": "Magnolia Fresh Milk 1L", "search_terms": ["magnolia"], "quantity": 1, "unit": "L", "line_total_php": 108.00, "catalog_action": "register", "product_name": "Magnolia Fresh Milk", "brand": "Magnolia", "category": "Dairy & Chilled", "product_unit": "L", "storage_location": "Refrigerator" }
+  ]
+}

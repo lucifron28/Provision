@@ -63,6 +63,10 @@ nonisolated public struct Product: Codable, Identifiable, Hashable, Sendable {
         let u = unit?.trimmingCharacters(in: .whitespaces) ?? ""
         return u.isEmpty ? "units" : u
     }
+
+    public func displayUnit(for quantity: Double) -> String {
+        ProductUnits.displayUnit(for: quantity, unit: unit)
+    }
     
     public var subtitle: String {
         var parts: [String] = []
@@ -116,6 +120,24 @@ nonisolated public enum ProductUnits {
         guard let unit = unit?.trimmingCharacters(in: .whitespaces), !unit.isEmpty else { return false }
         return allUnits.contains(unit)
     }
+
+    public static func displayUnit(for quantity: Double, unit: String?) -> String {
+        let trimmedUnit = unit?.trimmingCharacters(in: .whitespaces) ?? ""
+        let pluralUnit = trimmedUnit.isEmpty ? "units" : trimmedUnit
+        guard quantity == 1 else { return pluralUnit }
+
+        switch pluralUnit {
+        case "units": return "unit"
+        case "pcs": return "piece"
+        case "cans": return "can"
+        case "bottles": return "bottle"
+        case "packs": return "pack"
+        case "boxes": return "box"
+        case "bags": return "bag"
+        default: return pluralUnit
+        }
+    }
+
     public static func formatAmount(_ qty: Double) -> String {
         if qty.truncatingRemainder(dividingBy: 1) == 0 {
             return "\(Int(qty))"
@@ -128,7 +150,7 @@ nonisolated public enum ProductUnits {
     }
 }
 
-nonisolated public struct ProductCreate: Codable, Sendable {
+nonisolated public struct ProductCreate: Codable, Equatable, Sendable {
     public var name: String
     public var brand: String?
     public var barcode: String?

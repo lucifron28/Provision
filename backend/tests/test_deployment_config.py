@@ -46,6 +46,7 @@ def test_render_staging_generates_app_secrets_and_keeps_neon_urls_manual():
     assert "- key: MIGRATION_DATABASE_URL\n        sync: false" in blueprint
     assert "- key: JWT_SECRET_KEY\n        generateValue: true" in blueprint
     assert "- key: STAGING_TEST_FIXTURE_TOKEN\n        generateValue: true" in blueprint
+    assert "- key: STAGING_TEST_CHAT_MOCK_ENABLED\n        value: \"false\"" in blueprint
 
 
 def settings_for(**values) -> Settings:
@@ -151,3 +152,8 @@ def test_engine_options_bound_pool_and_disable_auto_prepare_for_neon_pooler():
     assert options["max_overflow"] == 0
     assert options["pool_recycle"] == 300
     assert options["connect_args"]["prepare_threshold"] is None
+
+
+def test_staging_chat_mock_requires_isolated_staging_fixtures():
+    with pytest.raises(ValidationError, match="requires enabled staging test fixtures"):
+        settings_for(STAGING_TEST_CHAT_MOCK_ENABLED=True)

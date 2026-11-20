@@ -7,6 +7,13 @@ from app.models.deepseek_budget import DeepSeekBudget, HouseholdDeepSeekBudget
 from app.services.deepseek_provider import DeepSeekProviderError, DeepSeekRateLimitError, DeepSeekRequestBudgetExceeded
 
 
+class UnmeteredDeepSeekBudget:
+    """Skip app-side request caps for staging Pip Chat demonstrations."""
+
+    def consume(self, operation: str) -> None:
+        return None
+
+
 class PostgresDeepSeekBudget:
     def __init__(self, settings, household_id=None):
         self.settings = settings

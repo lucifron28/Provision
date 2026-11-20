@@ -43,7 +43,7 @@ private actor CookWithPipUITestScenarioCounter {
     func recordedConfirmations() -> [RecipeShoppingConfirmation] { confirmations }
 }
 
-nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWorkflowService {
+nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWorkflowService, PipChatService {
     private let recipes: [HouseholdRecipe]
     private let cookNowResults: [RecipeRecommendation]
     private let almostThereResults: [RecipeRecommendation]
@@ -76,40 +76,40 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
             missing_expiry_batch_ids: [],
             unknown_reasons: ["ingredient_mapping_unknown"]
         )
-        let missingPork = IngredientAvailabilitySnapshot(
+        let partialChicken = IngredientAvailabilitySnapshot(
             ingredient_id: 902,
-            canonical_name: "pork",
-            display_names: ["baboy"],
+            canonical_name: "chicken",
+            display_names: ["manok"],
             required: true,
-            required_amount: Self.quantity("0.750000"),
-            available_amount: Self.quantity("0.250000"),
-            shortfall: Self.quantity("0.500000"),
+            required_amount: Self.quantity("1.2"),
+            available_amount: Self.quantity("0.5"),
+            shortfall: Self.quantity("0.7"),
             unit: "kg",
             status: "partial",
-            covered_batch_ids: [1902],
+            covered_batch_ids: [19],
             missing_expiry_batch_ids: [],
             unknown_reasons: []
         )
-        let missingGabi = IngredientAvailabilitySnapshot(
+        let fullSoySauce = IngredientAvailabilitySnapshot(
             ingredient_id: 903,
-            canonical_name: "taro leaves",
-            display_names: ["dahon ng gabi"],
+            canonical_name: "soy sauce",
+            display_names: ["toyo"],
             required: true,
-            required_amount: Self.quantity("300"),
-            available_amount: Self.quantity("0"),
-            shortfall: Self.quantity("300"),
-            unit: "g",
-            status: "missing",
-            covered_batch_ids: [],
+            required_amount: Self.quantity("60"),
+            available_amount: Self.quantity("300"),
+            shortfall: Self.quantity("0"),
+            unit: "mL",
+            status: "full",
+            covered_batch_ids: [10],
             missing_expiry_batch_ids: [],
             unknown_reasons: []
         )
 
         let sinigang = Self.makeRecipe(
             id: 301,
-            title: "Test Recipe: Sinigang na Baboy",
+            title: "Sinigang na Baboy",
             region: "Tagalog",
-            summary: "A synthetic UI fixture with exact ingredient amounts.",
+            summary: "Pork simmered with sampalok, tomatoes, and fresh kangkong.",
             prepMinutes: 15,
             cookMinutes: 40,
             ingredients: [
@@ -118,50 +118,53 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
                                     substitutionOptions: [IngredientRequirement(
                                         displayName: "calamansi", amount: Self.quantity("30.000000"), unit: "g"
                                     )]),
-                Self.makeIngredient(id: 913, name: "kangkong", amount: "120", unit: "g", required: false)
+                Self.makeIngredient(id: 901, name: "kangkong", amount: "120", unit: "g"),
+                Self.makeIngredient(id: 918, name: "kamatis", amount: "0.25", unit: "kg")
             ]
         )
-        let laing = Self.makeRecipe(
+        let chickenAdobo = Self.makeRecipe(
             id: 302,
-            title: "Test Recipe: Laing",
-            region: "Bicolano",
-            summary: "A synthetic fixture with two server-reported missing items.",
-            prepMinutes: 10,
-            cookMinutes: 35,
+            title: "Chicken Adobo",
+            region: "Filipino",
+            summary: "Chicken braised with Datu Puti soy sauce, vinegar, garlic, and bay leaves.",
+            prepMinutes: 15,
+            cookMinutes: 45,
             ingredients: [
-                Self.makeIngredient(id: 902, name: "baboy", amount: "0.750000", unit: "kg"),
-                Self.makeIngredient(id: 903, name: "dahon ng gabi", amount: "300", unit: "g")
+                Self.makeIngredient(id: 902, name: "manok", amount: "1.2", unit: "kg"),
+                Self.makeIngredient(id: 903, name: "toyo", amount: "60", unit: "mL"),
+                Self.makeIngredient(id: 917, name: "suka", amount: "60", unit: "mL")
             ]
         )
-        let bicolExpress = Self.makeRecipe(
+        let ginisangKangkong = Self.makeRecipe(
             id: 303,
-            title: "Test Recipe: Bicol Express",
-            region: "Bicolano",
-            summary: "A synthetic fixture with unknown ingredient and label data.",
+            title: "Ginisang Kangkong",
+            region: "Filipino",
+            summary: "Fresh kangkong sautéed with garlic and a little soy sauce.",
             prepMinutes: 12,
-            cookMinutes: 38,
+            cookMinutes: 8,
             ingredients: [
                 Self.makeIngredient(id: nil, name: "kangkong", amount: "100.000000", unit: "g"),
-                Self.makeIngredient(id: 914, name: "gata", amount: "200.000000", unit: "ml")
+                Self.makeIngredient(id: 903, name: "toyo", amount: "15.000000", unit: "mL")
             ]
         )
-        let pinakbet = Self.makeRecipe(
+        let tortangTalong = Self.makeRecipe(
             id: 304,
-            title: "Test Recipe: Pinakbet na Ilokano na may mahahabang pangalan ng sangkap",
-            region: "Ilocos",
-            summary: "A synthetic fixture for long Filipino ingredient names and blocked safety states.",
-            prepMinutes: 18,
-            cookMinutes: 42,
+            title: "Tortang Talong na may Bagoong Isda",
+            region: "Filipino",
+            summary: "Charred eggplant omelet served with bagoong isda.",
+            prepMinutes: 12,
+            cookMinutes: 15,
             ingredients: [
-                Self.makeIngredient(id: 915, name: "talong na hiniwa nang pahaba at inalisan ng dulo", amount: "250", unit: "g"),
-                Self.makeIngredient(id: 916, name: "bagoong isda na may hindi pa nasusuring label", amount: "30", unit: "g")
+                Self.makeIngredient(id: 915, name: "talong na hiniwa nang pahaba", amount: "250", unit: "g"),
+                Self.makeIngredient(id: 919, name: "itlog", amount: "2", unit: "pcs"),
+                Self.makeIngredient(id: 916, name: "bagoong isda", amount: "30", unit: "g")
             ]
         )
         let ginataangKangkong = Self.makeRecipe(
             id: 305,
-            title: "Test Recipe: Ginataang Kangkong",
+            title: "Ginataang Kangkong",
             region: "Filipino",
-            summary: "A synthetic fixture with exact required and optional ingredient amounts.",
+            summary: "Kangkong simmered in coconut milk, with sili on the side.",
             prepMinutes: 10,
             cookMinutes: 20,
             ingredients: [
@@ -177,32 +180,56 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
             availability: [
                 Self.availabilityLine(id: 911, name: "baboy", required: true, needed: "0.500000", available: "0.500000", shortfall: "0", unit: "kg", status: "full", batchIDs: [1901]),
                 Self.availabilityLine(id: 912, name: "sampalok", required: true, needed: "45.250000", available: "60.000000", shortfall: "0", unit: "g", status: "full", batchIDs: [1903]),
-                Self.availabilityLine(id: 913, name: "kangkong", required: false, needed: "120", available: "120", shortfall: "0", unit: "g", status: "full", batchIDs: [1904])
+                Self.availabilityLine(id: 901, name: "kangkong", required: true, needed: "120", available: "120", shortfall: "0", unit: "g", status: "full", batchIDs: [15]),
+                Self.availabilityLine(id: 918, name: "kamatis", required: true, needed: "0.25", available: "0.5", shortfall: "0", unit: "kg", status: "full", batchIDs: [17])
             ],
             ingredientDecisions: [
                 Self.safetyLine(index: 0, id: 911, decision: "eligible"),
                 Self.safetyLine(index: 1, id: 912, decision: "eligible"),
-                Self.safetyLine(index: 2, id: 913, decision: "eligible")
+                Self.safetyLine(index: 2, id: 901, decision: "eligible"),
+                Self.safetyLine(index: 3, id: 918, decision: "eligible")
             ]
         )
-        let laingEvaluation = Self.makeEvaluation(
-            recipe: laing,
+        let expiringKangkongSinigangEvaluation = Self.makeEvaluation(
+            recipe: sinigang,
             decision: "eligible",
-            availability: [missingPork, missingGabi],
+            availability: [
+                Self.availabilityLine(id: 911, name: "baboy", required: true, needed: "0.5", available: "0.25", shortfall: "0.25", unit: "kg", status: "partial", batchIDs: [18]),
+                Self.availabilityLine(id: 912, name: "sampalok", required: true, needed: "45.25", available: "0", shortfall: "45.25", unit: "g", status: "missing", batchIDs: []),
+                Self.availabilityLine(id: 901, name: "kangkong", required: true, needed: "120", available: "500", shortfall: "0", unit: "g", status: "full", batchIDs: [15]),
+                Self.availabilityLine(id: 918, name: "kamatis", required: true, needed: "0.25", available: "0.5", shortfall: "0", unit: "kg", status: "full", batchIDs: [17])
+            ],
             ingredientDecisions: [
-                Self.safetyLine(index: 0, id: 902, decision: "eligible"),
-                Self.safetyLine(index: 1, id: 903, decision: "eligible")
+                Self.safetyLine(index: 0, id: 911, decision: "eligible"),
+                Self.safetyLine(index: 1, id: 912, decision: "eligible"),
+                Self.safetyLine(index: 2, id: 901, decision: "eligible"),
+                Self.safetyLine(index: 3, id: 918, decision: "eligible")
             ],
             overallAvailability: "partial"
         )
-        let bicolExpressEvaluation = Self.makeEvaluation(
-            recipe: bicolExpress,
+        let chickenAdoboEvaluation = Self.makeEvaluation(
+            recipe: chickenAdobo,
+            decision: "eligible",
+            availability: [
+                partialChicken,
+                fullSoySauce,
+                Self.availabilityLine(id: 917, name: "suka", required: true, needed: "60", available: "30", shortfall: "30", unit: "mL", status: "partial", batchIDs: [16])
+            ],
+            ingredientDecisions: [
+                Self.safetyLine(index: 0, id: 902, decision: "eligible"),
+                Self.safetyLine(index: 1, id: 903, decision: "eligible"),
+                Self.safetyLine(index: 2, id: 917, decision: "eligible")
+            ],
+            overallAvailability: "partial"
+        )
+        let ginisangKangkongEvaluation = Self.makeEvaluation(
+            recipe: ginisangKangkong,
             decision: "review_required",
             reasons: ["product_allergen_label_not_reviewed"],
-            availability: [unknown, Self.availabilityLine(id: 914, name: "gata", required: true, needed: "200.000000", available: "200.000000", shortfall: "0", unit: "ml", status: "full", batchIDs: [1905])],
+            availability: [unknown, Self.availabilityLine(id: 903, name: "toyo", required: true, needed: "15.000000", available: "300.000000", shortfall: "0", unit: "mL", status: "full", batchIDs: [10])],
             ingredientDecisions: [
                 Self.safetyLine(index: 0, id: nil, decision: "review_required", reasons: ["ingredient_mapping_unknown"]),
-                Self.safetyLine(index: 1, id: 914, decision: "review_required", reasons: ["product_allergen_label_not_reviewed"])
+                Self.safetyLine(index: 1, id: 903, decision: "review_required", reasons: ["product_allergen_label_not_reviewed"])
             ],
             overallAvailability: "unknown"
         )
@@ -220,37 +247,44 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
                 Self.safetyLine(index: 2, id: 913, decision: "eligible")
             ]
         )
-        let pinakbetEvaluation = Self.makeEvaluation(
-            recipe: pinakbet,
+        let tortangTalongEvaluation = Self.makeEvaluation(
+            recipe: tortangTalong,
             decision: "blocked",
             reasons: ["declared_allergen_conflict"],
             availability: [
                 Self.availabilityLine(id: 915, name: "talong", required: true, needed: "250", available: "0", shortfall: "250", unit: "g", status: "missing", batchIDs: []),
+                Self.availabilityLine(id: 919, name: "itlog", required: true, needed: "2", available: "8", shortfall: "0", unit: "pcs", status: "full", batchIDs: [8]),
                 Self.availabilityLine(id: 916, name: "bagoong isda", required: true, needed: "30", available: "30", shortfall: "0", unit: "g", status: "full", batchIDs: [1906])
             ],
             ingredientDecisions: [
                 Self.safetyLine(index: 0, id: 915, decision: "eligible"),
-                Self.safetyLine(index: 1, id: 916, decision: "blocked", reasons: ["declared_allergen_conflict"])
+                Self.safetyLine(index: 1, id: 919, decision: "eligible"),
+                Self.safetyLine(index: 2, id: 916, decision: "blocked", reasons: ["declared_allergen_conflict"])
             ],
             overallAvailability: "missing"
         )
 
-        recipes = [bicolExpress, laing, sinigang, pinakbet, ginataangKangkong]
+        recipes = [ginisangKangkong, chickenAdobo, sinigang, tortangTalong, ginataangKangkong]
+        let sinigangDetailEvaluation = Self.launchArgument("-pip-ui-screen") == "expiring-recipe-flow"
+            ? expiringKangkongSinigangEvaluation : sinigangEvaluation
         evaluations = [
-            sinigang.id: sinigangEvaluation,
-            laing.id: laingEvaluation,
-            bicolExpress.id: bicolExpressEvaluation,
-            pinakbet.id: pinakbetEvaluation,
+            sinigang.id: sinigangDetailEvaluation,
+            chickenAdobo.id: chickenAdoboEvaluation,
+            ginisangKangkong.id: ginisangKangkongEvaluation,
+            tortangTalong.id: tortangTalongEvaluation,
             ginataangKangkong.id: ginataangKangkongEvaluation
         ]
         cookNowResults = [Self.recommendation(recipe: sinigang, evaluation: sinigangEvaluation, missingCount: 0)]
-        almostThereResults = [Self.recommendation(recipe: laing, evaluation: laingEvaluation, missingCount: 2)]
+        almostThereResults = [Self.recommendation(recipe: chickenAdobo, evaluation: chickenAdoboEvaluation, missingCount: 2)]
     }
 
-    func fetchRecipePage(query: String?, limit: Int, offset: Int,
+    func fetchRecipePage(query: String?, inventoryBatchID: Int?, limit: Int, offset: Int,
                          scope: HouseholdScope) async throws -> [HouseholdRecipe] {
         if scenario == "recipes-empty" { return [] }
         let matching = recipes.filter { recipe in
+            guard inventoryBatchID == nil else {
+                return recipe.ingredients.contains { $0.ingredient_id == 901 }
+            }
             guard let query, !query.isEmpty else { return true }
             return recipe.title.localizedCaseInsensitiveContains(query)
         }
@@ -281,7 +315,17 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
         if scenario == "recipes-loading" {
             await loadingGate.waitForRelease()
         }
-        let candidates = scenario == "recipes-empty" ? [] : (payload.mode == "cook_now" ? cookNowResults : almostThereResults)
+        let candidates: [RecipeRecommendation]
+        if scenario == "recipes-empty" || (scenario == "recipes-needs-review" && payload.mode == "cook_now") {
+            candidates = []
+        } else {
+            candidates = payload.mode == "cook_now" ? cookNowResults : almostThereResults
+        }
+        let excludedCandidates: [ExcludedRecipeCandidate] = scenario == "recipes-needs-review" && payload.mode == "cook_now"
+            ? [ExcludedRecipeCandidate(recipe_id: 303, title: "Ginisang Kangkong",
+                status: "review_required", reasons: ["ingredient_mapping_unknown", "product_allergen_label_not_reviewed"],
+                unknown_ingredients: ["kangkong"])]
+            : []
         let matching = candidates.filter { recommendation in
             guard let query = payload.query, !query.isEmpty else { return true }
             return recommendation.recipe.title.localizedCaseInsensitiveContains(query)
@@ -294,13 +338,14 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
             excluded_blocked: 0,
             excluded_review_required: 0,
             excluded_unknown_quantities: 0,
+            excluded_candidates: excludedCandidates,
             provider_enabled: false
         )
     }
 
     func fetchRecipeSourceReference(id: Int, scope: HouseholdScope) async throws -> RecipeSourceReference {
         if scenario == "source-error-once", await counter.nextSource() == 1 {
-            throw APIError.http(status: 503, detail: .string("synthetic source failure"), retryAfter: nil)
+            throw APIError.http(status: 503, detail: .string("The recipe source is temporarily unavailable."), retryAfter: nil)
         }
         throw APIError.http(status: 404, detail: nil, retryAfter: nil)
     }
@@ -355,7 +400,7 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
         if scenario == "product-label-stale" {
             return ProductLabelRead(product_id: productID, mapping_version: 1, revision: 4,
                                     declared_allergens: ["milk"], possible_allergens: [], custom_allergens: [],
-                                    composition_known: false, source_reference: "Synthetic package label",
+                                    composition_known: false, source_reference: "Kara Coconut Milk package label",
                                     reviewed_by_user_id: 9901, reviewed_at: "2026-11-01T00:00:00Z",
                                     current_for_product: false, revoked: false, revoked_at: nil, revoked_by_user_id: nil)
         }
@@ -379,23 +424,49 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
         if scenario == "shopping-offline-once", await counter.nextPreview() == 1 {
             throw APIError.networkError(URLError(.notConnectedToInternet))
         }
+        if request.recipe_id == 303 {
+            return await ginisangKangkongShoppingPreview(request)
+        }
         let decision = scenario == "shopping-review-required" ? "review_required"
             : (scenario == "shopping-blocked" ? "blocked" : "eligible")
         let reasons = decision == "review_required" ? ["product_allergen_label_not_reviewed"]
             : (decision == "blocked" ? ["declared_allergen_conflict"] : [])
-        let secondLine = RecipeShoppingLine(
+        let isSinigang = request.recipe_id == 301
+        let includeOptional = request.include_optional && !isSinigang
+        let secondLine = isSinigang ? RecipeShoppingLine(
+            ingredient_id: 912, canonical_name: "tamarind", display_name: "sampalok", unit: "g",
+            required_quantity: Self.quantity("45.25"), pantry_quantity: Self.quantity("0"),
+            shortage: Self.quantity("45.25"), pending_quantity: Self.quantity("0"),
+            target_quantity: Self.quantity("45.25"), additional_quantity: Self.quantity("45.25"),
+            pending_item_ids: [], covered_batch_ids: [], status: "ready", review_reasons: [])
+            : RecipeShoppingLine(
             ingredient_id: 914, canonical_name: "gata", display_name: "gata", unit: "mL",
             required_quantity: Self.quantity("200"), pantry_quantity: Self.quantity("50"),
             shortage: Self.quantity("150"), pending_quantity: Self.quantity("100"),
             target_quantity: Self.quantity("150"), additional_quantity: Self.quantity("50"),
             pending_item_ids: [9911, 9912], covered_batch_ids: [9905], status: "ready", review_reasons: [])
-        let firstLine = RecipeShoppingLine(
+        let firstLine = isSinigang ? RecipeShoppingLine(
+            ingredient_id: 911, canonical_name: "pork", display_name: "baboy", unit: "kg",
+            required_quantity: Self.quantity("0.5"), pantry_quantity: Self.quantity("0.25"),
+            shortage: Self.quantity("0.25"), pending_quantity: Self.quantity("0"),
+            target_quantity: Self.quantity("0.25"), additional_quantity: Self.quantity("0.25"),
+            pending_item_ids: [], covered_batch_ids: [1901], status: "ready", review_reasons: [])
+            : RecipeShoppingLine(
             ingredient_id: 901, canonical_name: "kangkong", display_name: "kangkong", unit: "g",
             required_quantity: Self.quantity("120"), pantry_quantity: Self.quantity("20"),
             shortage: Self.quantity("100"), pending_quantity: Self.quantity("0"),
             target_quantity: Self.quantity("100"), additional_quantity: Self.quantity("100"),
             pending_item_ids: [], covered_batch_ids: [9904], status: "ready", review_reasons: [])
-        var requirements = [
+        var requirements = isSinigang ? [
+            IngredientAvailabilitySnapshot(ingredient_id: 911, canonical_name: "pork", display_names: ["baboy"],
+                required: true, required_amount: Self.quantity("0.5"), available_amount: Self.quantity("0.25"),
+                shortfall: Self.quantity("0.25"), unit: "kg", status: "partial", covered_batch_ids: [1901],
+                missing_expiry_batch_ids: [], unknown_reasons: []),
+            IngredientAvailabilitySnapshot(ingredient_id: 912, canonical_name: "tamarind", display_names: ["sampalok"],
+                required: true, required_amount: Self.quantity("45.25"), available_amount: Self.quantity("0"),
+                shortfall: Self.quantity("45.25"), unit: "g", status: "missing", covered_batch_ids: [],
+                missing_expiry_batch_ids: [], unknown_reasons: [])
+        ] : [
             IngredientAvailabilitySnapshot(ingredient_id: 901, canonical_name: "kangkong", display_names: ["kangkong"],
                 required: true, required_amount: Self.quantity("120"), available_amount: Self.quantity("20"),
                 shortfall: Self.quantity("100"), unit: "g", status: "partial", covered_batch_ids: [9904],
@@ -411,7 +482,7 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
             shortage: Self.quantity("0"), pending_quantity: Self.quantity("0"),
             target_quantity: Self.quantity("0"), additional_quantity: Self.quantity("0"),
             pending_item_ids: [], covered_batch_ids: [9906], status: "ready", review_reasons: [])
-        if request.include_optional {
+        if includeOptional {
             requirements.append(IngredientAvailabilitySnapshot(
                 ingredient_id: 913, canonical_name: "sili", display_names: ["sili"], required: false,
                 required_amount: Self.quantity("1"), available_amount: Self.quantity("1"),
@@ -419,10 +490,11 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
                 missing_expiry_batch_ids: [], unknown_reasons: []))
         }
         var safetyIngredients = [
-            Self.safetyLine(index: 0, id: 901, decision: "eligible"),
-            Self.safetyLine(index: 1, id: 914, decision: decision, reasons: reasons)
+            Self.safetyLine(index: 0, id: isSinigang ? 911 : 901, decision: decision == "eligible" ? "eligible" : decision,
+                            reasons: reasons),
+            Self.safetyLine(index: 1, id: isSinigang ? 912 : 914, decision: decision, reasons: reasons)
         ]
-        if request.include_optional {
+        if includeOptional {
             safetyIngredients.append(Self.safetyLine(index: 2, id: 913, decision: "eligible"))
         }
         let readySafety = FoodSafetySnapshot(
@@ -443,16 +515,87 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
             expiration = ISO8601DateFormatter().string(from: Date().addingTimeInterval(lifetime))
         }
         await counter.setPreviewRecipeID(request.recipe_id)
+        let unlinkedManualItems = scenario == "shopping-unlinked-manual"
+            ? [UnlinkedShoppingReview(item_id: 9920, name: "Gardenia Classic White Bread",
+                quantity: Self.quantity("1"), unit: "loaf", candidate_ingredient_ids: [], reason: "not_linked")]
+            : []
         return RecipeShoppingPreview(
             preview_id: "synthetic-preview-\(request.recipe_id)-\(request.expected_recipe_revision)",
             expires_at: expiration,
             recipe_id: request.recipe_id,
             recipe_revision: request.expected_recipe_revision, servings: request.servings,
-            include_optional: request.include_optional, shopping_revision: 3, inventory_revision: 7,
-            included_requirement_indexes: request.include_optional ? [0, 1, 2] : [0, 1], safety: readySafety,
-            lines: request.include_optional ? [firstLine, secondLine, optionalLine] : [firstLine, secondLine],
-            unlinked_manual_items: [UnlinkedShoppingReview(item_id: 9920, name: "manual market note",
-                quantity: Self.quantity("1"), unit: nil, candidate_ingredient_ids: [], reason: "not_linked")]
+            include_optional: includeOptional, substitutions: request.substitutions,
+            shopping_revision: 3, inventory_revision: 7,
+            included_requirement_indexes: includeOptional ? [0, 1, 2] : [0, 1], safety: readySafety,
+            lines: includeOptional ? [firstLine, secondLine, optionalLine] : [firstLine, secondLine],
+            unlinked_manual_items: unlinkedManualItems
+        )
+    }
+
+    private func ginisangKangkongShoppingPreview(
+        _ request: RecipeShoppingPreviewRequest
+    ) async -> RecipeShoppingPreview {
+        let isBlocked = scenario == "shopping-blocked"
+        let decision = isBlocked ? "blocked" : "review_required"
+        let reasons = isBlocked
+            ? ["declared_allergen_conflict", "ingredient_mapping_unknown"]
+            : ["ingredient_mapping_unknown", "product_allergen_label_not_reviewed"]
+        let kangkong = RecipeShoppingLine(
+            ingredient_id: nil, canonical_name: nil, display_name: "kangkong", unit: "g",
+            required_quantity: Self.quantity("100"), pantry_quantity: nil, shortage: nil,
+            pending_quantity: Self.quantity("0"), target_quantity: nil, additional_quantity: nil,
+            pending_item_ids: [], covered_batch_ids: [], status: "review_required",
+            review_reasons: ["ingredient_mapping_unknown"]
+        )
+        let toyo = RecipeShoppingLine(
+            ingredient_id: 903, canonical_name: "soy sauce", display_name: "toyo", unit: "mL",
+            required_quantity: Self.quantity("15"), pantry_quantity: Self.quantity("300"),
+            shortage: Self.quantity("0"), pending_quantity: Self.quantity("0"),
+            target_quantity: Self.quantity("0"), additional_quantity: Self.quantity("0"),
+            pending_item_ids: [], covered_batch_ids: [10], status: "ready",
+            review_reasons: ["product_allergen_label_not_reviewed"]
+        )
+        let safety = FoodSafetySnapshot(
+            decision: decision,
+            reasons: reasons,
+            ingredients: [
+                Self.safetyLine(index: 0, id: nil, decision: "review_required",
+                                reasons: ["ingredient_mapping_unknown"]),
+                Self.safetyLine(index: 1, id: 903, decision: isBlocked ? "blocked" : "review_required",
+                                reasons: isBlocked ? ["declared_allergen_conflict"] : ["product_allergen_label_not_reviewed"])
+            ],
+            availability: RecipeAvailabilitySnapshot(
+                recipe_servings: request.servings, servings: request.servings, overall_status: "unknown",
+                requirements: [IngredientAvailabilitySnapshot(
+                    ingredient_id: 903, canonical_name: "soy sauce", display_names: ["toyo"],
+                    required: true, required_amount: Self.quantity("15"), available_amount: Self.quantity("300"),
+                    shortfall: Self.quantity("0"), unit: "mL", status: "full", covered_batch_ids: [10],
+                    missing_expiry_batch_ids: [], unknown_reasons: []
+                )]
+            ),
+            notice: "No known conflict is not a safety guarantee. Check actual labels and preparation."
+        )
+        let expiration: String
+        if scenario == "shopping-expired" {
+            expiration = "2020-01-01T00:00:00Z"
+        } else if scenario == "shopping-malformed-expiry" {
+            expiration = "not-a-timestamp"
+        } else {
+            let lifetime: TimeInterval = scenario == "shopping-expiring-soon" ? 2 : 300
+            expiration = ISO8601DateFormatter().string(from: Date().addingTimeInterval(lifetime))
+        }
+        await counter.setPreviewRecipeID(request.recipe_id)
+        let unlinkedManualItems = scenario == "shopping-unlinked-manual"
+            ? [UnlinkedShoppingReview(item_id: 9920, name: "Gardenia Classic White Bread",
+                quantity: Self.quantity("1"), unit: "loaf", candidate_ingredient_ids: [], reason: "not_linked")]
+            : []
+        return RecipeShoppingPreview(
+            preview_id: "synthetic-preview-\(request.recipe_id)-\(request.expected_recipe_revision)",
+            expires_at: expiration, recipe_id: request.recipe_id,
+            recipe_revision: request.expected_recipe_revision, servings: request.servings,
+            include_optional: request.include_optional, substitutions: request.substitutions,
+            shopping_revision: 3, inventory_revision: 7, included_requirement_indexes: [0, 1],
+            safety: safety, lines: [kangkong, toyo], unlinked_manual_items: unlinkedManualItems
         )
     }
 
@@ -514,8 +657,16 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
         return RecipeShoppingConfirmationResult(
             preview_id: confirmation.preview_id, shopping_revision: confirmation.expected_revision + 1,
             created: confirmation.accepted_lines.map { line in
-                let name = line.ingredient_id == 914 ? "gata" : (line.ingredient_id == 913 ? "sili" : "kangkong")
-                let unit = line.ingredient_id == 914 ? "mL" : (line.ingredient_id == 913 ? "pcs" : "g")
+                let name: String
+                let unit: String
+                switch line.ingredient_id {
+                case 911: name = "baboy"; unit = "kg"
+                case 912: name = "sampalok"; unit = "g"
+                case 903: name = "toyo"; unit = "mL"
+                case 914: name = "gata"; unit = "mL"
+                case 913: name = "sili"; unit = "pcs"
+                default: name = "kangkong"; unit = "g"
+                }
                 return RecipeShoppingChange(id: 9907 + line.ingredient_id, name: name, quantity: line.target_quantity,
                     unit: unit, is_bought: false, notes: nil, product_id: nil, ingredient_id: line.ingredient_id,
                     origin_recipe_id: recipeID, origin_recipe_revision: 1, origin_plan_id: nil, origin_plan_revision: nil,
@@ -544,6 +695,15 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
             let name: String
             let unit: String
             switch line.ingredient_id {
+            case 911:
+                name = "baboy"
+                unit = "kg"
+            case 912:
+                name = "sampalok"
+                unit = "g"
+            case 903:
+                name = "toyo"
+                unit = "mL"
             case 914:
                 name = "gata"
                 unit = "mL"
@@ -560,6 +720,71 @@ nonisolated struct CookWithPipUITestService: CookWithPipService, CookWithPipWork
         }
     }
 
+    func fetchPipChatConsent(scope: HouseholdScope) async throws -> PipChatConsent {
+        PipChatConsent(
+            chatGranted: true,
+            allMembersChatGranted: true,
+            allergySharingGranted: false,
+            allMembersAllergySharingGranted: false,
+            providerEnabled: true,
+            notice: Self.pipChatNotice
+        )
+    }
+
+    func updatePipChatConsent(_ update: PipChatConsentUpdate,
+                              scope: HouseholdScope) async throws -> PipChatConsent {
+        let chatGranted = update.purpose == PipChatConsentPurpose.chat.rawValue ? update.granted : true
+        let allergyGranted = update.purpose == PipChatConsentPurpose.allergySharing.rawValue
+            ? update.granted : false
+        return PipChatConsent(
+            chatGranted: chatGranted,
+            allMembersChatGranted: chatGranted,
+            allergySharingGranted: allergyGranted,
+            allMembersAllergySharingGranted: allergyGranted,
+            providerEnabled: true,
+            notice: Self.pipChatNotice
+        )
+    }
+
+    func revokePipChatConsent(scope: HouseholdScope) async throws -> PipChatConsent {
+        PipChatConsent(chatGranted: false, allMembersChatGranted: false, providerEnabled: true)
+    }
+
+    func sendPipChat(_ request: PipChatRequest,
+                     scope: HouseholdScope) async throws -> PipChatResponse {
+        let opensShoppingPreview = request.message.localizedCaseInsensitiveContains("buy")
+            || request.message.localizedCaseInsensitiveContains("missing")
+        let actionKind = opensShoppingPreview ? "open_shopping_preview" : "open_recipe"
+        let targetRecipeID = opensShoppingPreview ? 305 : 301
+        guard let recipe = recipes.first(where: { $0.id == targetRecipeID }) else {
+            throw APIError.http(status: 404, detail: nil, retryAfter: nil)
+        }
+        let reply = opensShoppingPreview
+            ? "Sa current check ng Ginataang Kangkong, kulang ang 100 g kangkong at 150 mL gata. Review the shopping preview; walang maidadagdag hangga't hindi mo kinukumpirma."
+            : "May Sinigang na Baboy sa recipes natin. Kailangan nito ng 120 g kangkong, at 120 g ang nasa pantry ngayon. Pasok ang kasalukuyang recipe check; buksan ang recipe para tingnan ang iba pang sangkap at safety details."
+        return PipChatResponse(
+            reply: reply,
+            language: "taglish",
+            actions: [PipChatAction(kind: actionKind, reference: "R1", recipeID: recipe.id,
+                                    title: recipe.title)],
+            recipeCards: [PipChatRecipeCard(
+                reference: "R1",
+                recipe_id: recipe.id,
+                title: recipe.title,
+                summary: recipe.summary ?? "",
+                cuisine: "Filipino",
+                availability_status: opensShoppingPreview ? "partial" : "full",
+                missing_ingredient_count: opensShoppingPreview ? 2 : 0,
+                safety_decision: "eligible",
+                safety_reasons: []
+            )],
+            model: "ui-fixture",
+            safetyNotice: "Chat suggestions are not safety checks."
+        )
+    }
+
+    private static let pipChatNotice = "Pip Chat sends your current message and up to eight recent turns to DeepSeek after redacting recognized email addresses, phone numbers, and active household member names from chat text. When relevant, it may also send current household product names, remaining quantities and expiry dates, your food preferences, recipe ingredients and instructions only when the recipe's sharing permission allows it, and titles of household recipes. Allergy labels are sent only when you and every active household member separately opt in to allergy sharing. The request does not add account or household IDs, shopping data, or product-label notes to the provider context. Avoid including other personal details in chat. DeepSeek processes requests under its own privacy policy. You can revoke consent at any time."
+
     func recordedConfirmations() async -> [RecipeShoppingConfirmation] {
         await counter.recordedConfirmations()
     }
@@ -573,8 +798,11 @@ struct CookWithPipUITestHost: View {
     }
     @State private var service: CookWithPipUITestService
     @State private var showingShoppingList = false
+    @State private var showingQuickAddInventory = false
     @State private var loadingReleased = false
     @StateObject private var shoppingViewModel: ShoppingViewModel
+    @StateObject private var productViewModel: InventoryViewModel
+    @StateObject private var quickAddInventoryViewModel: InventoryViewModel
     @State private var pendingShoppingStore: any PendingRecipeShoppingStore
 
     init() {
@@ -582,7 +810,35 @@ struct CookWithPipUITestHost: View {
         let fixtureID = Int(Self.launchArgument("-pip-ui-fixture-id") ?? "0") ?? 0
         let scope = HouseholdScope(userID: 9901 + fixtureID, householdID: 9902 + fixtureID,
                                    serverID: "ui-test-fixtures")
-        _shoppingViewModel = StateObject(wrappedValue: ShoppingViewModel(isPreview: true, scope: scope))
+        let shoppingViewModel = ShoppingViewModel(
+            isPreview: true,
+            scope: scope,
+            purchasedGroceriesStore: CookWithPipUITestPendingPurchasedStore()
+        )
+        if Self.launchArgument("-pip-ui-scenario") == "shopping-reconciliation" {
+            shoppingViewModel.filter = .completed
+            shoppingViewModel.items = [
+                ShoppingItem(id: 9981, name: "Dinorado rice", quantity: 5, unit: "kg",
+                             is_bought: true, updated_at: "2026-11-18T10:00:00Z"),
+                ShoppingItem(id: 9982, name: "Carabao mangoes", quantity: 3, unit: "pcs",
+                             is_bought: true, updated_at: "2026-11-18T10:01:00Z")
+            ]
+            shoppingViewModel.products = [Product(
+                id: 9903, name: "Coconut Milk", brand: "Kara",
+                category: "Canned goods", package_size: 400, unit: "mL",
+                updated_at: "2026-11-09T00:00:00Z"
+            )]
+            shoppingViewModel.locations = [StorageLocation(id: 9904, name: "Pantry", location_type: "pantry")]
+        }
+        _shoppingViewModel = StateObject(wrappedValue: shoppingViewModel)
+        let productViewModel = InventoryViewModel(isPreview: true, scope: scope)
+        productViewModel.selectedProduct = PreviewData.centuryTuna
+        productViewModel.productBatches = PreviewData.centuryTunaBatches
+        _productViewModel = StateObject(wrappedValue: productViewModel)
+        let quickAddViewModel = InventoryViewModel(isPreview: true, scope: scope)
+        quickAddViewModel.products = PreviewData.products
+        quickAddViewModel.locations = PreviewData.locations
+        _quickAddInventoryViewModel = StateObject(wrappedValue: quickAddViewModel)
         let pendingStore: any PendingRecipeShoppingStore = Self.launchArgument("-pip-ui-use-keychain") == "1"
             ? KeychainStore.shared
             : CookWithPipUITestPendingShoppingStore()
@@ -597,35 +853,41 @@ struct CookWithPipUITestHost: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Text("UI TEST FIXTURES")
-                .font(.caption.weight(.bold))
-                .dynamicTypeSize(.xSmall ... .xxxLarge)
-                .foregroundStyle(ProvisionTheme.textPrimary)
-                .frame(maxWidth: .infinity, minHeight: 30, maxHeight: 30)
-                .background(ProvisionTheme.provisionGreenLight)
-                .overlay(alignment: .bottom) {
-                    Rectangle().fill(ProvisionTheme.border).frame(height: 1)
-                }
-                .accessibilityIdentifier("ui-test-fixture-banner")
-
-            if showingShoppingList {
+            if showingShoppingList || Self.launchArgument("-pip-ui-scenario") == "shopping-reconciliation" {
                 NavigationStack {
                     ShoppingListView(viewModel: shoppingViewModel)
                 }
+            } else if Self.launchArgument("-pip-ui-screen") == "inventory-quick-add" {
+                CookWithPipInventoryUITestTabs(inventoryViewModel: quickAddInventoryViewModel, scope: scope)
+            } else if ["product-chat-context", "inventory-stock-actions"].contains(
+                Self.launchArgument("-pip-ui-screen") ?? ""
+            ) {
+                NavigationStack {
+                    ProductDetailView(
+                        viewModel: productViewModel,
+                        product: PreviewData.centuryTuna,
+                        chatService: service
+                    )
+                }
             } else {
                 HomeView(
-                    viewModel: HomeViewModel(isPreview: true),
+                    viewModel: PreviewData.makeHomeViewModel(),
                     authVM: PreviewData.makeAuthViewModel(),
                     onNavigateToShopping: { showingShoppingList = true },
+                    onQuickAddGroceries: { showingQuickAddInventory = true },
                     onShoppingConfirmed: {
                         shoppingViewModel.items = (try? await service.fetchShoppingListFromServer(scope: scope)) ?? []
                     },
                     cookWithPipScope: scope,
                     cookWithPipService: service,
+                    cookWithPipChatService: service,
                     cookWithPipWorkflowService: service,
                     cookWithPipPendingStore: pendingShoppingStore
                 )
             }
+        }
+        .sheet(isPresented: $showingQuickAddInventory) {
+            AddInventoryView(viewModel: quickAddInventoryViewModel)
         }
         .overlay(alignment: .topTrailing) {
             if Self.launchArgument("-pip-ui-scenario") == "recipes-loading" {
@@ -638,7 +900,7 @@ struct CookWithPipUITestHost: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(loadingReleased ? "Loading fixture released" : "Release loading fixture")
+                .accessibilityLabel(loadingReleased ? "Loading complete" : "Continue")
                 .accessibilityIdentifier(loadingReleased ? "cook-with-pip-loading-released" : "cook-with-pip-release-loading")
             }
         }
@@ -648,9 +910,34 @@ struct CookWithPipUITestHost: View {
     }
 }
 
+@MainActor
+private struct CookWithPipInventoryUITestTabs: View {
+    @ObservedObject var inventoryViewModel: InventoryViewModel
+    @StateObject private var scanViewModel: ScanViewModel
+    @State private var selectedTab = 0
+
+    init(inventoryViewModel: InventoryViewModel, scope: HouseholdScope) {
+        self.inventoryViewModel = inventoryViewModel
+        _scanViewModel = StateObject(wrappedValue: ScanViewModel(isPreview: true, scope: scope))
+    }
+
+    var body: some View {
+        TabView(selection: $selectedTab) {
+            Tab("Inventory", systemImage: "shippingbox.fill", value: 0) {
+                InventoryView(viewModel: inventoryViewModel, onNavigateToScan: { selectedTab = 1 })
+            }
+
+            Tab("Scan", systemImage: "barcode.viewfinder", value: 1) {
+                ScanView(viewModel: scanViewModel)
+            }
+        }
+        .tint(ProvisionTheme.provisionGreen)
+    }
+}
+
 private extension CookWithPipUITestService {
     static var product: Product {
-        Product(id: 9903, name: "Test Product: Gata", brand: "Synthetic fixture", category: "Canned goods",
+        Product(id: 9903, name: "Coconut Milk", brand: "Kara", category: "Canned goods",
                 package_size: 400, unit: "mL", updated_at: "2026-11-09T00:00:00Z")
     }
 
@@ -662,7 +949,7 @@ private extension CookWithPipUITestService {
             id: 9908, product_id: product.id, version: version, is_current: true, mode: mode,
             ingredient_id: mode == .direct ? (write?.ingredient_id ?? 9201) : nil,
             verification_status: mode == .unknown ? "UNKNOWN" : (verified ? "VERIFIED" : "UNVERIFIED"),
-            method: write?.method ?? "synthetic fixture",
+            method: write?.method ?? "Household label review",
             verified_by_user_id: verified ? 9901 : nil,
             verified_at: verified ? "2026-11-09T00:00:00Z" : nil, confidence: nil,
             unknown_composition: write?.unknown_composition ?? false,
@@ -801,5 +1088,20 @@ private final class CookWithPipUITestPendingShoppingStore: PendingRecipeShopping
         defer { lock.unlock() }
         return records.removeValue(forKey: scope.storageKey) != nil
     }
+}
+
+private struct CookWithPipUITestPendingPurchasedStore: PendingPurchasedGroceriesStore {
+    func readPendingPurchasedGroceries(scope: HouseholdScope) -> PendingPurchasedGroceriesReadResult {
+        .missing
+    }
+
+    func savePendingPurchasedGroceries(
+        _ record: PendingPurchasedGroceriesRecord,
+        scope: HouseholdScope
+    ) -> Bool {
+        record.scopeStorageKey == scope.storageKey
+    }
+
+    func deletePendingPurchasedGroceries(scope: HouseholdScope) -> Bool { true }
 }
 #endif

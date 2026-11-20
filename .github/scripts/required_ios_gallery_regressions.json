@@ -1,0 +1,38 @@
+{
+  "requiredScreenshots": [
+    "Pip_Chat_Consent_Controls",
+    "Product_Label_Review_Stale",
+    "Shopping_Preview_Ready",
+    "Shopping_Unlinked_Manual_Items",
+    "Shopping_Optional_Ingredients",
+    "Shopping_Line_Exact_Quantity_Edited",
+    "Shopping_Duplicate_Consolidation_Opt_In",
+    "Shopping_Confirmation_Result",
+    "Shopping_List_Updated",
+    "Shopping_Preview_Dark_Mode",
+    "Shopping_Preview_Large_Text",
+    "Shopping_Preview_Revision_Details_Large_Text",
+    "Product_Label_Saved_Keyboard_Dismissed",
+    "Product_Label_Review_Current",
+    "Recipe_Detail_Large_Text_Filipino",
+    "Recipe_Detail_Large_Text_Safety_Filipino"
+  ],
+  "scenarioDescriptions": {
+    "Pip_Chat_Consent_Controls": "Chat consent and separate allergy-sharing consent are enabled and visible.",
+    "Product_Label_Review_Stale": "A prior package label declaration is clearly marked stale for the current product.",
+    "Shopping_Preview_Ready": "The shopping preview shows exact required ingredient amounts before any confirmation.",
+    "Shopping_Unlinked_Manual_Items": "Manual shopping items without an ingredient mapping remain visible and unchanged.",
+    "Shopping_Optional_Ingredients": "The user-enabled optional recipe ingredient appears after the preview refreshes.",
+    "Shopping_Line_Exact_Quantity_Edited": "The edited shopping amount remains the exact user-entered quantity.",
+    "Shopping_Duplicate_Consolidation_Opt_In": "Duplicate ingredient lines are consolidated only after an explicit opt-in.",
+    "Shopping_Confirmation_Result": "The server-confirmed shopping result is visible after explicit confirmation.",
+    "Shopping_List_Updated": "The shopping list contains the confirmed exact ingredient changes.",
+    "Shopping_Preview_Dark_Mode": "The shopping preview remains visible in dark appearance.",
+    "Shopping_Preview_Large_Text": "Shopping servings and confirmation controls remain visible at accessibility text size.",
+    "Shopping_Preview_Revision_Details_Large_Text": "Expanded shopping and pantry revisions remain readable at accessibility text size.",
+    "Product_Label_Saved_Keyboard_Dismissed": "The saved label review confirmation is visible after the keyboard closes.",
+    "Product_Label_Review_Current": "The recorded package label review appears as current for the product.",
+    "Recipe_Detail_Large_Text_Filipino": "The long Filipino recipe title and safety status remain readable at accessibility text size.",
+    "Recipe_Detail_Large_Text_Safety_Filipino": "The blocked recipe's deterministic allergen reason remains visible at accessibility text size."
+  }
+}

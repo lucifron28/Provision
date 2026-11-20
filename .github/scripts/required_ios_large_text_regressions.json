@@ -1,0 +1,18 @@
+{
+  "requiredScreenshots": [
+    "Recipe_Detail_Large_Text_Filipino",
+    "Recipe_Detail_Large_Text_Safety_Filipino",
+    "Recipe_Detail_Large_Text_Summary_Filipino",
+    "Recipe_Ingredient_Long_Filipino",
+    "Cook_with_Pip_Search_Keyboard",
+    "My_Recipes_Search_Scrolled"
+  ],
+  "scenarioDescriptions": {
+    "Recipe_Detail_Large_Text_Filipino": "The long Filipino recipe title and its food-safety summary remain readable at accessibility text size.",
+    "Recipe_Detail_Large_Text_Safety_Filipino": "The deterministic allergen reason remains visible on the long Filipino recipe.",
+    "Recipe_Detail_Large_Text_Summary_Filipino": "The recipe summary remains reachable after scrolling through the large-text safety view.",
+    "Recipe_Ingredient_Long_Filipino": "The long Filipino ingredient name remains visible at accessibility text size.",
+    "Cook_with_Pip_Search_Keyboard": "The recipe search field and mode controls remain usable while the keyboard is open.",
+    "My_Recipes_Search_Scrolled": "A household recipe result remains visible after keyboard dismissal and scrolling."
+  }
+}

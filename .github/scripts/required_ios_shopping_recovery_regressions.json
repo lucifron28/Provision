@@ -1,0 +1,10 @@
+{
+  "requiredScreenshots": [
+    "Shopping_Offline_Error_Retry",
+    "Shopping_Stale_Preview_Refresh"
+  ],
+  "scenarioDescriptions": {
+    "Shopping_Offline_Error_Retry": "An offline preview failure remains retryable and displays a fresh, eligible review after recovery.",
+    "Shopping_Stale_Preview_Refresh": "A server-rejected stale preview explains the conflict and offers a visible action to load current data."
+  }
+}

@@ -12,5 +12,23 @@
     "Shopping_Offline_Error_Retry",
     "Shopping_Confirmation_Retry_Pending",
     "Shopping_Stale_Preview_Refresh"
-  ]
+  ],
+  "supplementalScreenshots": [
+    "Cook_with_Pip_Needs_Review"
+  ],
+  "scenarioDescriptions": {
+    "Home_Cook_with_Pip": "Realistic Filipino household data from PreviewData is shown in the Home screen; this deterministic UI run does not call the household API.",
+    "Cook_with_Pip": "Cook with Pip recipe search shows Ginisang Kangkong using deterministic recipe data from CookWithPipUITestService.",
+    "Cook_Now": "Cook Now shows the locally evaluated Sinigang na Baboy recipe from CookWithPipUITestService.",
+    "Almost_There": "Almost There shows the locally evaluated Chicken Adobo recommendation from CookWithPipUITestService.",
+    "My_Recipes": "My Recipes shows stored household recipes from CookWithPipUITestService.",
+    "Recipe_Detail": "The Sinigang na Baboy detail screen uses deterministic recipe and availability data from CookWithPipUITestService.",
+    "Recipe_Detail_Instructions": "Recipe instructions are local UI test data from CookWithPipUITestService, not a provider response.",
+    "Shopping_Preview_Review_Required": "The shopping preview uses deterministic safety-review data from CookWithPipUITestService; no shopping changes are confirmed.",
+    "Shopping_Preview_Blocked": "The shopping preview uses a deterministic blocked-safety scenario from CookWithPipUITestService; no shopping changes are confirmed.",
+    "Shopping_Offline_Error_Retry": "The retry screen is a deterministic offline scenario from CookWithPipUITestService.",
+    "Shopping_Confirmation_Retry_Pending": "The pending-confirmation screen is a deterministic network recovery scenario from CookWithPipUITestService.",
+    "Shopping_Stale_Preview_Refresh": "The refresh screen is a deterministic stale-preview scenario from CookWithPipUITestService.",
+    "Cook_with_Pip_Needs_Review": "A household recipe shows a review-required result from CookWithPipUITestService and opens its package-label safety details."
+  }
 }

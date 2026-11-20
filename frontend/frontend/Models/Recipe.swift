@@ -1,6 +1,6 @@
 import Foundation
 
-nonisolated public struct IngredientRequirement: Codable, Sendable {
+nonisolated public struct IngredientRequirement: Codable, Equatable, Sendable {
     public let ingredient_id: Int?
     public let display_name: String?
     public let amount: ExactQuantity
@@ -50,7 +50,7 @@ nonisolated public struct HouseholdRecipe: Decodable, Identifiable, Sendable {
     public let ingredients: [RecipeIngredient]
 }
 
-nonisolated public struct RecipeSubstitution: Encodable, Sendable {
+nonisolated public struct RecipeSubstitution: Codable, Equatable, Sendable {
     public let requirement_index: Int
     public let replacement: IngredientRequirement
     public init(requirementIndex: Int, replacement: IngredientRequirement) {
@@ -131,6 +131,16 @@ nonisolated public struct RecipeRecommendation: Decodable, Sendable {
     public let source_reference: RecipeSourceReference?
 }
 
+nonisolated public struct ExcludedRecipeCandidate: Decodable, Identifiable, Sendable {
+    public let recipe_id: Int
+    public let title: String
+    public let status: String
+    public let reasons: [String]
+    public let unknown_ingredients: [String]
+
+    public var id: Int { recipe_id }
+}
+
 nonisolated public struct RecipeRecommendations: Decodable, Sendable {
     public let items: [RecipeRecommendation]
     public let candidates_evaluated: Int
@@ -138,5 +148,36 @@ nonisolated public struct RecipeRecommendations: Decodable, Sendable {
     public let excluded_blocked: Int
     public let excluded_review_required: Int
     public let excluded_unknown_quantities: Int
+    public let excluded_candidates: [ExcludedRecipeCandidate]
     public let provider_enabled: Bool
+
+    public init(items: [RecipeRecommendation], candidates_evaluated: Int, has_more_candidates: Bool,
+                excluded_blocked: Int, excluded_review_required: Int, excluded_unknown_quantities: Int,
+                excluded_candidates: [ExcludedRecipeCandidate] = [], provider_enabled: Bool) {
+        self.items = items
+        self.candidates_evaluated = candidates_evaluated
+        self.has_more_candidates = has_more_candidates
+        self.excluded_blocked = excluded_blocked
+        self.excluded_review_required = excluded_review_required
+        self.excluded_unknown_quantities = excluded_unknown_quantities
+        self.excluded_candidates = excluded_candidates
+        self.provider_enabled = provider_enabled
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case items, candidates_evaluated, has_more_candidates, excluded_blocked
+        case excluded_review_required, excluded_unknown_quantities, excluded_candidates, provider_enabled
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        items = try container.decode([RecipeRecommendation].self, forKey: .items)
+        candidates_evaluated = try container.decode(Int.self, forKey: .candidates_evaluated)
+        has_more_candidates = try container.decode(Bool.self, forKey: .has_more_candidates)
+        excluded_blocked = try container.decode(Int.self, forKey: .excluded_blocked)
+        excluded_review_required = try container.decode(Int.self, forKey: .excluded_review_required)
+        excluded_unknown_quantities = try container.decode(Int.self, forKey: .excluded_unknown_quantities)
+        excluded_candidates = try container.decodeIfPresent([ExcludedRecipeCandidate].self, forKey: .excluded_candidates) ?? []
+        provider_enabled = try container.decode(Bool.self, forKey: .provider_enabled)
+    }
 }

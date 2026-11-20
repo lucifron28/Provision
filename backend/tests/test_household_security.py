@@ -681,7 +681,9 @@ def test_bulk_shopping_routes_only_touch_the_callers_household(
         "/api/v1/shopping-list/completed/clear", headers=north["headers"]
     )
     assert cleared.status_code == 200
-    assert cleared.json()["message"] == "Successfully removed 1 completed item(s)"
+    assert cleared.json()["message"] == (
+        "Removed 0 reviewed item(s); 1 purchased item(s) still need pantry review"
+    )
 
     north_items = unauthed_client.get(
         "/api/v1/shopping-list/", headers=north["headers"]
@@ -690,12 +692,54 @@ def test_bulk_shopping_routes_only_touch_the_callers_household(
         "/api/v1/shopping-list/", headers=south["headers"]
     )
     assert {row["name"] for row in north_items.json()} == {
+        "North list item",
         "North low stock",
         "North waste",
     }
-    assert all(row["is_bought"] is False for row in north_items.json())
+    assert {row["name"] for row in north_items.json() if row["is_bought"]} == {
+        "North list item"
+    }
     assert [row["name"] for row in south_items.json()] == ["South list item"]
     assert south_items.json()[0]["is_bought"] is True
+
+
+def test_stock_action_idempotency_is_scoped_to_the_household(unauthed_client, two_accounts):
+    north, south = two_accounts
+    north_data, south_data = _seed_pair(unauthed_client, north, south)
+    shared_key = "household-stock-action-0001"
+
+    north_payload = {
+        "product_id": north_data["product"]["id"],
+        "quantity": 1,
+        "idempotency_key": shared_key,
+    }
+    south_payload = {
+        "product_id": south_data["product"]["id"],
+        "quantity": 1,
+        "idempotency_key": shared_key,
+    }
+
+    north_first = unauthed_client.post(
+        "/api/v1/inventory/consume", headers=north["headers"], json=north_payload
+    )
+    south_first = unauthed_client.post(
+        "/api/v1/inventory/consume", headers=south["headers"], json=south_payload
+    )
+    north_retry = unauthed_client.post(
+        "/api/v1/inventory/consume", headers=north["headers"], json=north_payload
+    )
+    south_retry = unauthed_client.post(
+        "/api/v1/inventory/consume", headers=south["headers"], json=south_payload
+    )
+
+    assert north_first.status_code == south_first.status_code == 200
+    assert north_retry.json() == north_first.json()
+    assert south_retry.json() == south_first.json()
+    for account in (north, south):
+        events = unauthed_client.get(
+            "/api/v1/inventory/events?event_type=CONSUMED", headers=account["headers"]
+        ).json()
+        assert len(events) == 1
 
 
 def test_cross_household_locations_are_rejected_by_batch_and_session_routes(

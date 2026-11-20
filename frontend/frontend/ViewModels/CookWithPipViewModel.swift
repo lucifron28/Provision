@@ -27,7 +27,7 @@ public enum CookWithPipMode: String, CaseIterable, Identifiable, Sendable {
 
 @MainActor
 public final class CookWithPipViewModel: ObservableObject {
-    @Published public var mode: CookWithPipMode = .cookNow
+    @Published public var mode: CookWithPipMode
     @Published public var searchQuery = ""
     @Published public private(set) var recommendations: [RecipeRecommendation] = []
     @Published public private(set) var recipes: [HouseholdRecipe] = []
@@ -40,9 +40,12 @@ public final class CookWithPipViewModel: ObservableObject {
     @Published public private(set) var excludedBlocked = 0
     @Published public private(set) var excludedReviewRequired = 0
     @Published public private(set) var excludedUnknownQuantities = 0
+    @Published public private(set) var excludedCandidates: [ExcludedRecipeCandidate] = []
 
     public let scope: HouseholdScope
     public let service: any CookWithPipService
+    public let inventoryBatchID: Int?
+    public let ingredientFilterLabel: String?
 
     private let pageSize = 20
     private let candidatePageSize = 100
@@ -50,9 +53,14 @@ public final class CookWithPipViewModel: ObservableObject {
     private var candidateOffset = 0
     private var activeRequestID = UUID()
 
-    public init(scope: HouseholdScope, service: any CookWithPipService = APIClient.shared) {
+    public init(scope: HouseholdScope, service: any CookWithPipService = APIClient.shared,
+                initialMode: CookWithPipMode = .cookNow, inventoryBatchID: Int? = nil,
+                ingredientFilterLabel: String? = nil) {
         self.scope = scope
         self.service = service
+        self.mode = initialMode
+        self.inventoryBatchID = inventoryBatchID
+        self.ingredientFilterLabel = ingredientFilterLabel
     }
 
     public func select(_ mode: CookWithPipMode) async {
@@ -79,6 +87,7 @@ public final class CookWithPipViewModel: ObservableObject {
                 excludedBlocked = 0
                 excludedReviewRequired = 0
                 excludedUnknownQuantities = 0
+                excludedCandidates = []
                 hasLoadedOnce = false
             }
         }
@@ -92,6 +101,7 @@ public final class CookWithPipViewModel: ObservableObject {
             if requestedMode == .myRecipes {
                 let page = try await service.fetchRecipePage(
                     query: query.isEmpty ? nil : query,
+                    inventoryBatchID: inventoryBatchID,
                     limit: pageSize,
                     offset: recipeOffset,
                     scope: scope
@@ -117,11 +127,14 @@ public final class CookWithPipViewModel: ObservableObject {
                     excludedBlocked = page.excluded_blocked
                     excludedReviewRequired = page.excluded_review_required
                     excludedUnknownQuantities = page.excluded_unknown_quantities
+                    excludedCandidates = page.excluded_candidates
                 } else {
                     recommendations.append(contentsOf: page.items)
                     excludedBlocked += page.excluded_blocked
                     excludedReviewRequired += page.excluded_review_required
                     excludedUnknownQuantities += page.excluded_unknown_quantities
+                    let existingIDs = Set(excludedCandidates.map(\.id))
+                    excludedCandidates.append(contentsOf: page.excluded_candidates.filter { !existingIDs.contains($0.id) })
                 }
                 candidateOffset += candidatePageSize
                 hasMore = page.has_more_candidates
@@ -162,7 +175,15 @@ public final class CookWithPipViewModel: ObservableObject {
     }
 
     public var hasExcludedCandidates: Bool {
-        excludedBlocked > 0 || excludedReviewRequired > 0 || excludedUnknownQuantities > 0
+        excludedBlocked > 0 || excludedReviewRequired > 0 || excludedUnknownQuantities > 0 || !excludedCandidates.isEmpty
+    }
+
+    public var needsReviewCandidates: [ExcludedRecipeCandidate] {
+        excludedCandidates.filter { $0.status == "review_required" || $0.status == "unknown_quantities" }
+    }
+
+    public var blockedCandidates: [ExcludedRecipeCandidate] {
+        excludedCandidates.filter { $0.status == "blocked" }
     }
 
     static func isNetworkError(_ error: Error) -> Bool {

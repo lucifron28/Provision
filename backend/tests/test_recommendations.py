@@ -19,12 +19,15 @@ def recommend(client, **kwargs):
 
 def test_recommendations_apply_safety_before_ranking_and_load_server_ingredients(client, catalog):
     declare(client, "egg")
-    create(client, title="Fast egg dish", cook_minutes=0, prep_minutes=0,
+    blocked = create(client, title="Fast egg dish", cook_minutes=0, prep_minutes=0,
         ingredients=[dict(display_name="egg", amount=1, unit="count")])
     allowed = create(client, title="Garlic dish", ingredients=[dict(display_name="garlic", amount=1, unit="g")])
     result = recommend(client)
     assert [item["recipe"]["id"] for item in result["items"]] == [allowed["id"]]
     assert result["excluded_blocked"] == 1 and result["provider_enabled"] is False
+    blocked_candidate = next(item for item in result["excluded_candidates"] if item["recipe_id"] == blocked["id"])
+    assert blocked_candidate["status"] == "blocked"
+    assert "allergen_conflict" in blocked_candidate["reasons"]
     assert result == recommend(client)
     assert recommend(client, mode="cook_now")["items"] == []
     almost = recommend(client, mode="almost_there")
@@ -58,8 +61,12 @@ def test_recommendation_filters_and_unknown_quantities(client, catalog):
         equipment=["pot"], ingredients=[dict(display_name="garlic", amount=1, unit="g")])
     quick = create(client, title="Fast meal", prep_minutes=0, cook_minutes=5,
         ingredients=[dict(display_name="onion", amount=1, unit="g")])
-    create(client, title="Unknown cups", ingredients=[dict(display_name="garlic", amount=1, unit="cup")])
-    assert recommend(client)["excluded_unknown_quantities"] == 1
+    unknown = create(client, title="Unknown cups", ingredients=[dict(display_name="garlic", amount=1, unit="cup")])
+    result = recommend(client)
+    assert result["excluded_unknown_quantities"] == 1
+    unknown_candidate = next(item for item in result["excluded_candidates"] if item["recipe_id"] == unknown["id"])
+    assert unknown_candidate["status"] == "unknown_quantities"
+    assert unknown_candidate["unknown_ingredients"] == ["garlic"]
     assert [item["recipe"]["id"] for item in recommend(client, max_total_minutes=10)["items"]] == [quick["id"]]
     assert len(recommend(client, ph_region="Bicolano", available_equipment=["pot"])["items"]) == 1
     assert recommend(client, ph_region="Bicolano", available_equipment=[])["items"] == []
@@ -68,9 +75,13 @@ def test_recommendation_filters_and_unknown_quantities(client, catalog):
 
 
 def test_missing_allergy_profile_excludes_candidates_and_foreign_diners_rejected_even_when_empty(client, catalog):
-    create(client, ingredients=[dict(display_name="garlic", amount=1, unit="g")])
+    recipe = create(client, title="Garlic rice", ingredients=[dict(display_name="garlic", amount=1, unit="g")])
     result = recommend(client)
     assert result["items"] == [] and result["excluded_review_required"] == 1
+    candidate = next(item for item in result["excluded_candidates"] if item["recipe_id"] == recipe["id"])
+    assert candidate["title"] == "Garlic rice"
+    assert candidate["status"] == "review_required"
+    assert "allergy_information_not_provided" in candidate["reasons"]
     denied = client.post("/api/v1/recipes/recommendations", json=dict(query="no matches", diner_user_ids=[999999]))
     assert denied.status_code == 403
 

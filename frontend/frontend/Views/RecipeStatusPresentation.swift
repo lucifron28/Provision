@@ -67,6 +67,20 @@ public struct RecipeStatusPresentation: Sendable {
                                      explanation: "The server returned an unrecognized availability result.")
         }
     }
+
+    public static func excludedCandidate(_ status: String) -> RecipeStatusPresentation {
+        switch status {
+        case "blocked":
+            RecipeStatusPresentation(title: "Blocked for safety", systemImage: "xmark.shield.fill", tone: .blocked,
+                                     explanation: "The server found a confirmed conflict. Do not cook this recipe.")
+        case "unknown_quantities":
+            RecipeStatusPresentation(title: "Unknown quantities", systemImage: "questionmark.circle.fill", tone: .neutral,
+                                     explanation: "The server could not compare one or more required quantities.")
+        default:
+            RecipeStatusPresentation(title: "Needs safety review", systemImage: "exclamationmark.shield.fill", tone: .warning,
+                                     explanation: "The server needs more allergy, ingredient, or label information.")
+        }
+    }
 }
 
 struct StatusPill: View {

@@ -10,11 +10,29 @@ from app.models.household import HouseholdMembership
 from app.models.recipe import Recipe
 from app.models.user import User
 from app.schemas.recipe import RecipeEvaluationInput
-from app.schemas.recommendations import RecommendationRead, RecipeRecommendation
+from app.schemas.recommendations import ExcludedRecipeCandidate, RecommendationRead, RecipeRecommendation
 from app.services.preferences import read_profile
 from app.services.ingredient_matching import resolve_ingredient
 from app.services.recipes import evaluate_recipe, read_recipe
 from app.services.recipe_sources import recipe_source_context
+
+
+def _excluded_candidate(recipe, result, status):
+    unknown_lines = [line for line in result.availability.requirements
+        if line.required and line.status == "unknown"]
+    reasons = set(result.reasons)
+    reasons.update(reason for line in unknown_lines for reason in line.unknown_reasons)
+    unknown_ingredients = {
+        line.canonical_name or (line.display_names[0] if line.display_names else "Unknown ingredient")
+        for line in unknown_lines
+    }
+    return ExcludedRecipeCandidate(
+        recipe_id=recipe.id,
+        title=recipe.title,
+        status=status,
+        reasons=sorted(reasons),
+        unknown_ingredients=sorted(unknown_ingredients),
+    )
 
 
 def recommend_recipes(db, household_id, actor_id, request):
@@ -45,6 +63,7 @@ def recommend_recipes(db, household_id, actor_id, request):
     has_more = len(rows) > request.candidate_limit
     evaluated, blocked, review, unknown = 0, 0, 0, 0
     ranked = []
+    excluded_candidates = []
     today = household_today()
     for row in rows[:request.candidate_limit]:
         recipe = read_recipe(db, row)
@@ -62,13 +81,17 @@ def recommend_recipes(db, household_id, actor_id, request):
         evaluated += 1
         if result.decision == "blocked":
             blocked += 1
+            excluded_candidates.append(_excluded_candidate(recipe, result, "blocked"))
             continue
         if result.decision != "eligible":
             review += 1
+            excluded_candidates.append(_excluded_candidate(recipe, result, "review_required"))
             continue
         required = [line for line in result.availability.requirements if line.required]
-        if any(line.status == "unknown" for line in required):
+        unknown_lines = [line for line in required if line.status == "unknown"]
+        if unknown_lines:
             unknown += 1
+            excluded_candidates.append(_excluded_candidate(recipe, result, "unknown_quantities"))
             continue
         missing = sum(1 for line in required if line.shortfall and line.shortfall > 0)
         if request.mode == "cook_now" and result.availability.overall_status != "full":
@@ -93,4 +116,5 @@ def recommend_recipes(db, household_id, actor_id, request):
             preference_match=preference_match, source_reference=source_reference)))
     ranked.sort(key=lambda item: item[0])
     return RecommendationRead(items=[item for _, item in ranked[:request.limit]], candidates_evaluated=evaluated,
-        has_more_candidates=has_more, excluded_blocked=blocked, excluded_review_required=review, excluded_unknown_quantities=unknown)
+        has_more_candidates=has_more, excluded_blocked=blocked, excluded_review_required=review,
+        excluded_unknown_quantities=unknown, excluded_candidates=excluded_candidates)

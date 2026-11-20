@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 
 
 class UserCreate(BaseModel):
@@ -41,3 +41,17 @@ class TokenResponse(BaseModel):
     """Schema for returning JWT access token."""
     access_token: str
     token_type: str = "bearer"
+
+
+class StagingFixtureCleanupRead(BaseModel):
+    deleted_count: int = Field(ge=0)
+    skipped_count: int = Field(ge=0)
+    skipped_user_ids: list[int] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def skipped_count_matches_identifiers(self):
+        if self.skipped_count != len(self.skipped_user_ids):
+            raise ValueError("Skipped fixture count must match reported user identifiers")
+        if len(self.skipped_user_ids) != len(set(self.skipped_user_ids)):
+            raise ValueError("Skipped fixture user identifiers must be unique")
+        return self

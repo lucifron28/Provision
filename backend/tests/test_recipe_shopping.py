@@ -284,6 +284,77 @@ def test_preview_optional_filter_uses_original_recipe_indexes(db, auth_household
     assert Decimal(with_optional.json()["lines"][0]["required_quantity"]) == Decimal("15")
 
 
+def test_preview_applies_only_recipe_listed_substitutions_to_safety_and_shopping(db, auth_household, auth_user):
+    ready_profiles(db, auth_household, auth_user)
+    garlic = setup_ingredient(db)
+    ginger = db.scalar(select(Ingredient).where(Ingredient.normalized_name == "ginger"))
+    assert ginger is not None
+    payload = recipe_payload(garlic.id, amount=10, unit="g")
+    payload["ingredients"][0]["substitution_options"] = [
+        dict(ingredient_id=ginger.id, amount="7", unit="g")
+    ]
+    recipe = write_recipe(db, auth_household.id, auth_user.id, RecipeWrite(**payload))
+    request = {
+        **preview_request(recipe),
+        "substitutions": [
+            {
+                "requirement_index": 0,
+                "replacement": {
+                    "ingredient_id": ginger.id,
+                    "amount": "7",
+                    "unit": "g",
+                    "required": True,
+                },
+            }
+        ],
+    }
+
+    with local_client(db, auth_user) as client:
+        response = client.post("/recipe-shopping/preview", json=request)
+
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["substitutions"][0]["replacement"]["ingredient_id"] == ginger.id
+    assert result["safety"]["ingredients"][0]["ingredient_id"] == ginger.id
+    assert len(result["lines"]) == 1
+    line = result["lines"][0]
+    assert line["ingredient_id"] == ginger.id
+    assert Decimal(line["required_quantity"]) == Decimal("7")
+    assert line["canonical_name"] == "ginger"
+
+
+def test_preview_rejects_substitution_not_stored_on_recipe_revision(db, auth_household, auth_user):
+    ready_profiles(db, auth_household, auth_user)
+    garlic = setup_ingredient(db)
+    ginger = db.scalar(select(Ingredient).where(Ingredient.normalized_name == "ginger"))
+    assert ginger is not None
+    payload = recipe_payload(garlic.id)
+    payload["ingredients"][0]["substitution_options"] = [
+        dict(ingredient_id=ginger.id, amount="7", unit="g")
+    ]
+    recipe = write_recipe(db, auth_household.id, auth_user.id, RecipeWrite(**payload))
+    request = {
+        **preview_request(recipe),
+        "substitutions": [
+            {
+                "requirement_index": 0,
+                "replacement": {
+                    "ingredient_id": ginger.id,
+                    "amount": "8",
+                    "unit": "g",
+                    "required": True,
+                },
+            }
+        ],
+    }
+
+    with local_client(db, auth_user) as client:
+        response = client.post("/recipe-shopping/preview", json=request)
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "SUBSTITUTION_NOT_AVAILABLE"
+
+
 def test_confirm_updates_single_pending_row_in_place_and_replays(db, auth_household, auth_user):
     ready_profiles(db, auth_household, auth_user)
     ingredient = setup_ingredient(db)

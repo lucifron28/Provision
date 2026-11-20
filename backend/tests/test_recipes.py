@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException
@@ -9,7 +10,11 @@ from sqlalchemy.orm import Session
 
 from app.models.household import Household, HouseholdMembership
 from app.models.recipe import Recipe, RecipeIngredient, RecipeRevision, SavedRecipe
+from app.models.batch import InventoryBatch
+from app.models.ingredient import ProductIngredientMapping
+from app.models.product import Product
 from app.models.user import User
+from app.core.time import household_today
 from app.core.security import create_access_token, hash_password
 from app.schemas.recipe import RecipeWrite
 from app.services.recipes import write_recipe
@@ -50,6 +55,47 @@ def test_recipe_revisions_archive_and_category_roundtrip(client, db, catalog):
     assert client.get("/api/v1/recipes/").json() == []
     assert client.get(url).json()["is_active"] is False
     assert client.get(url + "/versions/1").json()["title"] == "Garlic rice"
+
+
+def test_recipe_list_can_find_recipes_for_a_verified_unexpired_batch(client, db, catalog, auth_household):
+    recipe = create(client, title="Rice soup", ingredients=[dict(
+        display_name=catalog["rice"].canonical_name, amount=100, unit="g")])
+    product = client.post("/api/v1/products/", json={"name": "Rice", "unit": "g"}).json()
+    mapping = client.put(f"/api/v1/ingredients/products/{product['id']}/mapping", json=dict(
+        mode="DIRECT", ingredient_id=catalog["rice"].id, verified=True,
+        method="Explicit ingredient review", unknown_composition=False))
+    assert mapping.status_code == 200, mapping.text
+    batch = client.post("/api/v1/batches/", json=dict(
+        product_id=product["id"], original_quantity=500,
+        expiration_date=(household_today() + timedelta(days=2)).isoformat()))
+    assert batch.status_code == 201, batch.text
+
+    response = client.get(f"/api/v1/recipes/?inventory_batch_id={batch.json()['id']}")
+    assert [item["id"] for item in response.json()] == [recipe["id"]]
+
+    foreign = Household(name="Foreign inventory", slug="foreign-inventory-recipe-filter")
+    db.add(foreign)
+    db.flush()
+    foreign_product = Product(household_id=foreign.id, name="Foreign rice", unit="g")
+    db.add(foreign_product)
+    db.flush()
+    db.add(ProductIngredientMapping(
+        household_id=foreign.id, product_id=foreign_product.id, version=1, is_current=True,
+        mode="DIRECT", ingredient_id=catalog["rice"].id, verification_status="VERIFIED",
+        method="Explicit ingredient review", unknown_composition=False,
+        verified_at=datetime.now(timezone.utc)))
+    db.flush()
+    foreign_batch = InventoryBatch(household_id=foreign.id, product_id=foreign_product.id,
+        original_quantity=500, remaining_quantity=500,
+        expiration_date=household_today() + timedelta(days=2))
+    db.add(foreign_batch)
+    db.commit()
+    assert client.get(f"/api/v1/recipes/?inventory_batch_id={foreign_batch.id}").json() == []
+
+    response = client.patch(f"/api/v1/batches/{batch.json()['id']}", json=dict(
+        expiration_date=(household_today() - timedelta(days=1)).isoformat()))
+    assert response.status_code == 200, response.text
+    assert client.get(f"/api/v1/recipes/?inventory_batch_id={batch.json()['id']}").json() == []
 
 
 @pytest.mark.parametrize("patch", [dict(servings="NaN"), dict(title=" "), dict(instructions=[]),

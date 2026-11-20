@@ -51,7 +51,7 @@ public struct AnalyticsView: View {
                             Text("No Household Analytics Recorded")
                                 .font(.system(size: 16, weight: .bold, design: .serif))
                                 .foregroundStyle(ProvisionTheme.textPrimary)
-                            Text("Complete intake sessions or restock pantry items to begin tracking inventory valuation, cumulative spend, and waste reduction.")
+                            Text("Complete intake sessions or restock pantry items to begin tracking priced inventory, recorded spend, and waste.")
                                 .font(.system(size: 13))
                                 .foregroundStyle(ProvisionTheme.textSecondary)
                                 .multilineTextAlignment(.center)
@@ -125,7 +125,7 @@ public struct AnalyticsView: View {
     private var valuationCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("VALUATION")
+                Text("PRICED STOCK VALUE")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(ProvisionTheme.textSecondary)
                     .tracking(0.5)
@@ -140,6 +140,11 @@ public struct AnalyticsView: View {
                 .foregroundStyle(ProvisionTheme.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
+
+            Text(viewModel.valuation.valueDisclosure)
+                .font(ProvisionTypography.caption)
+                .foregroundStyle(ProvisionTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             Divider()
                 .background(ProvisionTheme.border.opacity(0.6))
@@ -172,7 +177,7 @@ public struct AnalyticsView: View {
     private var spendingCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("TOTAL SPEND")
+                Text("RECORDED SPEND")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(ProvisionTheme.textSecondary)
                     .tracking(0.5)
@@ -213,22 +218,20 @@ public struct AnalyticsView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "arrow.triangle.2.circlepath.doc.on.clipboard")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(viewModel.waste.total_financial_loss > 0 ? ProvisionTheme.redAlert : ProvisionTheme.provisionGreen)
+                        .foregroundStyle(wasteStatusColor)
                     Text("RECORDED WASTE & SPOILAGE")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(ProvisionTheme.textSecondary)
                         .tracking(0.5)
                 }
                 Spacer()
-                if viewModel.waste.total_financial_loss == 0 {
-                    Text("Zero Loss")
-                        .font(.system(size: 11, weight: .bold))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(ProvisionTheme.provisionGreenLight)
-                        .foregroundStyle(ProvisionTheme.provisionGreen)
-                        .clipShape(Capsule())
-                }
+                Text(viewModel.waste.costStatusLabel)
+                    .font(.system(size: 11, weight: .bold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(viewModel.waste.total_waste_events == 0 ? ProvisionTheme.provisionGreenLight : ProvisionTheme.amberWarning.opacity(0.16))
+                    .foregroundStyle(wasteStatusColor)
+                    .clipShape(Capsule())
             }
 
             ViewThatFits(in: .horizontal) {
@@ -236,8 +239,8 @@ public struct AnalyticsView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("₱\(formatCurrency(viewModel.waste.total_financial_loss))")
                             .font(.system(size: 26, weight: .bold, design: .serif))
-                            .foregroundStyle(viewModel.waste.total_financial_loss > 0 ? ProvisionTheme.redAlert : ProvisionTheme.provisionGreen)
-                        Text("financial loss recorded")
+                            .foregroundStyle(wasteAmountColor)
+                        Text("estimated cost")
                             .font(ProvisionTypography.caption)
                             .foregroundStyle(ProvisionTheme.textSecondary)
                     }
@@ -269,8 +272,8 @@ public struct AnalyticsView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("₱\(formatCurrency(viewModel.waste.total_financial_loss))")
                             .font(.system(size: 26, weight: .bold, design: .serif))
-                            .foregroundStyle(viewModel.waste.total_financial_loss > 0 ? ProvisionTheme.redAlert : ProvisionTheme.provisionGreen)
-                        Text("financial loss recorded")
+                            .foregroundStyle(wasteAmountColor)
+                        Text("estimated cost")
                             .font(ProvisionTypography.caption)
                             .foregroundStyle(ProvisionTheme.textSecondary)
                     }
@@ -296,9 +299,14 @@ public struct AnalyticsView: View {
                     }
                 }
             }
+
+            Text(viewModel.waste.costDisclosure)
+                .font(ProvisionTypography.caption)
+                .foregroundStyle(ProvisionTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(14)
-        .provisionCard(borderColor: viewModel.waste.total_financial_loss > 0 ? ProvisionTheme.amberWarning.opacity(0.3) : ProvisionTheme.border)
+        .provisionCard(borderColor: viewModel.waste.total_waste_events > 0 ? ProvisionTheme.amberWarning.opacity(0.3) : ProvisionTheme.border)
     }
 
     // MARK: - Decision Intelligence Card
@@ -330,7 +338,7 @@ public struct AnalyticsView: View {
                         .clipShape(Capsule())
                 }
 
-                Text("First-Expiring, First-Out rule automatically prioritizes oldest stock during consumption to eliminate household food waste.")
+                Text("First-Expiring, First-Out prioritizes batches with earlier expiry dates when stock is used, which can help reduce spoilage.")
                     .font(ProvisionTypography.footnote)
                     .foregroundStyle(ProvisionTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -345,6 +353,17 @@ public struct AnalyticsView: View {
         formatter.numberStyle = .decimal
         formatter.maximumFractionDigits = 0
         return formatter.string(from: NSNumber(value: value)) ?? "\(Int(value))"
+    }
+
+    private var wasteStatusColor: Color {
+        viewModel.waste.total_waste_events == 0 ? ProvisionTheme.provisionGreen : ProvisionTheme.amberWarning
+    }
+
+    private var wasteAmountColor: Color {
+        if viewModel.waste.total_financial_loss > 0 {
+            return ProvisionTheme.redAlert
+        }
+        return viewModel.waste.total_waste_events > 0 ? ProvisionTheme.amberWarning : ProvisionTheme.provisionGreen
     }
 }
 

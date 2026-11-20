@@ -30,18 +30,24 @@ public final class RecipeShoppingReviewViewModel: ObservableObject {
 
     private let recipe: HouseholdRecipe
     private let scope: HouseholdScope
+    private let substitutions: [RecipeSubstitution]
     private let service: any CookWithPipWorkflowService
     private let pendingStore: any PendingRecipeShoppingStore
     private var expirationTask: Task<Void, Never>?
 
     public init(recipe: HouseholdRecipe, scope: HouseholdScope,
                 service: (any CookWithPipWorkflowService)? = nil,
-                pendingStore: (any PendingRecipeShoppingStore)? = nil) {
+                pendingStore: (any PendingRecipeShoppingStore)? = nil,
+                substitutions: [RecipeSubstitution] = [],
+                initialServings: ExactQuantity? = nil,
+                includeOptional: Bool = false) {
         self.recipe = recipe
         self.scope = scope
+        self.substitutions = substitutions
         self.service = service ?? APIClient.shared
         self.pendingStore = pendingStore ?? KeychainStore.shared
-        servingsText = NSDecimalNumber(decimal: recipe.servings.value).stringValue
+        servingsText = NSDecimalNumber(decimal: (initialServings ?? recipe.servings).value).stringValue
+        self.includeOptional = includeOptional
     }
 
     public var isPreviewCurrent: Bool {
@@ -149,13 +155,15 @@ public final class RecipeShoppingReviewViewModel: ObservableObject {
         do {
             let request = RecipeShoppingPreviewRequest(
                 recipeID: recipe.id, revision: recipe.revision,
-                servings: ExactQuantity(servings), includeOptional: includeOptional
+                servings: ExactQuantity(servings), includeOptional: includeOptional,
+                substitutions: substitutions
             )
             let response = try await service.previewRecipeShopping(request, scope: scope)
             guard response.recipe_id == recipe.id,
                   response.recipe_revision == recipe.revision,
                   response.servings.value == servings,
-                  response.include_optional == includeOptional else {
+                  response.include_optional == includeOptional,
+                  response.substitutions == substitutions else {
                 throw APIError.invalidResponse(502, "Shopping preview did not match the requested recipe version")
             }
             expirationTask?.cancel()

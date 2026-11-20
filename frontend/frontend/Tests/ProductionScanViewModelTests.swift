@@ -25,6 +25,12 @@ public struct ScanViewModelProductionTests {
 
     public static func runAllTests() async throws {
         print("=== RUNNING PROVISION PRODUCTION SCANVIEWMODEL TESTS ===")
+        try testMeasuredQuantityAndCountNormalization()
+        try testApplyStorageLocationToAllItemsInvalidatesChangedItems()
+        try testReceiptMetadataLinesAreFiltered()
+        try testGeneratedBarcodesStayInternal()
+        try testManualBarcodeLookupAcceptsFromEntrySheet()
+        try testManualBarcodeLookupPreservesOtherSuspensions()
         try testBoundedDecrementDoesNotDeleteItem()
         try testExplicitItemRemoval()
         try testConfirmationInvalidationOnAllMutations()
@@ -109,6 +115,176 @@ public struct ScanViewModelProductionTests {
         print("[Test 25] Explicit pause resumes without clearing unrelated suspensions...")
         try await testUserPauseResumesIndependently()
         print("=== ALL PROVISION PRODUCTION TESTS PASSED SUCCESSFULLY ===")
+    }
+
+    public static func testMeasuredQuantityAndCountNormalization() throws {
+        let vm = ScanViewModel(isPreview: true)
+        let measured = ScannedIntakeItem(
+            name: "Fresh Kangkong", barcode: "RCPT-kangkong-1", quantity: 1,
+            unit: "kg", status: .confirmed, productId: 15, storageLocationId: 1, isConfirmed: true
+        )
+        vm.scannedItems = [measured]
+        vm.updateItemQuantity(id: measured.id, quantity: 0.5)
+        try assertEquals(vm.scannedItems[0].quantity, 0.5, "Measured units must accept positive decimals")
+        try assertTrue(!vm.scannedItems[0].isConfirmed, "Changing a measured quantity must invalidate confirmation")
+        vm.updateItemQuantity(id: measured.id, quantity: 0)
+        try assertEquals(vm.scannedItems[0].quantity, 0.5, "Zero must not replace a positive pantry quantity")
+
+        let count = ScannedIntakeItem(
+            name: "Century Tuna", barcode: "4800016644818", quantity: 2,
+            unit: "cans", productId: 1, storageLocationId: 1
+        )
+        vm.scannedItems = [count]
+        vm.updateItemQuantity(id: count.id, quantity: 1.5)
+        try assertEquals(vm.scannedItems[0].quantity, 2, "Count units must remain whole numbers")
+        vm.updateItemQuantity(id: count.id, quantity: 0.2)
+        try assertEquals(vm.scannedItems[0].quantity, 1, "Count units must retain a minimum of one")
+    }
+
+    public static func testApplyStorageLocationToAllItemsInvalidatesChangedItems() throws {
+        let vm = ScanViewModel(isPreview: true)
+        vm.availableLocations = PreviewData.locations
+        let first = ScannedIntakeItem(
+            name: "Century Tuna", barcode: "4800016644818", quantity: 2,
+            unit: "cans", status: .confirmed, productId: 1, storageLocationId: 1, isConfirmed: true
+        )
+        let second = ScannedIntakeItem(
+            name: "Magnolia Fresh Milk", barcode: "4800110041117", quantity: 1,
+            unit: "L", status: .confirmed, productId: 5, storageLocationId: 4, isConfirmed: true
+        )
+        vm.scannedItems = [first, second]
+
+        vm.applyStorageLocationToAllItems(1, from: first.id)
+
+        try assertEquals(vm.scannedItems.map(\.storageLocationId), [1, 1], "The selected location must apply to each item")
+        try assertTrue(vm.scannedItems[0].isConfirmed, "An unchanged item keeps its confirmation")
+        try assertTrue(!vm.scannedItems[1].isConfirmed, "An overwritten location requires fresh confirmation")
+        try assertEquals(vm.scannedItems[1].status, .recognized, "An edited confirmed item returns to reviewable state")
+
+        vm.applyStorageLocationToAllItems(9999, from: first.id)
+        try assertEquals(vm.scannedItems.map(\.storageLocationId), [1, 1], "Unknown locations must not be applied")
+    }
+
+    public static func testReceiptMetadataLinesAreFiltered() throws {
+        let service = ReceiptOCRService()
+        let lines = service.parseReceiptLines([
+            "SM SUPERMARKET MEGAMALL",
+            "2026-11-19 10:35 AM",
+            "CARD PAYMENT 355.00",
+            "APPROVAL CODE 829104",
+            "TOTAL AMOUNT 355.00",
+            "355.00",
+            "GARDENIA CLASSIC WHITE BREAD 82.00",
+            "DATU PUTI VINEGAR BOTTLE 1L 48.00"
+        ], catalog: PreviewData.products)
+
+        try assertEquals(lines.count, 2, "Receipt headers, payment metadata, dates, and totals must be excluded")
+        try assertEquals(lines.map(\.parsedName), [
+            "Gardenia Classic White Bread",
+            "Datu Puti White Vinegar"
+        ], "Receipt matching must resolve the vinegar line to vinegar, not a same-brand product")
+        try assertEquals(
+            lines[1].matchedProduct?.id,
+            PreviewData.datuPutiVinegar.id,
+            "A Datu Puti vinegar receipt line must not be linked to Datu Puti soy sauce"
+        )
+        let (brandOnlyMatch, _) = service.findBestCatalogMatch(name: "Datu Puti", catalog: PreviewData.products)
+        try assertEquals(brandOnlyMatch?.id, nil, "A brand-only line must stay unresolved until the product is identified")
+
+        let receipt = service.parseReceiptLines([
+            "BAYANI FRESH MART",
+            "GROCERIES AND FRESH PRODUCE",
+            "QUEZON CITY, PHILIPPINES",
+            "DATE: 2026-11-19  TIME: 18:40",
+            "POS: 02  TXN: 261119-0917",
+            "ITEM DESCRIPTION",
+            "KANGKONG FRESH 500G 35.00",
+            "PORK KASIM 500G 195.00",
+            "CENTURY TUNA FLAKES OIL 180G 2 @ 40.50",
+            "ITEMS PURCHASED: 10",
+            "SUBTOTAL: 632.00",
+            "TOTAL PHP: 632.00",
+            "CASH: 700.00",
+            "CHANGE: 68.00",
+            "THANK YOU FOR SHOPPING!"
+        ], catalog: [PreviewData.freshKangkong, PreviewData.porkShoulder, PreviewData.centuryTuna])
+
+        try assertEquals(receipt.count, 3, "Store, location, transaction, column header, and payment lines are not groceries")
+        try assertEquals(service.detectStoreName(in: ["BAYANI FRESH MART", "ITEM DESCRIPTION"]), "BAYANI FRESH MART", "The receipt store is retained for the intake session")
+        let kangkong = receipt.first(where: { $0.rawText.contains("KANGKONG") })
+        try assertEquals(kangkong?.quantity, 0.5, "A 500 g produce line is stored as 0.5 kg")
+        try assertEquals(kangkong?.unitPrice, 70, "The per-kilogram price preserves the receipt's ₱35 line total")
+        try assertEquals(kangkong?.lineTotal, 35, "Converted quantity and price retain the source line total")
+
+        let pork = receipt.first(where: { $0.rawText.contains("PORK KASIM") })
+        try assertEquals(pork?.confidence, .uncertain, "A pork-cut candidate remains subject to product review")
+        try assertEquals(pork?.quantity, 0.5, "A 500 g pork line is stored as 0.5 kg while awaiting identity review")
+        try assertEquals(pork?.unitPrice, 390, "The normalized pork price preserves the receipt line total")
+
+        let tuna = receipt.first(where: { $0.rawText.contains("CENTURY TUNA") })
+        try assertEquals(tuna?.quantity, 2, "A 2-can line remains a count quantity despite its 180 g package size")
+        try assertEquals(tuna?.unitPrice, 40.5, "The tuna price remains per can")
+        try assertEquals(tuna?.lineTotal, 81, "Two tuna cans preserve the ₱81 receipt line total")
+
+        let splitColumnRows = ReceiptOCRService.assembleOCRRows([
+            ReceiptOCRTextObservation(text: "KANGKONG FRESH 500G", minX: 0.10, minY: 0.75, maxX: 0.55, maxY: 0.77),
+            ReceiptOCRTextObservation(text: "35.00", minX: 0.70, minY: 0.751, maxX: 0.80, maxY: 0.771),
+            ReceiptOCRTextObservation(text: "SUBTOTAL:", minX: 0.10, minY: 0.25, maxX: 0.34, maxY: 0.27),
+            ReceiptOCRTextObservation(text: "632.00", minX: 0.70, minY: 0.251, maxX: 0.81, maxY: 0.271),
+            ReceiptOCRTextObservation(text: "TOTAL PHP:", minX: 0.10, minY: 0.20, maxX: 0.36, maxY: 0.22),
+            ReceiptOCRTextObservation(text: "632.00", minX: 0.70, minY: 0.201, maxX: 0.81, maxY: 0.221),
+            ReceiptOCRTextObservation(text: "CASH:", minX: 0.10, minY: 0.15, maxX: 0.25, maxY: 0.17),
+            ReceiptOCRTextObservation(text: "700.00", minX: 0.70, minY: 0.151, maxX: 0.81, maxY: 0.171),
+            ReceiptOCRTextObservation(text: "CHANGE:", minX: 0.10, minY: 0.10, maxX: 0.29, maxY: 0.12),
+            ReceiptOCRTextObservation(text: "68.00", minX: 0.70, minY: 0.101, maxX: 0.80, maxY: 0.121)
+        ])
+        let splitColumnReceipt = service.parseReceiptLines(splitColumnRows, catalog: [])
+        try assertEquals(splitColumnReceipt.count, 1, "Same-row price columns combine while subtotal and payment rows stay excluded")
+        try assertEquals(splitColumnReceipt[0].quantity, 0.5, "The split-column receipt keeps the 500 g package quantity")
+        try assertEquals(splitColumnReceipt[0].unitPrice, 70, "The split-column line total normalizes to a per-kilogram price")
+        try assertEquals(splitColumnReceipt[0].lineTotal, 35, "Grouping a price column preserves the printed line total")
+    }
+
+    public static func testGeneratedBarcodesStayInternal() throws {
+        try assertEquals(
+            ScannedIntakeItem.retailBarcode(from: "RCPT-local-fresh-mangoes-123"), nil,
+            "Receipt line identifiers must not be saved as retail barcodes"
+        )
+        try assertEquals(
+            ScannedIntakeItem.retailBarcode(from: "MANUAL-12345678-ABCD"), nil,
+            "Generated manual intake identifiers must not be saved as retail barcodes"
+        )
+        try assertEquals(
+            ScannedIntakeItem.retailBarcode(from: "4800016644818"), "4800016644818",
+            "A real product barcode must remain available for catalog lookup"
+        )
+        let receiptItem = ScannedIntakeItem(name: "Fresh Mangoes", barcode: "RCPT-fresh-mangoes-123")
+        try assertEquals(receiptItem.displayableBarcode, nil, "Generated receipt IDs must stay out of the review screen")
+    }
+
+    public static func testManualBarcodeLookupAcceptsFromEntrySheet() throws {
+        let vm = ScanViewModel(isPreview: true)
+        vm.scannedItems.removeAll()
+        vm.suspendScanning(for: .manualEntrySheet)
+
+        let accepted = vm.lookupManuallyEnteredBarcode("4800016644818")
+
+        try assertTrue(accepted, "A manual lookup should enter the regular barcode resolution flow")
+        try assertTrue(!vm.activeSuspensions.contains(.manualEntrySheet), "Accepting a manual lookup releases its own sheet suspension")
+        try assertTrue(vm.activeSuspensions.isEmpty, "The lookup must not clear unrelated suspensions")
+        try assertEquals(vm.scannerState, .processing("4800016644818"), "Manual entry must use the normal single-scan state machine")
+    }
+
+    public static func testManualBarcodeLookupPreservesOtherSuspensions() throws {
+        let vm = ScanViewModel(isPreview: true)
+        vm.suspendScanning(for: .manualEntrySheet)
+        vm.suspendScanning(for: .receiptMode)
+
+        let accepted = vm.lookupManuallyEnteredBarcode("4800016644818")
+
+        try assertTrue(!accepted, "A manual lookup must not run while another scanner suspension is active")
+        try assertTrue(vm.activeSuspensions.contains(.manualEntrySheet), "A rejected lookup keeps its sheet suspension")
+        try assertTrue(vm.activeSuspensions.contains(.receiptMode), "A rejected lookup preserves the independent receipt suspension")
     }
 
     // 1. Verify quantity stepper stops at 1.0 and NEVER deletes the item

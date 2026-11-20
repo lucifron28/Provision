@@ -1,27 +1,43 @@
 import SwiftUI
 
+private func cuisineRegionLine(_ cuisine: String, regions: [String], missingLabel: String) -> String {
+    let listedRegions = regions.filter { $0 != "region_unknown" }
+    guard !listedRegions.isEmpty else { return "\(cuisine) · \(missingLabel)" }
+    let distinctRegions = listedRegions.filter { $0.localizedCaseInsensitiveCompare(cuisine) != .orderedSame }
+    guard !distinctRegions.isEmpty else { return cuisine }
+    return "\(cuisine) · \(distinctRegions.joined(separator: ", "))"
+}
+
 public struct CookWithPipView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @StateObject private var viewModel: CookWithPipViewModel
     private let scope: HouseholdScope
     private let service: any CookWithPipService
+    private let chatService: any PipChatService
     private let workflowService: any CookWithPipWorkflowService
     private let pendingStore: any PendingRecipeShoppingStore
     private let onShoppingConfirmed: () async -> Void
     private let onNavigateToShopping: () -> Void
+    @State private var selectedRecipeID: Int?
 
     public init(scope: HouseholdScope, service: any CookWithPipService = APIClient.shared,
+                chatService: any PipChatService = APIClient.shared,
                 workflowService: any CookWithPipWorkflowService = APIClient.shared,
                 pendingStore: any PendingRecipeShoppingStore = KeychainStore.shared,
                 onShoppingConfirmed: @escaping () async -> Void = {},
-                onNavigateToShopping: @escaping () -> Void = {}) {
+                onNavigateToShopping: @escaping () -> Void = {},
+                initialMode: CookWithPipMode = .cookNow, inventoryBatchID: Int? = nil,
+                ingredientFilterLabel: String? = nil) {
         self.scope = scope
         self.service = service
+        self.chatService = chatService
         self.workflowService = workflowService
         self.pendingStore = pendingStore
         self.onShoppingConfirmed = onShoppingConfirmed
         self.onNavigateToShopping = onNavigateToShopping
-        _viewModel = StateObject(wrappedValue: CookWithPipViewModel(scope: scope, service: service))
+        _viewModel = StateObject(wrappedValue: CookWithPipViewModel(
+            scope: scope, service: service, initialMode: initialMode,
+            inventoryBatchID: inventoryBatchID, ingredientFilterLabel: ingredientFilterLabel))
     }
 
     @FocusState private var searchFieldFocused: Bool
@@ -84,6 +100,16 @@ public struct CookWithPipView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     introduction
+                    if let ingredient = viewModel.ingredientFilterLabel {
+                        Label("Stored recipes using \(ingredient)", systemImage: "leaf")
+                            .font(.headline)
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("cook-with-pip-ingredient-filter")
+                    }
+                    if !searchFieldFocused {
+                        modePicker
+                    }
                     NavigationLink {
                         CookWithPipManagementView(scope: scope, service: workflowService)
                     } label: {
@@ -93,12 +119,42 @@ public struct CookWithPipView: View {
                             .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
                     }
                     .accessibilityIdentifier("cook-with-pip-management")
-                    if !searchFieldFocused {
-                        modePicker
+                    NavigationLink {
+                        PipChatView(
+                            scope: scope,
+                            chatService: chatService,
+                            recipeService: service,
+                            workflowService: workflowService,
+                            pendingStore: pendingStore,
+                            onShoppingConfirmed: onShoppingConfirmed,
+                            onNavigateToShopping: onNavigateToShopping
+                        )
+                        .id("pip-chat-\(scope.storageKey)-household")
+                    } label: {
+                        Label("Chat with Pip", systemImage: "bubble.left.and.bubble.right")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                            .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
                     }
-
-                    if viewModel.hasExcludedCandidates && viewModel.mode != .myRecipes {
-                        excludedCandidatesNote
+                    .accessibilityIdentifier("cook-with-pip-chat-link")
+                    if viewModel.mode != .myRecipes {
+                        if !viewModel.needsReviewCandidates.isEmpty {
+                            excludedCandidatesSection(
+                                title: "Needs Review",
+                                candidates: viewModel.needsReviewCandidates,
+                                identifier: "cook-with-pip-needs-review"
+                            )
+                        }
+                        if !viewModel.blockedCandidates.isEmpty {
+                            excludedCandidatesSection(
+                                title: "Blocked for Safety",
+                                candidates: viewModel.blockedCandidates,
+                                identifier: "cook-with-pip-blocked-recipes"
+                            )
+                        }
+                        if viewModel.hasExcludedCandidates && viewModel.excludedCandidates.isEmpty {
+                            excludedCandidatesNote
+                        }
                     }
 
                     if viewModel.isLoading && !viewModel.hasLoadedOnce {
@@ -107,11 +163,19 @@ public struct CookWithPipView: View {
                               viewModel.currentRecipes.isEmpty && viewModel.currentRecommendations.isEmpty {
                         errorState(error)
                     } else if viewModel.currentRecipes.isEmpty && viewModel.currentRecommendations.isEmpty {
-                        emptyState
+                        if !viewModel.hasExcludedCandidates {
+                            emptyState
+                        }
                         if viewModel.hasMore {
                             loadMoreControl
                         }
                     } else {
+                        if viewModel.mode != .myRecipes {
+                            Text(viewModel.mode == .almostThere ? "Missing Ingredients" : "Ready to Cook")
+                                .font(ProvisionTypography.sectionSerif)
+                                .foregroundStyle(ProvisionTheme.textPrimary)
+                                .accessibilityIdentifier("cook-with-pip-recommendation-heading")
+                        }
                         recipeList
                         if let error = viewModel.errorMessage {
                             inlineErrorState(error)
@@ -139,6 +203,13 @@ public struct CookWithPipView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(ProvisionTheme.background, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
+        .navigationDestination(item: $selectedRecipeID) { recipeID in
+            RecipeDetailView(recipeID: recipeID, scope: scope, service: service,
+                             chatService: chatService, workflowService: workflowService,
+                             pendingStore: pendingStore,
+                             onShoppingConfirmed: onShoppingConfirmed,
+                             onNavigateToShopping: onNavigateToShopping)
+        }
         .task {
             if !viewModel.hasLoadedOnce {
                 await viewModel.load(reset: true)
@@ -157,8 +228,8 @@ public struct CookWithPipView: View {
             Image("pip_chef")
                 .resizable()
                 .scaledToFit()
-                .frame(width: 68, height: 68)
-                .padding(8)
+                .frame(width: 54, height: 54)
+                .padding(6)
                 .background(ProvisionTheme.surface, in: Circle())
                 .overlay(Circle().stroke(ProvisionTheme.border, lineWidth: 1))
                 .accessibilityHidden(true)
@@ -168,7 +239,7 @@ public struct CookWithPipView: View {
                     .font(ProvisionTypography.sectionSerif)
                     .foregroundStyle(ProvisionTheme.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("Cook Now and Almost There use the server's current stock and safety evaluation. No live internet search.")
+                Text("Browse household recipes with current pantry and food-safety checks.")
                     .font(.subheadline)
                     .foregroundStyle(ProvisionTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -236,53 +307,136 @@ public struct CookWithPipView: View {
         .accessibilityIdentifier("cook-with-pip-excluded-candidates")
     }
 
+    private func excludedCandidatesSection(title: String, candidates: [ExcludedRecipeCandidate],
+                                            identifier: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(ProvisionTypography.sectionSerif)
+                .foregroundStyle(ProvisionTheme.textPrimary)
+                .accessibilityIdentifier(identifier)
+            ForEach(candidates) { candidate in
+                Button {
+                    selectedRecipeID = candidate.recipe_id
+                } label: {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .top, spacing: 8) {
+                            Text(candidate.title)
+                                .font(.headline)
+                                .foregroundStyle(ProvisionTheme.textPrimary)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 4)
+                            StatusPill(presentation: .excludedCandidate(candidate.status))
+                        }
+                        Text(excludedCandidateExplanation(candidate))
+                            .font(.subheadline)
+                            .foregroundStyle(ProvisionTheme.textSecondary)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("cook-with-pip-review-explanation-\(candidate.recipe_id)")
+                        Label("Open recipe review", systemImage: "arrow.right.circle")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+                    .background(ProvisionTheme.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(ProvisionTheme.border, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("cook-with-pip-review-recipe-\(candidate.recipe_id)")
+            }
+        }
+    }
+
+    private func excludedCandidateExplanation(_ candidate: ExcludedRecipeCandidate) -> String {
+        if candidate.status == "blocked" {
+            return "A household allergy or safety restriction conflicts with this recipe. Do not cook it unless the recorded information is corrected."
+        }
+        if candidate.status == "unknown_quantities" {
+            let ingredients = candidate.unknown_ingredients.joined(separator: ", ")
+            let subject = ingredients.isEmpty ? "One or more required ingredient quantities" : ingredients
+            return "The server could not compare the quantity for \(subject). Review the ingredient and unit in the recipe."
+        }
+        var actions: [String] = []
+        if candidate.reasons.contains("allergy_information_not_provided") {
+            actions.append("Add allergy information for every household diner in Preferences.")
+        }
+        if candidate.reasons.contains("product_allergen_label_not_reviewed") {
+            actions.append("Review the package label in Preferences and product labels.")
+        }
+        let ingredientMappingNeedsReview = candidate.reasons.contains(where: {
+            ["ingredient_mapping_unknown", "ingredient_unresolved_or_ambiguous", "ambiguous_ingredient_name",
+             "ingredient_name_not_found", "ingredient_reference_missing"].contains($0)
+        })
+        if ingredientMappingNeedsReview {
+            let ingredients = candidate.unknown_ingredients.joined(separator: ", ")
+            let subject = ingredients.isEmpty ? "the unresolved ingredient" : ingredients
+            let explanation = "Provision cannot match \(subject) to an ingredient in its catalog, " +
+                "so it cannot check pantry stock or ingredient-based safety. " +
+                "This recipe stays under review until the match is corrected."
+            actions.append(explanation)
+        }
+        if candidate.reasons.contains("recipe_content_permission_not_declared") ||
+            candidate.reasons.contains("recipe_source_unavailable") {
+            actions.append("Review the recipe's source and content permission.")
+        }
+        if !candidate.unknown_ingredients.isEmpty && !ingredientMappingNeedsReview {
+            actions.append("Check quantities and units for \(candidate.unknown_ingredients.joined(separator: ", ")).")
+        }
+        if !actions.isEmpty {
+            return actions.joined(separator: " ") + " Recheck this recipe before cooking."
+        }
+        return "Open the recipe to review its current safety details. It stays unavailable until the required checks pass."
+    }
+
     private var excludedCandidateSummary: String {
         var counts: [String] = []
         if viewModel.excludedBlocked > 0 { counts.append("\(viewModel.excludedBlocked) blocked") }
         if viewModel.excludedReviewRequired > 0 { counts.append("\(viewModel.excludedReviewRequired) needing review") }
         if viewModel.excludedUnknownQuantities > 0 { counts.append("\(viewModel.excludedUnknownQuantities) with unknown quantities") }
-        return "The server excluded " + counts.joined(separator: ", ") + " under its current checks."
+        return "Not shown: " + counts.joined(separator: ", ") + " under the current food-safety and ingredient checks."
     }
 
     private var recipeList: some View {
         LazyVStack(spacing: 12) {
             if viewModel.mode == .myRecipes {
                 ForEach(viewModel.recipes) { recipe in
-                    NavigationLink {
-                        RecipeDetailView(recipeID: recipe.id, scope: scope, service: service,
-                                         workflowService: workflowService,
-                                         pendingStore: pendingStore,
-                                         onShoppingConfirmed: onShoppingConfirmed,
-                                         onNavigateToShopping: onNavigateToShopping)
+                    Button {
+                        selectedRecipeID = recipe.id
                     } label: {
                         HouseholdRecipeCard(recipe: recipe)
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("recipe-card-\(recipe.id)")
+                    .accessibilityValue("Household recipe")
                 }
             } else {
                 ForEach(viewModel.recommendations, id: \.recipe.id) { recommendation in
-                    NavigationLink {
-                        RecipeDetailView(recipeID: recommendation.recipe.id, scope: scope, service: service,
-                                         workflowService: workflowService,
-                                         pendingStore: pendingStore,
-                                         onShoppingConfirmed: onShoppingConfirmed,
-                                         onNavigateToShopping: onNavigateToShopping)
+                    Button {
+                        selectedRecipeID = recommendation.recipe.id
                     } label: {
                         RecommendationRecipeCard(recommendation: recommendation)
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("recipe-card-\(recommendation.recipe.id)")
+                    .accessibilityValue("Recommendation")
                 }
             }
         }
+        // A recipe ID can appear in both the household and recommendation collections.
+        // Reset row identity when changing modes so SwiftUI cannot reuse a stale card.
+        .id(viewModel.mode)
     }
 
     private var emptyState: some View {
         VStack(spacing: 10) {
-            Image(systemName: viewModel.mode == .cookNow ? "basket" : "book.closed")
-                .font(.system(size: 30, weight: .regular))
-                .foregroundStyle(ProvisionTheme.provisionGreen)
+            Image("pip_chef")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 56, height: 56)
                 .accessibilityHidden(true)
             Text(emptyTitle)
                 .font(ProvisionTypography.sectionSerif)
@@ -301,6 +455,9 @@ public struct CookWithPipView: View {
     }
 
     private var emptyTitle: String {
+        if let ingredient = viewModel.ingredientFilterLabel {
+            return "No stored recipes use \(ingredient) yet"
+        }
         if !viewModel.normalizedQuery.isEmpty { return "No matching household recipes" }
         return switch viewModel.mode {
         case .cookNow: "No recipes are ready to cook"
@@ -310,16 +467,19 @@ public struct CookWithPipView: View {
     }
 
     private var emptyMessage: String {
+        if viewModel.ingredientFilterLabel != nil {
+            return "Recipes appear here when this ingredient is included in a saved recipe and matched to your pantry."
+        }
         if !viewModel.normalizedQuery.isEmpty {
-            return "Try another title search. This screen only searches recipes stored in your household."
+            return "Try another title. This search looks through recipes saved for your household."
         }
         switch viewModel.mode {
         case .cookNow:
-            return "The server found no stored recipe with all required quantities currently available."
+            return "No saved recipe has all its required quantities in the pantry right now."
         case .almostThere:
-            return "The server found no eligible stored recipe with a small, known ingredient shortage."
+            return "No saved recipe is close enough to cook with a small, known ingredient shortage."
         case .myRecipes:
-            return "Recipes entered for this household will appear here. This is not an internet recipe search."
+            return "Recipes saved for your household will appear here."
         }
     }
 
@@ -450,9 +610,7 @@ private struct RecommendationRecipeCard: View {
     }
 
     private var cuisineLine: String {
-        let regions = recipe.ph_regions.filter { $0 != "region_unknown" }
-        let regionText = regions.isEmpty ? "Region not specified" : regions.joined(separator: ", ")
-        return "\(recipe.cuisine) · \(regionText)"
+        cuisineRegionLine(recipe.cuisine, regions: recipe.ph_regions, missingLabel: "Region not specified")
     }
 }
 
@@ -467,7 +625,7 @@ private struct HouseholdRecipeCard: View {
                         .font(ProvisionTypography.sectionSerif)
                         .foregroundStyle(ProvisionTheme.textPrimary)
                         .multilineTextAlignment(.leading)
-                    Text("\(recipe.cuisine) · \(regionText)")
+                    Text(cuisineRegionLine(recipe.cuisine, regions: recipe.ph_regions, missingLabel: "region not specified"))
                         .font(.subheadline)
                         .foregroundStyle(ProvisionTheme.textSecondary)
                 }
@@ -491,10 +649,6 @@ private struct HouseholdRecipeCard: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var regionText: String {
-        let regions = recipe.ph_regions.filter { $0 != "region_unknown" }
-        return regions.isEmpty ? "region not specified" : regions.joined(separator: ", ")
-    }
 }
 
 #if DEBUG

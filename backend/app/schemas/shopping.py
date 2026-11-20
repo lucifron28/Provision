@@ -17,6 +17,7 @@ class ShoppingListItemBase(BaseModel):
     origin_plan_id: Optional[int] = Field(None, gt=0, description="Household plan that created this row")
     origin_plan_revision: Optional[int] = Field(None, ge=1)
     notes: Optional[str] = Field(None, description="Notes, e.g. preferred brand")
+    reconciliation_status: str = Field(default="pending")
 
 
 class ShoppingListItemCreate(BaseModel):

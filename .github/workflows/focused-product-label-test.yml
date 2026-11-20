@@ -1,0 +1,57 @@
+name: Focused product-label UI test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: focused-product-label-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  product-label-review:
+    name: Product-label review XCUITest
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show Xcode and simulator runtimes
+        run: xcodebuild -version && xcrun simctl list devices available
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Prepare focused test artifacts
+        run: mkdir -p artifacts
+      - name: Run product-label review test
+        env:
+          PROVISION_SKIP_CHAT_SCREENSHOTS: "1"
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project frontend/frontend.xcodeproj \
+            -scheme frontend \
+            -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+            -only-testing:frontendUITests/CookWithPipUITests/testProductLabelReviewScreens \
+            -resultBundlePath artifacts/product-label-review.xcresult \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- 2>&1 | tee artifacts/xcodebuild.log
+      - name: Report product-label test duration
+        if: always()
+        run: >-
+          python .github/scripts/report_xcode_test_durations.py
+          --input-log artifacts/xcodebuild.log
+          --json-output artifacts/product-label-duration.json
+          --summary "$GITHUB_STEP_SUMMARY"
+          --allow-empty
+      - name: Upload product-label test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: product-label-review-xctest
+          path: |
+            artifacts/product-label-review.xcresult
+            artifacts/product-label-duration.json
+            artifacts/xcodebuild.log
+          if-no-files-found: warn
+          compression-level: 0

@@ -84,6 +84,7 @@ private struct HouseholdTabs: View {
     @StateObject private var scanVM: ScanViewModel
     @StateObject private var analyticsVM: AnalyticsViewModel
     @State private var selectedTab = 0
+    @State private var showingHomeQuickAdd = false
 
     init(authVM: AuthViewModel, scope: HouseholdScope) {
         self.authVM = authVM
@@ -109,6 +110,10 @@ private struct HouseholdTabs: View {
                     onNavigateToShopping: {
                         selectedTab = 3
                     },
+                    onQuickAddGroceries: {
+                        selectedTab = 1
+                        showingHomeQuickAdd = true
+                    },
                     onShoppingConfirmed: {
                         await shoppingVM.refreshFromServer()
                     }
@@ -116,7 +121,7 @@ private struct HouseholdTabs: View {
             }
 
             Tab("Inventory", systemImage: "shippingbox.fill", value: 1) {
-                InventoryView(viewModel: inventoryVM)
+                InventoryView(viewModel: inventoryVM, onNavigateToScan: { selectedTab = 2 })
             }
 
             Tab("Scan", systemImage: "barcode.viewfinder", value: 2) {
@@ -133,6 +138,9 @@ private struct HouseholdTabs: View {
             }
         }
         .tint(ProvisionTheme.provisionGreen)
+        .sheet(isPresented: $showingHomeQuickAdd) {
+            AddInventoryView(viewModel: inventoryVM)
+        }
         .safeAreaInset(edge: .top) {
             if authVM.households.count > 1 {
                 Menu {

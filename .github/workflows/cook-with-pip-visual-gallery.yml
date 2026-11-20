@@ -1,86 +1,451 @@
 name: Cook with Pip visual gallery
+run-name: Cook with Pip visual gallery (${{ github.event.inputs.suite || 'full-gallery' }})
 
 on:
   workflow_dispatch:
+    inputs:
+      force:
+        description: Rerun the complete gallery even if this commit already has a successful gallery run
+        required: false
+        type: boolean
+        default: false
+      suite:
+        description: Run a focused regression suite, or the complete 58-scenario gallery
+        required: true
+        type: choice
+        options:
+          - full-gallery
+          - gallery-regressions
+          - large-text-regressions
+          - shopping-preview-regressions
+          - toggle-regressions
+          - shopping-recovery
+          - ux-workflow-regressions
+        default: full-gallery
   schedule:
     - cron: '30 6 * * 1'
 
 permissions:
+  actions: read
   contents: read
 
+concurrency:
+  group: cook-with-pip-gallery-${{ github.workflow }}-${{ github.sha }}
+  cancel-in-progress: false
+
 jobs:
+  gallery-plan:
+    name: Plan visual gallery run
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+      suite: ${{ steps.check.outputs.suite }}
+      matrix: ${{ steps.check.outputs.matrix }}
+      manifest: ${{ steps.check.outputs.manifest }}
+      only_required: ${{ steps.check.outputs.only_required }}
+      strict_names: ${{ steps.check.outputs.strict_names }}
+    steps:
+      - name: Avoid duplicate complete galleries and select the suite
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const suite = context.eventName === "workflow_dispatch"
+              ? context.payload.inputs?.suite || "full-gallery"
+              : "full-gallery";
+            const test = name => `-only-testing:frontendUITests/CookWithPipUITests/${name}`;
+            const fullGallery = [
+              {
+                shard: "shopping-recovery",
+                tests: [
+                  "testAmbiguousShoppingConfirmationSurvivesAppRelaunch",
+                  "testSafetyAndAvailabilityStatesWithLongFilipinoNames",
+                  "testHomeNavigationAndCaptureRecipeScreens",
+                  "testPurchasedGroceriesReviewRequiresExplicitDecisions",
+                ],
+              },
+              {
+                shard: "shopping-edits-and-recipes",
+                tests: [
+                  "testCookWithPipDarkModeGallery",
+                  "testLargeTextFilipinoRecipeSafetyGallery",
+                  "testCookWithPipSearchKeyboardGallery",
+                  "testExpiringKangkongFindsSinigangWithCurrentIngredientAvailability",
+                  "testShoppingReviewRequiredAndBlockedStates",
+                  "testShoppingPreviewEditsConsolidationAndExplicitConfirmation",
+                  "testShoppingPreviewShowsUnlinkedManualItems",
+                  "testSourceLookupErrorKeepsRecipeAndCanRetry",
+                  "testPreferencesAllergySettings",
+                ],
+              },
+              {
+                shard: "shopping-dark-and-chat",
+                tests: [
+                  "testShoppingPreviewDarkAndLargeTextStates",
+                  "testShoppingOfflineRetryAndStalePreviewRecovery",
+                  "testCookWithPipLoadingEmptyAndOfflineRecovery",
+                  "testSubstitutionChoicesUseStoredAmountsAndRefreshEvaluation",
+                  "testPipChatConsentControlsGallery",
+                  "testPipChatRecipeContextGallery",
+                  "testPipChatPrivacyControlsAtAccessibilitySizeInDarkMode",
+                ],
+              },
+              {
+                shard: "forms-labels-and-chat",
+                tests: [
+                  "testFormsStayReadableInDarkModeAndLargeText",
+                  "testProductLabelReviewScreens",
+                  "testInventoryQuickAddOffersScannerAndMinimalManualEntry",
+                  "testPartialInventoryDiscardUsesActualCountAndUpdatesStock",
+                  "testStaleProductLabelReviewIsShownAsStale",
+                  "testShoppingPreviewExpiredIsNotConfirmable",
+                  "testPipChatConsentConversationAndValidatedRecipeAction",
+                  "testPipChatShoppingActionOpensTheExistingReviewScreen",
+                  "testPipChatProductContextGallery",
+                  "testStagingPipChatContextAndShoppingPreviewRoutes",
+                  "testStagingLoginAndRelaunch",
+                  "testCookWithPipNeedsReviewCandidatesAreActionable",
+                ],
+              },
+            ].map(shard => ({
+              suite: "full-gallery",
+              shard: shard.shard,
+              tests: shard.tests.map(test).join(" "),
+            }));
+            const focused = (name, tests) => ({
+              suite: name,
+              shard: name,
+              tests: tests.map(test).join(" "),
+            });
+            const matrices = {
+              "full-gallery": fullGallery,
+              "gallery-regressions": [focused("gallery-regressions", [
+                "testPipChatConsentControlsGallery",
+                "testFormsStayReadableInDarkModeAndLargeText",
+                "testShoppingPreviewDarkAndLargeTextStates",
+                "testShoppingPreviewEditsConsolidationAndExplicitConfirmation",
+                "testStaleProductLabelReviewIsShownAsStale",
+                "testProductLabelReviewScreens",
+                "testCookWithPipDarkModeGallery",
+                "testLargeTextFilipinoRecipeSafetyGallery",
+                "testCookWithPipSearchKeyboardGallery",
+                "testHomeNavigationAndCaptureRecipeScreens",
+                "testInventoryQuickAddOffersScannerAndMinimalManualEntry",
+                "testPartialInventoryDiscardUsesActualCountAndUpdatesStock",
+                "testPurchasedGroceriesReviewRequiresExplicitDecisions",
+              ])],
+              "shopping-preview-regressions": [focused("shopping-preview-regressions", [
+                "testSubstitutionChoicesUseStoredAmountsAndRefreshEvaluation",
+                "testShoppingPreviewEditsConsolidationAndExplicitConfirmation",
+                "testShoppingPreviewShowsUnlinkedManualItems",
+              ])],
+              "large-text-regressions": [focused("large-text-regressions", [
+                "testLargeTextFilipinoRecipeSafetyGallery",
+                "testCookWithPipSearchKeyboardGallery",
+              ])],
+              "toggle-regressions": [focused("toggle-regressions", [
+                "testPipChatConsentControlsGallery",
+                "testShoppingPreviewEditsConsolidationAndExplicitConfirmation",
+              ])],
+              "shopping-recovery": [focused("shopping-recovery", [
+                "testShoppingOfflineRetryAndStalePreviewRecovery",
+              ])],
+              "ux-workflow-regressions": [focused("ux-workflow-regressions", [
+                "testHomeNavigationAndCaptureRecipeScreens",
+                "testExpiringKangkongFindsSinigangWithCurrentIngredientAvailability",
+                "testInventoryQuickAddOffersScannerAndMinimalManualEntry",
+                "testPipChatShoppingActionOpensTheExistingReviewScreen",
+                "testPurchasedGroceriesReviewRequiresExplicitDecisions",
+                "testShoppingReviewRequiredAndBlockedStates",
+              ])],
+            };
+            if (!matrices[suite]) throw new Error(`Unknown gallery suite: ${suite}`);
+
+            const force = context.eventName === "workflow_dispatch"
+              && context.payload.inputs?.force === "true";
+            let skip = false;
+            if (suite === "full-gallery" && !force) {
+              const { data } = await github.rest.actions.listWorkflowRuns({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: "cook-with-pip-visual-gallery.yml",
+                head_sha: context.sha,
+                per_page: 100,
+              });
+              const priorSuccess = data.workflow_runs.find(run => {
+              const isFocusedRun = [
+                "gallery-regressions",
+                "shopping-preview-regressions",
+                "large-text-regressions",
+                "toggle-regressions",
+                "shopping-recovery",
+                "ux-workflow-regressions",
+              ]
+                  .some(name => run.display_title?.includes(`(${name})`) ?? false);
+                return run.id !== context.runId
+                  && run.status === "completed"
+                  && run.conclusion === "success"
+                  && !isFocusedRun;
+              });
+              skip = Boolean(priorSuccess);
+              if (priorSuccess) core.info(`Full gallery already passed for this commit in run ${priorSuccess.id}.`);
+            }
+
+            const focusedManifest = {
+              "gallery-regressions": ".github/scripts/required_ios_gallery_regressions.json",
+              "shopping-preview-regressions": ".github/scripts/required_ios_shopping_preview_regressions.json",
+              "large-text-regressions": ".github/scripts/required_ios_large_text_regressions.json",
+              "toggle-regressions": ".github/scripts/required_ios_toggle_regressions.json",
+              "shopping-recovery": ".github/scripts/required_ios_shopping_recovery_regressions.json",
+              "ux-workflow-regressions": ".github/scripts/required_ios_ux_workflow_regressions.json",
+            };
+            core.setOutput("skip", String(skip));
+            core.setOutput("suite", suite);
+            core.setOutput("matrix", JSON.stringify({ include: matrices[suite] }));
+            core.setOutput("manifest", focusedManifest[suite] || ".github/scripts/required_ios_screenshots.json");
+            core.setOutput("only_required", String(suite !== "full-gallery"));
+            core.setOutput("strict_names", String(suite === "full-gallery"));
+
   ios-gallery:
+    name: iOS gallery (${{ matrix.shard }})
+    needs: [gallery-plan]
+    if: needs.gallery-plan.outputs.skip != 'true'
     runs-on: macos-26
-    timeout-minutes: 90
+    timeout-minutes: 45
+    environment: staging
+    env:
+      PROVISION_EXPECTED_RENDER_COMMIT: ${{ github.sha }}
+      PROVISION_STAGING_API_BASE_URL: ${{ vars.PROVISION_STAGING_API_BASE_URL }}
+      PROVISION_API_BASE_URL: ${{ vars.PROVISION_STAGING_API_BASE_URL }}
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.gallery-plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - name: Show Xcode and simulator runtimes
         run: xcodebuild -version && xcrun simctl list devices available
+      - name: Prepare the exact iPhone 17 simulator
+        run: bash .github/scripts/prepare_ios_simulator.sh
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Prepare full gallery artifact folders
-        run: mkdir -p artifacts/raw-cook-with-pip-screenshots artifacts/cook-with-pip-screenshots
-      - name: Run full iOS XCTest and screenshot gallery
+      - uses: astral-sh/setup-uv@v5
+        if: ${{ matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' }}
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+          python-version: "3.13"
+      - name: Install locked backend runtime dependencies for staging fixtures
+        if: ${{ matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' }}
+        working-directory: backend
+        run: uv sync --frozen --no-dev --no-install-project
+      - name: Verify staging serves the gallery commit
+        if: ${{ matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' }}
+        working-directory: backend
+        run: uv run --no-sync python -m scripts.staging_e2e_smoke preflight
+      - name: Create a unique synthetic household for staging screenshots
+        id: staging-fixture
+        if: ${{ matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' }}
+        working-directory: backend
+        env:
+          PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
+        run: uv run --no-sync python -m scripts.staging_e2e_smoke prepare
+      - name: Verify authenticated staging persistence and Pip Chat mock
+        if: ${{ matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' }}
+        working-directory: backend
+        env:
+          PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
+        run: uv run --no-sync python -m scripts.staging_e2e_smoke api-smoke
+      - name: Prepare gallery artifacts
+        run: mkdir -p artifacts/raw-cook-with-pip-screenshots
+      - name: Build selected gallery UI test products
+        env:
+          PROVISION_SKIP_CHAT_SCREENSHOTS: "0"
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -project frontend/frontend.xcodeproj \
+            -scheme frontend \
+            -destination "platform=iOS Simulator,id=${SIMULATOR_UDID}" \
+            ${{ matrix.tests }} \
+            -derivedDataPath artifacts/DerivedData \
+            -parallel-testing-enabled NO \
+            -showBuildTimingSummary \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- 2>&1 | tee artifacts/xcodebuild-build.log
+      - name: Recheck staging readiness before authenticated simulator tests
+        if: ${{ matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' }}
+        working-directory: backend
+        run: uv run --no-sync python -m scripts.staging_e2e_smoke preflight
+      - name: Run selected XCUITest methods without rebuilding
         id: ios-tests
+        env:
+          PROVISION_SKIP_CHAT_SCREENSHOTS: "0"
+          TEST_RUNNER_PROVISION_API_BASE_URL: ${{ matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' && env.PROVISION_API_BASE_URL || '' }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_EMAIL: ${{ matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' && env.PROVISION_STAGING_TEST_EMAIL || '' }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_PASSWORD: ${{ matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' && env.PROVISION_STAGING_TEST_PASSWORD || '' }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_HOUSEHOLD_ID: ${{ matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' && env.PROVISION_STAGING_TEST_HOUSEHOLD_ID || '' }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_PRODUCT_ID: ${{ matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' && env.PROVISION_STAGING_TEST_PRODUCT_ID || '' }}
+          TEST_RUNNER_PROVISION_STAGING_TEST_RECIPE_ID: ${{ matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' && env.PROVISION_STAGING_TEST_RECIPE_ID || '' }}
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -project frontend/frontend.xcodeproj \
+            -scheme frontend \
+            -destination "platform=iOS Simulator,id=${SIMULATOR_UDID}" \
+            ${{ matrix.tests }} \
+            -derivedDataPath artifacts/DerivedData \
+            -resultBundlePath artifacts/frontend-${{ matrix.shard }}.xcresult \
+            -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- 2>&1 | tee artifacts/xcodebuild.log
+      - name: Report individual XCTest durations
+        if: always()
         run: >-
-          xcodebuild test
-          -project frontend/frontend.xcodeproj
-          -scheme frontend
-          -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
-          -resultBundlePath artifacts/frontend.xcresult
-          CODE_SIGNING_ALLOWED=YES
-          CODE_SIGN_IDENTITY=-
-      - name: Export full simulator screenshot gallery
+          python .github/scripts/report_xcode_test_durations.py
+          --input-log artifacts/xcodebuild.log
+          --json-output "artifacts/test-durations-${{ matrix.shard }}.json"
+          --summary "$GITHUB_STEP_SUMMARY"
+          --allow-empty
+      - name: Export shard screenshots
         if: always()
         run: |
-          if [ -d artifacts/frontend.xcresult ]; then
+          result_bundle="artifacts/frontend-${{ matrix.shard }}.xcresult"
+          if [[ -d "$result_bundle" ]]; then
             xcrun xcresulttool export attachments \
-              --path artifacts/frontend.xcresult \
+              --path "$result_bundle" \
               --output-path artifacts/raw-cook-with-pip-screenshots
           else
-            echo "No xcresult bundle was produced." >&2
+            echo "No xcresult bundle was produced for shard ${{ matrix.shard }}." >&2
             exit 1
           fi
-      - name: Organize and verify all required screenshots
-        if: always()
-        run: >-
-          python .github/scripts/organize_ios_screenshots.py
-          --input artifacts/raw-cook-with-pip-screenshots
-          --output artifacts/cook-with-pip-screenshots
-          --required .github/scripts/required_ios_screenshots.json
-          --commit-sha "$GITHUB_SHA"
-          --test-outcome "$(if [[ '${{ steps.ios-tests.outcome }}' == 'success' ]]; then echo success; else echo failure; fi)"
-      - name: Package full gallery for visual review
-        if: always()
-        run: |
-          if [ -d artifacts/cook-with-pip-screenshots ]; then
-            ditto -c -k --sequesterRsrc --keepParent \
-              artifacts/cook-with-pip-screenshots \
-              artifacts/cook-with-pip-visual-gallery.zip
-          else
-            echo "Organized screenshot folder is missing." >&2
-            exit 1
-          fi
-      - name: Upload full screenshot gallery ZIP
+      - name: Upload shard screenshot attachments
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cook-with-pip-visual-gallery
+          name: cook-with-pip-gallery-raw-${{ matrix.shard }}
+          path: artifacts/raw-cook-with-pip-screenshots
+          if-no-files-found: warn
+      - name: Upload shard xcresult
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cook-with-pip-${{ matrix.suite }}-${{ matrix.shard }}-xcresult
+          path: artifacts/frontend-${{ matrix.shard }}.xcresult
+          if-no-files-found: warn
+          compression-level: 0
+      - name: Upload shard build log and test timings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cook-with-pip-${{ matrix.suite }}-${{ matrix.shard }}-durations
+          path: |
+            artifacts/test-durations-${{ matrix.shard }}.json
+            artifacts/xcodebuild-build.log
+            artifacts/xcodebuild.log
+          if-no-files-found: warn
+      - name: Remove the synthetic household used for gallery screenshots
+        if: ${{ always() && matrix.suite == 'full-gallery' && matrix.shard == 'forms-labels-and-chat' && steps.staging-fixture.outcome != 'skipped' }}
+        working-directory: backend
+        env:
+          PROVISION_STAGING_FIXTURE_TOKEN: ${{ secrets.PROVISION_STAGING_FIXTURE_TOKEN }}
+        run: uv run --no-sync python -m scripts.staging_e2e_smoke cleanup
+
+  gallery-screenshot-evidence:
+    name: Gallery screenshot evidence
+    if: ${{ always() && needs.gallery-plan.outputs.skip != 'true' }}
+    needs: [gallery-plan, ios-gallery]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install screenshot validation dependency
+        run: python -m pip install --disable-pip-version-check Pillow
+      - name: Test screenshot organizer with synthetic PNG fixtures
+        run: python -m unittest discover -s .github/scripts/tests -p "test_*.py"
+      - name: Download all gallery shard screenshots
+        uses: actions/download-artifact@v4
+        with:
+          pattern: cook-with-pip-gallery-raw-*
+          path: artifacts/raw-shards
+          merge-multiple: false
+      - name: Organize and verify gallery screenshots
+        env:
+          GALLERY_SUITE: ${{ needs.gallery-plan.outputs.suite }}
+          GALLERY_MANIFEST: ${{ needs.gallery-plan.outputs.manifest }}
+          ONLY_REQUIRED: ${{ needs.gallery-plan.outputs.only_required }}
+          STRICT_NAMES: ${{ needs.gallery-plan.outputs.strict_names }}
+          UI_TEST_OUTCOME: ${{ needs.ios-gallery.result }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/cook-with-pip-screenshots
+          input_args=()
+          for input_dir in artifacts/raw-shards/cook-with-pip-gallery-raw-*; do
+            if [[ -d "$input_dir" ]]; then input_args+=(--input "$input_dir"); fi
+          done
+          if [[ ${#input_args[@]} -eq 0 ]]; then
+            echo "No gallery screenshot shard exports were downloaded." >&2
+            exit 1
+          fi
+          organizer_args=(
+            "${input_args[@]}"
+            --output artifacts/cook-with-pip-screenshots
+            --required "$GALLERY_MANIFEST"
+            --commit-sha "$COMMIT_SHA"
+            --test-outcome "$UI_TEST_OUTCOME"
+          )
+          if [[ "$ONLY_REQUIRED" == "true" ]]; then organizer_args+=(--only-required); fi
+          if [[ "$STRICT_NAMES" == "true" ]]; then organizer_args+=(--strict-names); fi
+          python .github/scripts/organize_ios_screenshots.py "${organizer_args[@]}"
+      - name: Package screenshot review archive
+        if: always()
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZIP_DEFLATED, ZipFile
+
+          source = Path("artifacts/cook-with-pip-screenshots")
+          archive = Path("artifacts/cook-with-pip-visual-gallery.zip")
+          if not source.is_dir():
+              raise SystemExit("Organized screenshot folder is missing.")
+
+          with ZipFile(archive, "w", compression=ZIP_DEFLATED) as output:
+              for path in sorted(source.rglob("*")):
+                  if path.is_file():
+                      output.write(path, path.relative_to(source.parent))
+          print(f"Packaged {archive} from {source}.")
+          PY
+      - name: Upload screenshot review archive
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cook-with-pip-${{ needs.gallery-plan.outputs.suite }}-review
           path: artifacts/cook-with-pip-visual-gallery.zip
           if-no-files-found: error
       - name: Upload organized screenshots and manifest
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cook-with-pip-gallery-screenshots
+          name: cook-with-pip-${{ needs.gallery-plan.outputs.suite }}-screenshots
           path: artifacts/cook-with-pip-screenshots
           if-no-files-found: error
-      - name: Upload full Xcode result bundle
+      - name: Report gallery phase timings and runner allocation
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cook-with-pip-xcresult
-          path: artifacts/frontend.xcresult
-          if-no-files-found: error
-          compression-level: 0
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100" \
+            > artifacts/workflow-jobs.json
+          python .github/scripts/report_github_action_timings.py \
+            --jobs artifacts/workflow-jobs.json \
+            --summary "$GITHUB_STEP_SUMMARY"

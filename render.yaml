@@ -6,7 +6,7 @@ services:
     region: singapore
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    autoDeployTrigger: off
+    autoDeployTrigger: commit
     healthCheckPath: /ready
     envVars:
       - key: ENVIRONMENT
@@ -20,6 +20,8 @@ services:
       - key: JWT_SECRET_KEY
         generateValue: true
       - key: STAGING_TEST_FIXTURES_ENABLED
+        value: "false"
+      - key: STAGING_TEST_CHAT_MOCK_ENABLED
         value: "false"
       - key: STAGING_TEST_FIXTURE_TOKEN
         generateValue: true

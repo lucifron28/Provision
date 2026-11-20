@@ -2,13 +2,22 @@ import SwiftUI
 
 public struct InventoryView: View {
     @ObservedObject var viewModel: InventoryViewModel
+    private let onNavigateToScan: () -> Void
+
+    private enum AddInventoryRoute: String, Identifiable {
+        case existingProduct
+        case newProduct
+
+        var id: String { rawValue }
+    }
 
     @State private var showingFilterSheet: Bool = false
-    @State private var showingAddSheet: Bool = false
+    @State private var addInventoryRoute: AddInventoryRoute?
     
     
-    public init(viewModel: InventoryViewModel) {
+    public init(viewModel: InventoryViewModel, onNavigateToScan: @escaping () -> Void = {}) {
         self.viewModel = viewModel
+        self.onNavigateToScan = onNavigateToScan
     }
     
     public var body: some View {
@@ -16,6 +25,20 @@ public struct InventoryView: View {
             VStack(spacing: 0) {
                 if viewModel.isOffline {
                     offlineBanner
+                }
+
+                if let pending = viewModel.pendingManualIntakeRecord {
+                    pendingInventoryIntakeBanner(pending)
+                } else if viewModel.pendingManualIntakeState == .corrupt
+                            || viewModel.pendingManualIntakeState == .unavailable {
+                    pendingInventoryIntakeUnavailableBanner
+                }
+
+                if let pending = viewModel.pendingInventoryActionRecord {
+                    pendingInventoryActionBanner(pending)
+                } else if viewModel.pendingInventoryActionState == .corrupt
+                            || viewModel.pendingInventoryActionState == .unavailable {
+                    pendingInventoryActionUnavailableBanner
                 }
 
                 // Search Bar
@@ -31,6 +54,12 @@ public struct InventoryView: View {
                 resultCountBar
                     .padding(.horizontal, 16)
                     .padding(.bottom, 6)
+
+                if !viewModel.filteredProducts.isEmpty {
+                    stockInsight
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 4)
+                }
                 
                 // Products List
                 if viewModel.isLoading && viewModel.products.isEmpty {
@@ -50,15 +79,33 @@ public struct InventoryView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 16) {
-                        Button {
-                            showingAddSheet = true
+                        Menu {
+                            Button {
+                                onNavigateToScan()
+                            } label: {
+                                Label("Scan barcode or receipt", systemImage: "barcode.viewfinder")
+                            }
+                            .accessibilityIdentifier("inventory-add-scan-option")
+                            Button {
+                                addInventoryRoute = .existingProduct
+                            } label: {
+                                Label("Search existing products", systemImage: "magnifyingglass")
+                            }
+                            .accessibilityIdentifier("inventory-add-existing-option")
+                            Button {
+                                addInventoryRoute = .newProduct
+                            } label: {
+                                Label("Add a new product", systemImage: "square.and.pencil")
+                            }
+                            .accessibilityIdentifier("inventory-add-new-option")
                         } label: {
                             Image(systemName: "plus")
                                 .font(.system(size: 17, weight: .semibold))
                                 .foregroundStyle(ProvisionTheme.provisionGreen)
                                 .accessibleTouchTarget()
                         }
-                        .accessibilityLabel("Add Product to Inventory")
+                        .accessibilityLabel("Add groceries to inventory")
+                        .accessibilityIdentifier("inventory-add-menu")
                         
                         Button {
                             Task { await viewModel.loadData() }
@@ -73,12 +120,19 @@ public struct InventoryView: View {
                 }
             }
             .task {
+                viewModel.loadPendingManualInventoryIntake()
+                viewModel.loadPendingInventoryAction()
                 if viewModel.products.isEmpty {
                     await viewModel.loadData()
                 }
             }
-            .sheet(isPresented: $showingAddSheet) {
-                AddInventoryView(viewModel: viewModel)
+            .sheet(item: $addInventoryRoute) { route in
+                switch route {
+                case .existingProduct:
+                    AddInventoryView(viewModel: viewModel)
+                case .newProduct:
+                    AddInventoryView(viewModel: viewModel, startWithNewProduct: true)
+                }
             }
         }
     }
@@ -104,6 +158,93 @@ public struct InventoryView: View {
         .padding(.top, 4)
         .padding(.bottom, 4)
     }
+
+    private func pendingInventoryIntakeBanner(_ record: PendingManualInventoryIntakeRecord) -> some View {
+        let productName = record.request.new_product?.name
+            ?? viewModel.products.first(where: { $0.id == record.request.product_id })?.name
+            ?? "Saved grocery"
+        return Button {
+            addInventoryRoute = .existingProduct
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.clockwise.circle.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Confirm saved inventory request")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("Retry \(productName) without changing it")
+                        .font(.system(size: 12))
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(ProvisionTheme.textPrimary)
+            .padding(12)
+            .background(ProvisionTheme.amberLight)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("inventory-pending-intake-recovery")
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+    }
+
+    private var pendingInventoryIntakeUnavailableBanner: some View {
+        Label("A saved inventory request needs recovery before another manual add.", systemImage: "exclamationmark.triangle.fill")
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(ProvisionTheme.amberWarning)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .accessibilityIdentifier("inventory-pending-intake-unavailable")
+    }
+
+    private func pendingInventoryActionBanner(_ record: PendingInventoryActionRecord) -> some View {
+        let title: String
+        switch record.action {
+        case .consume: title = "Consumption"
+        case .discard: title = "Discarded stock"
+        case .adjust: title = "Stock adjustment"
+        }
+        return Button {
+            Task { await viewModel.retryPendingInventoryAction() }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.clockwise.circle.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Confirm saved \(title.lowercased())")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("Retry the exact inventory action safely")
+                        .font(.system(size: 12))
+                }
+                Spacer(minLength: 4)
+                if viewModel.isRecoveringPendingInventoryAction {
+                    ProgressView().tint(ProvisionTheme.amberWarning)
+                }
+            }
+            .foregroundStyle(ProvisionTheme.textPrimary)
+            .padding(12)
+            .background(ProvisionTheme.amberLight)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(viewModel.isRecoveringPendingInventoryAction)
+        .accessibilityIdentifier("inventory-pending-stock-action-recovery")
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+    }
+
+    private var pendingInventoryActionUnavailableBanner: some View {
+        Label("A saved stock action needs recovery before another change.", systemImage: "exclamationmark.triangle.fill")
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(ProvisionTheme.amberWarning)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .accessibilityIdentifier("inventory-pending-stock-action-unavailable")
+    }
     
     private var searchBar: some View {
         HStack(spacing: 10) {
@@ -115,6 +256,7 @@ public struct InventoryView: View {
                     .font(.system(size: 15))
                     .autocorrectionDisabled()
                     .foregroundStyle(ProvisionTheme.textPrimary)
+                    .accessibilityIdentifier("inventory-search")
                 
                 if !viewModel.searchText.isEmpty {
                     Button {
@@ -254,6 +396,31 @@ public struct InventoryView: View {
         }
     }
 
+    private var stockInsight: some View {
+        let lowStockCount = viewModel.filteredProducts.filter { product in
+            product.isLowStock || ((product.total_remaining_quantity ?? 0) > 0
+                && (product.total_remaining_quantity ?? 0) <= 2)
+        }.count
+        return HStack(spacing: 8) {
+            Image("pip_guardian")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 38, height: 38)
+                .accessibilityHidden(true)
+            Text(lowStockCount == 0
+                ? "Review freshness dates as you update pantry quantities."
+                : "\(lowStockCount) groceries are running low. Check these amounts before shopping.")
+                .font(.footnote)
+                .foregroundStyle(ProvisionTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .provisionCard(backgroundColor: ProvisionTheme.surfaceSecondary)
+        .accessibilityIdentifier("inventory-stock-insight")
+    }
+
     private var isAnyFilterActive: Bool {
         !viewModel.searchText.isEmpty ||
         viewModel.selectedCategory != nil ||
@@ -271,6 +438,7 @@ public struct InventoryView: View {
                         productRow(product: product)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("product-row-\(product.id)")
                 }
             }
             .padding(.horizontal, 16)
@@ -302,7 +470,7 @@ public struct InventoryView: View {
             Spacer()
             
             VStack(alignment: .trailing, spacing: 4) {
-                Text("\(product.displayStock) \(product.displayUnit)")
+                Text("\(product.displayStock) \(product.displayUnit(for: product.total_remaining_quantity ?? 0))")
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(product.isOutOfStock ? ProvisionTheme.redAlert : ProvisionTheme.textPrimary)
                 
@@ -380,31 +548,48 @@ public struct InventoryView: View {
     private var emptyInventoryState: some View {
         VStack(spacing: 16) {
             Spacer()
-            Image(systemName: "tray.fill")
-                .font(.system(size: 48))
-                .foregroundStyle(ProvisionTheme.textTertiary)
-            
-            Text("No Products Found")
+            Image("pip_guardian")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 72, height: 72)
+                .accessibilityHidden(true)
+
+            Text(viewModel.products.isEmpty ? "Your pantry is ready to fill" : "No groceries match this view")
                 .font(.system(size: 18, weight: .bold, design: .serif))
                 .foregroundStyle(ProvisionTheme.textPrimary)
-            
-            Text("Try clearing your search or category filters, or scan new items into your pantry.")
+
+            Text(emptyInventoryMessage)
                 .font(.system(size: 14))
                 .foregroundStyle(ProvisionTheme.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
-            
-            if !viewModel.searchText.isEmpty || viewModel.selectedCategory != nil {
-                Button("Reset All Filters") {
+
+            if hasInventoryFilters {
+                Button("Clear filters") {
                     viewModel.searchText = ""
                     viewModel.selectedCategory = nil
+                    viewModel.selectedLocationId = nil
                     viewModel.applyFilter(.all)
                 }
                 .foregroundStyle(ProvisionTheme.provisionGreen)
                 .padding(.top, 4)
+                .accessibilityIdentifier("inventory-empty-clear-filters")
             }
             Spacer()
         }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var hasInventoryFilters: Bool {
+        !viewModel.searchText.isEmpty || viewModel.selectedCategory != nil
+            || viewModel.selectedLocationId != nil || viewModel.activeQuickFilter != .all
+    }
+
+    private var emptyInventoryMessage: String {
+        if hasInventoryFilters {
+            return "Try another search or clear filters to see your household stock."
+        }
+        return "Add kangkong, eggs, or other groceries to start tracking quantities and freshness."
     }
     
     private func statusColor(for product: Product) -> Color {

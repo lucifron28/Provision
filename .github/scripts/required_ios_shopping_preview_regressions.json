@@ -1,0 +1,26 @@
+{
+  "requiredScreenshots": [
+    "Recipe_Substitution_Options",
+    "Recipe_Detail_Substitution_Applied",
+    "Shopping_Preview_Applied_Substitution",
+    "Shopping_Preview_Ready",
+    "Shopping_Unlinked_Manual_Items",
+    "Shopping_Optional_Ingredients",
+    "Shopping_Line_Exact_Quantity_Edited",
+    "Shopping_Duplicate_Consolidation_Opt_In",
+    "Shopping_Confirmation_Result",
+    "Shopping_List_Updated"
+  ],
+  "scenarioDescriptions": {
+    "Recipe_Substitution_Options": "The recipe displays the available deterministic ingredient substitution choices.",
+    "Recipe_Detail_Substitution_Applied": "The chosen calamansi substitution is shown on the recipe detail.",
+    "Shopping_Preview_Applied_Substitution": "The shopping preview identifies the selected replacement and original recipe ingredient.",
+    "Shopping_Preview_Ready": "A ready shopping preview shows exact required ingredient quantities without unrelated manual rows.",
+    "Shopping_Unlinked_Manual_Items": "An unlinked manual shopping row is shown separately and is not merged by name.",
+    "Shopping_Optional_Ingredients": "The user-enabled optional ingredient appears after the preview refreshes.",
+    "Shopping_Line_Exact_Quantity_Edited": "The shopping amount remains the exact quantity entered by the user.",
+    "Shopping_Duplicate_Consolidation_Opt_In": "Duplicate ingredient lines are consolidated only after explicit opt-in.",
+    "Shopping_Confirmation_Result": "The server-confirmed shopping result appears after explicit confirmation.",
+    "Shopping_List_Updated": "The shopping list contains the confirmed recipe ingredients."
+  }
+}

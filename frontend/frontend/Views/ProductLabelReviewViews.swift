@@ -98,6 +98,7 @@ public struct ProductLabelReviewView: View {
     }
 
     @StateObject private var viewModel: ProductLabelReviewViewModel
+    @State private var technicalDetailsExpanded = false
     private let onReviewUpdated: () async -> Void
     @FocusState private var focusedField: InputField?
 
@@ -133,7 +134,23 @@ public struct ProductLabelReviewView: View {
                             .foregroundStyle(ProvisionTheme.amberWarning)
                     }
                     if product.updated_at != nil || viewModel.label != nil {
-                        DisclosureGroup("Technical details") {
+                        Button {
+                            withAnimation { technicalDetailsExpanded.toggle() }
+                        } label: {
+                            HStack {
+                                Text("Technical details")
+                                Spacer()
+                                Image(systemName: technicalDetailsExpanded ? "chevron.down" : "chevron.right")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(ProvisionTheme.textSecondary)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("pip-label-technical-details")
+                        .accessibilityValue(technicalDetailsExpanded ? "Expanded" : "Collapsed")
+                        .accessibilityHint("Shows the server version and label review revision")
+                        if technicalDetailsExpanded {
                             if let updated = product.updated_at {
                                 LabeledContent("Server version") {
                                     Text(updated)
@@ -152,7 +169,6 @@ public struct ProductLabelReviewView: View {
                                     .accessibilityElement(children: .contain)
                             }
                         }
-                        .accessibilityIdentifier("pip-label-technical-details")
                     }
                 }
             }
@@ -233,6 +249,11 @@ public struct ProductLabelReviewView: View {
             }
 
             Section {
+                Text("Package label declaration")
+                    .font(.headline)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("pip-label-package-declaration-heading")
                 if let label = viewModel.label {
                     let status = label.current_for_product ? "Current label review" : "Review is no longer current"
                     Label(status,
@@ -280,6 +301,7 @@ public struct ProductLabelReviewView: View {
                     )
                         .lineLimit(2...4)
                         .focused($focusedField, equals: .sourceReference)
+                        .simultaneousGesture(TapGesture().onEnded { focusedField = .sourceReference })
                         .accessibilityLabel("Source reference")
                         .accessibilityIdentifier("pip-label-source-reference")
                 }
@@ -295,8 +317,6 @@ public struct ProductLabelReviewView: View {
                 if viewModel.statusContext == .packageLabel, let status = viewModel.statusMessage {
                     statusMessageView(status)
                 }
-            } header: {
-                Text("Package label declaration")
             } footer: {
                 if !viewModel.canReviewLabel {
                     Text("Save a verified, complete ingredient mapping and refresh the product before recording this review.")

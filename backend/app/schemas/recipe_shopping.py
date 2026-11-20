@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field, field_validator, model_validator
 
-from app.schemas.food_safety import FoodSafetyRead
+from app.schemas.food_safety import FoodSafetyRead, IngredientSubstitution
 from app.schemas.ingredients import MAX_AMOUNT, StrictSchema
 from app.schemas.shopping import ShoppingListItemRead
 
@@ -17,6 +17,7 @@ class RecipeShoppingPreviewRequest(StrictSchema):
         default=None, min_length=1, max_length=100
     )
     include_optional: bool = False
+    substitutions: list[IngredientSubstitution] = Field(default_factory=list, max_length=200)
 
     @field_validator("servings")
     @classmethod
@@ -29,6 +30,9 @@ class RecipeShoppingPreviewRequest(StrictSchema):
     def unique_diners(self):
         if self.diner_user_ids is not None and len(self.diner_user_ids) != len(set(self.diner_user_ids)):
             raise ValueError("Diners must be distinct")
+        indexes = [item.requirement_index for item in self.substitutions]
+        if len(indexes) != len(set(indexes)):
+            raise ValueError("Substitutions must target distinct recipe lines")
         return self
 
 
@@ -65,6 +69,7 @@ class RecipeShoppingPreviewRead(StrictSchema):
     recipe_revision: int
     servings: Decimal
     include_optional: bool
+    substitutions: list[IngredientSubstitution] = Field(default_factory=list)
     shopping_revision: int
     inventory_revision: int
     included_requirement_indexes: list[int] = Field(default_factory=list)
