@@ -881,6 +881,52 @@ def test_staging_chat_mock_uses_no_deepseek_client_and_only_for_fixture_accounts
     ordinary_dependency.close()
 
 
+def test_staging_real_chat_does_not_consume_app_request_budget(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.api.v1.endpoints import pip_chat as endpoint
+    from app.core.config import settings
+    from app.services.deepseek_budget import UnmeteredDeepSeekBudget
+
+    user = SimpleNamespace(email="demo@example.com")
+    captured = {}
+
+    class Provider:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    def build_provider(_settings, *, budget):
+        captured["budget"] = budget
+        return Provider()
+
+    monkeypatch.setattr(settings, "DEPLOYMENT_ENVIRONMENT", "staging")
+    monkeypatch.setattr(settings, "STAGING_TEST_FIXTURES_ENABLED", False)
+    monkeypatch.setattr(settings, "STAGING_TEST_CHAT_MOCK_ENABLED", False)
+    monkeypatch.setattr(settings, "DEEPSEEK_ENABLED", True)
+    monkeypatch.setattr(endpoint, "DeepSeekProvider", build_provider)
+
+    dependency = endpoint.get_pip_chat_provider(household_id=22, user=user)
+    next(dependency)
+    dependency.close()
+
+    budget = captured["budget"]
+    assert isinstance(budget, UnmeteredDeepSeekBudget)
+    for _ in range(10001):
+        budget.consume("chat")
+
+    from app.services.deepseek_budget import PostgresDeepSeekBudget
+
+    monkeypatch.setattr(settings, "DEPLOYMENT_ENVIRONMENT", "production")
+    monkeypatch.setattr(settings, "DEEPSEEK_ENABLED", False)
+    production_dependency = endpoint.get_pip_chat_provider(household_id=22, user=user)
+    next(production_dependency)
+    production_dependency.close()
+    assert isinstance(captured["budget"], PostgresDeepSeekBudget)
+
+
 def test_staging_chat_mock_only_returns_server_supplied_recipe_references():
     from app.services.staging_pip_chat_mock import StagingPipChatMock
 

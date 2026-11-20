@@ -11,7 +11,7 @@ from app.core.database import get_db
 from app.core.staging_fixtures import is_staging_test_account
 from app.models.user import User
 from app.schemas.pip_chat import PipChatRead, PipChatRequest
-from app.services.deepseek_budget import PostgresDeepSeekBudget
+from app.services.deepseek_budget import PostgresDeepSeekBudget, UnmeteredDeepSeekBudget
 from app.services.deepseek_provider import DeepSeekProvider, DeepSeekProviderError
 from app.services.pip_chat import generate_pip_chat
 from app.services.staging_pip_chat_mock import StagingPipChatMock
@@ -32,8 +32,13 @@ def get_pip_chat_provider(
         yield StagingPipChatMock()
         return
 
-    budget = PostgresDeepSeekBudget(settings, household_id=household_id)
-    if settings.DEEPSEEK_ENABLED:
+    if settings.DEPLOYMENT_ENVIRONMENT == "staging":
+        # Staging demos should not consume a small shared request allowance.
+        # DeepSeek's own 429 and all consent/safety checks remain in force.
+        budget = UnmeteredDeepSeekBudget()
+    else:
+        budget = PostgresDeepSeekBudget(settings, household_id=household_id)
+    if settings.DEEPSEEK_ENABLED and isinstance(budget, PostgresDeepSeekBudget):
         try:
             budget.prepare_household()
         except SQLAlchemyError:
