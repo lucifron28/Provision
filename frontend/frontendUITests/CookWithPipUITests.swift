@@ -23,9 +23,10 @@ final class CookWithPipUITests: XCTestCase {
         input.typeText("Anong lulutuin natin?")
         app.buttons["pip-chat-send"].tap()
 
-        let reply = app.staticTexts[
-            "May Sinigang na Baboy sa recipes natin. Kailangan nito ng 120 g kangkong, at 120 g ang nasa pantry ngayon. Pasok ang kasalukuyang recipe check; buksan ang recipe para tingnan ang iba pang sangkap at safety details."
-        ]
+        let replyText = "May Sinigang na Baboy sa recipes natin. Kailangan nito ng 120 g kangkong, at 120 g ang nasa pantry ngayon. Pasok ang kasalukuyang recipe check; buksan ang recipe para tingnan ang iba pang sangkap at safety details."
+        let reply = app.staticTexts.containing(
+            NSPredicate(format: "label == %@", replyText)
+        ).firstMatch
         XCTAssertTrue(reply.waitForExistence(timeout: 10))
         let recipeCard = element("pip-chat-recipe-card-301", in: app)
         XCTAssertTrue(recipeCard.waitForExistence(timeout: 5),
@@ -100,6 +101,12 @@ final class CookWithPipUITests: XCTestCase {
         scrollTargetIntoView(privacyDetails, inside: chatScroll, progressAnchor: allergyConsent, in: app)
         XCTAssertTrue(privacyDetails.isHittable)
         privacyDetails.tap()
+        let expanded = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "Expanded"),
+            object: privacyDetails
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [expanded], timeout: 5), .completed,
+                       "The privacy details control exposes its expanded state")
         let privacyNotice = element("pip-chat-data-notice", in: app)
         XCTAssertTrue(privacyNotice.waitForExistence(timeout: 5))
         scrollTargetIntoView(privacyNotice, inside: chatScroll, progressAnchor: privacyDetails, in: app)

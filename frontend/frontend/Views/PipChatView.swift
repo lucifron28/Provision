@@ -222,15 +222,32 @@ public struct PipChatView: View {
             .accessibilityIdentifier("pip-chat-consent-allergies")
 
             if let consent = viewModel.consent, consent.chat_granted {
-                DisclosureGroup(isExpanded: $privacyNoticeExpanded) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        privacyNoticeExpanded.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Text("Review privacy details")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                        Spacer(minLength: 8)
+                        Image(systemName: privacyNoticeExpanded ? "chevron.up" : "chevron.down")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(ProvisionTheme.provisionGreen)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("pip-chat-privacy-details")
+                .accessibilityLabel("Review privacy details")
+                .accessibilityValue(privacyNoticeExpanded ? "Expanded" : "Collapsed")
+
+                if privacyNoticeExpanded {
                     privacyNotice(consent.notice)
                         .padding(.top, 8)
-                } label: {
-                    Text("Review privacy details")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(ProvisionTheme.provisionGreen)
                 }
-                .accessibilityIdentifier("pip-chat-privacy-details")
             }
 
             if let consent = viewModel.consent {
