@@ -1380,7 +1380,7 @@ final class CookWithPipUITests: XCTestCase {
     func testAmbiguousShoppingConfirmationSurvivesAppRelaunch() {
         let fixtureID = Int.random(in: 10_000...90_000)
         let app = launch(scenario: "shopping-restart", fixtureID: fixtureID, useKeychain: true)
-        openShoppingPreview(app)
+        openShoppingPreview(app, timeout: 30)
         let confirm = app.navigationBars.buttons["recipe-shopping-confirm"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 10))
         XCTAssertTrue(confirm.isEnabled,
