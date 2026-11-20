@@ -1,40 +1,70 @@
-# Mac lab handoff: Provision final demo
+# Mac lab handoff: real staging verification
 
-Updated 2026-11-18
+Updated 2026-11-20
 
-## Remote verification
+## Start here
 
 - Repository: `lucifron28/Provision`
-- Branch and PR: `feat/pip-chat-foundation`, [PR #11](https://github.com/lucifron28/Provision/pull/11). Leave the PR open.
-- Last completed required CI before the current focused Cook with Pip copy fix: [run 44331090502](https://github.com/lucifron28/Provision/actions/runs/44331090502), commit `b18cbe3e50cdc7a5310dfe15339088c28d208b87`. It passed 1,077 backend cases (1,065 passed, 12 skipped), 60 Swift unit tests, 14 UI test methods, and all 12 mandatory screenshots plus one supplemental Needs Review screenshot in 16m30s.
-- CI screenshot artifact: [12 required screenshots and supplemental Needs Review capture](https://github.com/lucifron28/Provision/actions/runs/44331090502/artifacts/14441510153). The manifest reports successful test attribution and capture integrity, with no missing, duplicate, or pixel-identical captures. Automated integrity checks do not replace visual review. The Needs Review image revealed that ingredient-mapping uncertainty was described like a quantity problem; a focused copy and UI assertion fix is now pending verification.
-- Staging E2E: [run 44336835494](https://github.com/lucifron28/Provision/actions/runs/44336835494) passed on the same `b18cbe3` commit in 11m41s. It verified Render/Neon readiness, authenticated synthetic persistence, household isolation, four iPhone UI methods, screenshot upload, and cleanup of its own synthetic household. The [artifact](https://github.com/lucifron28/Provision/actions/runs/44336835494/artifacts/14442562472) contains the `.xcresult`, ten attributed PNGs, and manifest. I inspected the synthetic home and relaunch-recovery images; neither contains real household data.
-- Render staging `provision-staging-04dt` served `b18cbe3` with `/health` and `/ready` passing after E2E cleanup. `STAGING_TEST_FIXTURES_ENABLED` and `STAGING_TEST_CHAT_MOCK_ENABLED` were returned to `false`. Render auto-deploys this branch, so check health after the pending PR commit is pushed.
-- One genuine DeepSeek response succeeded for a consented synthetic account in [live smoke run 44322325337](https://github.com/lucifron28/Provision/actions/runs/44322325337), commit `50527bb5ac53481c5a9b29b0394ee4e43ea466e1`. Its [artifact](https://github.com/lucifron28/Provision/actions/runs/44322325337/artifacts/14436247352) contains the smoke evidence. No normal Ron-account request was made, and no additional billable request is needed for this handoff.
-- These checks use synthetic staging data. They do not establish the exact reasons for exclusions in a personal household's recipes. Do not edit household records or infer missing allergy declarations from screenshots.
-- This Windows host has no `xcodebuild`; PR CI runs Swift and Simulator checks on macOS.
+- Branch: `feat/pip-chat-foundation`
+- PR: [#11](https://github.com/lucifron28/Provision/pull/11), open and unmerged.
+- Code under test: `bc7f56df1a6ba3b3a893a3c4972c214b8ff6e4f8` (`Wait for imported receipt in Photos picker`).
+- Render staging serves that commit. `/health` reports `ok`; `/ready` reports `ready`.
+- No demo credentials or tokens belong in this file, Xcode settings, screenshots, or logs.
 
-## Final PR check
+## Check the active run first
 
-After the focused copy fix passes required CI, use the latest successful `tests.yml` run on PR #11 as the final simulator check. Download its `cook-with-pip-ios-screenshots` artifact and review the Needs Review image. The fix is not yet covered by the completed CI run above.
+[Staging run 44649332128](https://github.com/lucifron28/Provision/actions/runs/44649332128) is testing the same real demo household on the iPhone 17 simulator. At handoff it was still running its real-account UI step. Check its final result before starting another run or touching inventory. Do not test receipt intake concurrently against this household.
 
-## Demo flow
+The latest run builds the current commit, imports the receipt into Photos, runs real-account login/barcode lookup and receipt intake, then runs the production receipt parser regression. If it passes receipt intake, inspect its artifact and verify the persisted batches before doing anything else.
 
-Use the normal app and the demo account you control. If the simulator needs staging, set the non-secret Run environment variable `PROVISION_API_BASE_URL=https://provision-staging-04dt.onrender.com/api/v1`. Do not put account tokens or provider keys in Xcode settings.
+## What is already verified
 
-1. Show Home and the pantry summary.
-2. Open Cook with Pip. Compare Cook Now, Almost There, and My Recipes, then open an eligible recipe.
-3. Show ingredients, food-safety status, and the recipe's instructions. Use Needs Review to explain why a recipe needs more information. Do not present a blocked recipe as safe to cook.
-4. Open Pip Chat with consent enabled and ask about the selected recipe. Show the response and the validated route back to the shopping preview.
-5. Review exact quantities and safety notices, then confirm the shopping change explicitly. Chat does not write pantry or shopping records by itself.
+- Windows API login, household access, inventory reads, and shopping-list reads succeed.
+- The live barcode endpoint returned Century Tuna Flakes in Oil, 180 g, for barcode `4800016644818`.
+- A previous Apple Vision run recognized and quantity-checked 8 of 9 receipt lines, but did not confirm the intake.
+- The prior picker screenshot showed the system photo library still loading. A later UI hierarchy contained the imported photo. Commit `bc7f56d` changes the wait for that actual thumbnail from 10 to 30 seconds. It still needs a successful simulator result.
+- One genuine Pip Chat request returned HTTP 200 from `deepseek-flash`. A context-aware follow-up returned HTTP 429, `request_budget_exhausted`. No chat request is needed for receipt verification; do not use a mock as a substitute.
+- Sinigang evaluation is `review_required`: pork 700 g needed / 850 g available; eggplant 150/400 g; onion 100/300 g; rice 300/800 g; tomato 200/450 g; kangkong 120/120 g. Fish sauce is short by 30 mL. Tamarind soup base (40 g), daikon (200 g), and water (1,500 mL) have unresolved ingredient mappings. Product allergen labels remain unreviewed. The shopping list is unchanged at 10 rows. Do not bypass the review gate or mark package labels verified without the actual panels.
 
-## Mac lab checks
+## If the active run fails before receipt confirmation
 
-These checks need local Xcode or physical hardware:
+Use the Mac simulator for one focused run. Pull the branch first, confirm the checked-out SHA, and make sure the Actions run above has finished.
 
-- Open the final PR commit in Xcode, build, and briefly spot-check Home, Cook with Pip, Needs Review, recipe details, Pip Chat, and shopping review.
-- On an iPhone, check camera permission and barcode scanning.
-- Capture a synthetic receipt, review OCR values, and test uncertain-value correction.
-- Check keyboard layout at a larger text size and VoiceOver focus order.
+1. In Xcode, open `frontend/frontend.xcodeproj` and select an iPhone 17 simulator.
+2. Import the attached receipt once:
+   ```sh
+   xcrun simctl addmedia booted frontend/frontendUITests/Resources/Provision_Receipt_OCR_Demo.jpg
+   ```
+3. Supply the real demo credentials only in the local terminal prompt. Do not put them in a command, file, project setting, screenshot, or log. Xcode forwards test variables with the `TEST_RUNNER_` prefix:
+   ```sh
+   export TEST_RUNNER_PROVISION_API_BASE_URL='https://provision-staging-04dt.onrender.com/api/v1'
+   export TEST_RUNNER_PROVISION_REAL_DEMO_ACCOUNT_TEST=true
+   read -r 'TEST_RUNNER_PROVISION_STAGING_TEST_EMAIL?Demo account email: '
+   read -rs 'TEST_RUNNER_PROVISION_STAGING_TEST_PASSWORD?Demo account password: '
+   printf '\n'
+   export TEST_RUNNER_PROVISION_STAGING_TEST_EMAIL TEST_RUNNER_PROVISION_STAGING_TEST_PASSWORD
+   ```
+4. Run only the real receipt journey:
+   ```sh
+   mkdir -p artifacts
+   xcodebuild test \
+     -project frontend/frontend.xcodeproj \
+     -scheme frontend \
+     -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+     -only-testing:frontendUITests/CookWithPipUITests/testRealDemoAccountReceiptOCRIntake \
+     -resultBundlePath artifacts/real-demo-receipt.xcresult \
+     -parallel-testing-enabled NO \
+     CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-
+   ```
+5. In the app, review the OCR lines, correct uncertain quantities, choose storage locations, and confirm once. Then verify the expected inventory batches through staging. Do not repeat confirmation if the UI reports an uncertain result; refresh and reconcile first.
+6. Report the exact XCTest result and actual before/after inventory quantities. If the test fails, save the `.xcresult` and one screenshot of the failing screen. Do not launch repeated runs without a specific fix.
 
-Do not mark camera, barcode, receipt OCR, keyboard, or VoiceOver checks passed until they have been exercised on the device. Keep service credentials and real household data off shared computers.
+Do not seed fictional stock, alter allergy declarations, or claim receipt intake succeeded without seeing persisted inventory.
+
+## Other results and limits
+
+The context-aware DeepSeek request is currently blocked by the provider's request budget. The user approved billable calls, but the 429 shows a provider limit, so do not retry now. The successful earlier response was genuine but did not give useful recipe recommendations.
+
+Do not confirm recipe shopping until the unresolved mapping and product-label review issues are genuinely resolved. No production deployment or PR merge is authorized.
+
+Physical camera and barcode scanning still require a real iPhone. The simulator can verify manual barcode entry and receipt picker/OCR flows, not camera hardware behavior.
