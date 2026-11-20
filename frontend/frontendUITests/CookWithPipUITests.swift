@@ -2171,8 +2171,8 @@ extension CookWithPipUITests {
                 "PXGGridLayout-Info", "Photo,"
             )
         ).firstMatch
-        guard photoThumbnail.waitForExistence(timeout: 10) else {
-            XCTFail("The system photo picker did not expose its imported photo thumbnail")
+        guard photoThumbnail.waitForExistence(timeout: 30) else {
+            XCTFail("The system photo picker did not expose its imported photo thumbnail after waiting for the library to load")
             return
         }
 
